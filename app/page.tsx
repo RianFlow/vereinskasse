@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type Product = { id: number; name: string; price: number; icon: string; category: string; color: string };
 type Cart = Record<number, number>;
 type Member = { id: string; name: string; role: string; code: string; initials: string };
-type Sale = { total: number; items: number; time: string; member?: string; memberId?: string; method?: string };
+type Sale = { id?: string; total: number; items: number; time: string; member?: string; memberId?: string; method?: string };
 
 const members: Member[] = [
   { id: "M-1042", name: "Anna Becker", role: "Kassendienst", code: "VEREIN-1042", initials: "AB" },
@@ -34,6 +34,7 @@ export default function Home() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [paid, setPaid] = useState(false);
   const [identify, setIdentify] = useState<string | null>(null);
+  const [storageState, setStorageState] = useState<"online" | "offline" | "loading">("loading");
 
   useEffect(() => {
     const saved = localStorage.getItem("vereinskasse-data");
@@ -41,6 +42,11 @@ export default function Home() {
       const data = JSON.parse(saved);
       setProducts(data.products || seed); setSales(data.sales || []);
     }
+    fetch("/api/data").then(r => { if(!r.ok) throw new Error(); return r.json(); }).then(data => {
+      setProducts(data.products || seed); setSales(data.sales || []); setStorageState("online");
+      const pending = JSON.parse(localStorage.getItem("vereinskasse-pending") || "[]") as unknown[];
+      return Promise.all(pending.map(s => fetch("/api/data", {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(s)})));
+    }).then(() => localStorage.removeItem("vereinskasse-pending")).catch(() => setStorageState("offline"));
   }, []);
   useEffect(() => { localStorage.setItem("vereinskasse-data", JSON.stringify({ products, sales })); }, [products, sales]);
 
@@ -55,8 +61,15 @@ export default function Home() {
     if (!itemCount) return;
     setIdentify(method);
   };
+  const saveProducts = (next: Product[]) => {
+    setProducts(next); fetch("/api/data",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({products:next})}).then(r=>{if(!r.ok)throw new Error();setStorageState("online")}).catch(()=>setStorageState("offline"));
+  };
   const finishCheckout = (member: Member) => {
-    setSales(s => [...s, { total, items: itemCount, time: new Date().toISOString(), member: member.name, memberId: member.id, method: identify || "Bar" }]);
+    const sale = { id: crypto.randomUUID(), total, items: itemCount, time: new Date().toISOString(), member: member.name, memberId: member.id, method: identify || "Bar", cart };
+    setSales(s => [sale, ...s]);
+    fetch("/api/data",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(sale)}).then(r=>{if(!r.ok)throw new Error();setStorageState("online")}).catch(()=>{
+      const pending=JSON.parse(localStorage.getItem("vereinskasse-pending")||"[]"); pending.push(sale); localStorage.setItem("vereinskasse-pending",JSON.stringify(pending)); setStorageState("offline");
+    });
     setCart({}); setPaid(true);
     setIdentify(null);
     setTimeout(() => setPaid(false), 3500);
@@ -65,7 +78,7 @@ export default function Home() {
   return <main className="app">
     <header>
       <div className="brand"><span className="crest">V</span><div><strong>Vereinskasse</strong><small>SV Beispielhausen</small></div></div>
-      <div className="header-actions"><span className="status"><i /> Kasse geöffnet</span><button className="mode" onClick={() => setView(view === "kasse" ? "admin" : "kasse")}>{view === "kasse" ? "⚙ Admin" : "← Zur Kasse"}</button></div>
+      <div className="header-actions"><span className={`status ${storageState}`}><i /> {storageState === "online" ? "Zentral gespeichert" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span><button className="mode" onClick={() => setView(view === "kasse" ? "admin" : "kasse")}>{view === "kasse" ? "⚙ Admin" : "← Zur Kasse"}</button></div>
     </header>
 
     {view === "kasse" ? <section className="pos">
@@ -83,7 +96,7 @@ export default function Home() {
       </aside>
       {paid && <div className="toast">✓ Zahlung erfasst – Bon abgeschlossen</div>}
       {identify && <IdentityDialog method={identify} onClose={() => setIdentify(null)} onVerified={finishCheckout} />}
-    </section> : <Admin products={products} setProducts={setProducts} sales={sales} />}
+    </section> : <Admin products={products} setProducts={saveProducts} sales={sales} storageState={storageState} />}
   </main>;
 }
 
@@ -111,15 +124,15 @@ function IdentityDialog({ method, onClose, onVerified }: { method: string; onClo
   </div></div>;
 }
 
-function Admin({ products, setProducts, sales }: { products: Product[]; setProducts: (p: Product[]) => void; sales: Sale[] }) {
+function Admin({ products, setProducts, sales, storageState }: { products: Product[]; setProducts: (p: Product[]) => void; sales: Sale[]; storageState:string }) {
   const revenue = sales.reduce((s, x) => s + x.total, 0);
   const items = sales.reduce((s, x) => s + x.items, 0);
   const update = (id: number, field: "name" | "price", value: string) => setProducts(products.map(p => p.id === id ? { ...p, [field]: field === "price" ? Number(value) : value } : p));
   return <section className="admin">
-    <div className="admin-title"><div><p className="eyebrow">ADMINBEREICH</p><h1>Guten Abend, Vorstand 👋</h1><p>Produkte pflegen und den heutigen Verkauf im Blick behalten.</p></div><button onClick={() => setProducts([...products, { id: Date.now(), name: "Neuer Artikel", price: 1, icon: "✨", category: "Sonstiges", color: "#a6a1d8" }])}>+ Artikel hinzufügen</button></div>
+    <div className="admin-title"><div><p className="eyebrow">ADMINBEREICH</p><h1>Guten Abend, Vorstand 👋</h1><p>Produkte pflegen und den heutigen Verkauf im Blick behalten.</p></div><div className="admin-actions"><a href="/api/export">↓ Datenexport</a><button onClick={() => setProducts([...products, { id: Date.now(), name: "Neuer Artikel", price: 1, icon: "✨", category: "Sonstiges", color: "#a6a1d8" }])}>+ Artikel hinzufügen</button></div></div>
     <div className="stats"><article><span>Heutiger Umsatz</span><strong>{money(revenue)}</strong><small>seit Kassenöffnung</small></article><article><span>Verkäufe</span><strong>{sales.length}</strong><small>abgeschlossene Bons</small></article><article><span>Artikel verkauft</span><strong>{items}</strong><small>über alle Kategorien</small></article></div>
     <div className="admin-grid"><section className="panel products-panel"><div className="panel-head"><h2>Artikel & Preise</h2><span>{products.length} Artikel</span></div>{products.map(p => <div className="edit-row" key={p.id}><span className="mini big">{p.icon}</span><input aria-label="Artikelname" value={p.name} onChange={e => update(p.id, "name", e.target.value)} /><span className="cat">{p.category}</span><div className="price-input"><input aria-label="Preis" type="number" step="0.5" value={p.price} onChange={e => update(p.id, "price", e.target.value)} /><span>€</span></div><button className="delete" onClick={() => setProducts(products.filter(x => x.id !== p.id))}>×</button></div>)}</section>
       <aside className="panel settings"><h2>Kassen-Einstellungen</h2><label>Vereinsname<input defaultValue="SV Beispielhausen" /></label><label>Akzentfarbe<div className="colors"><i className="selected"/><i/><i/><i/></div></label><div className="integration"><div className="paypal-mark">P</div><div><strong>PayPal anbinden</strong><small>API-Zugangsdaten werden für den Livebetrieb ergänzt.</small></div><span className="demo-pill">Demo</span></div></aside>
-    </div><section className="panel identity-admin"><div className="panel-head"><div><p className="eyebrow">ZUGANG & SICHERHEIT</p><h2>Mitgliederkarten</h2></div><button>+ Mitglied anlegen</button></div><div className="member-admin-grid">{members.map(m => <article key={m.id}><span>{m.initials}</span><div><strong>{m.name}</strong><small>{m.id} · {m.role}</small></div><em>● Aktiv</em></article>)}</div><div className="last-sales"><strong>Letzte zugeordnete Buchungen</strong>{sales.slice(-3).reverse().map((s,i) => <span key={i}>{s.member || "Ohne Zuordnung"}<b>{money(s.total)}</b></span>)}</div></section>
+    </div><section className="panel identity-admin"><div className="panel-head"><div><p className="eyebrow">ZUGANG & SICHERHEIT</p><h2>Mitgliederkarten</h2></div><button>+ Mitglied anlegen</button></div><div className="backup-banner"><span>✓</span><div><strong>Zentrale Speicherung + zweite Sicherung</strong><small>{storageState === "online" ? "Jede Buchung liegt in der Datenbank und zusätzlich im Sicherungsspeicher." : "Offline-Buchungen werden auf diesem Tablet vorgemerkt und automatisch übertragen."}</small></div></div><div className="member-admin-grid">{members.map(m => <article key={m.id}><span>{m.initials}</span><div><strong>{m.name}</strong><small>{m.id} · {m.role}</small></div><em>● Aktiv</em></article>)}</div><div className="last-sales"><strong>Letzte zugeordnete Buchungen</strong>{sales.slice(0,3).map((s,i) => <span key={i}>{s.member || "Ohne Zuordnung"}<b>{money(s.total)}</b></span>)}</div></section>
   </section>;
 }
