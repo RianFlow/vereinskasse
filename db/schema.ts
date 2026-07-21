@@ -13,10 +13,16 @@ export const members = sqliteTable("members", {
   code: text("code").notNull().unique(), initials: text("initials").notNull(), active: integer("active", { mode: "boolean" }).notNull().default(true),
 });
 
+export const events = sqliteTable("events", {
+  id: text("id").primaryKey(), name: text("name").notNull(),
+  startsAt: text("starts_at").notNull(), endsAt: text("ends_at"), status: text("status").notNull().default("active"),
+  notes: text("notes"), createdBy: text("created_by").notNull(), createdAt: text("created_at").notNull(),
+});
+
 export const sales = sqliteTable("sales", {
   id: text("id").primaryKey(), total: real("total").notNull(), items: integer("items").notNull(),
   time: text("time").notNull(), member: text("member").notNull(), memberId: text("member_id").notNull(),
-  method: text("method").notNull(), cartJson: text("cart_json").notNull(), backupKey: text("backup_key"),
+  method: text("method").notNull(), eventId: text("event_id"), cartJson: text("cart_json").notNull(), backupKey: text("backup_key"),
 });
 export const saleItems = sqliteTable("sale_items", { id:text("id").primaryKey(),saleId:text("sale_id").notNull(),productId:integer("product_id").notNull(),productName:text("product_name").notNull(),quantity:integer("quantity").notNull(),unitPrice:real("unit_price").notNull(),total:real("total").notNull() });
 export const payments = sqliteTable("payments", { id:text("id").primaryKey(),saleId:text("sale_id"),memberId:text("member_id"),method:text("method").notNull(),amount:real("amount").notNull(),tendered:real("tendered"),changeDue:real("change_due"),note:text("note").notNull(),operatorId:text("operator_id").notNull(),createdAt:text("created_at").notNull() });

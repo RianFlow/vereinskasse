@@ -64,6 +64,13 @@
       "when": 1784628810043,
       "tag": "0008_zippy_lord_tyger",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784635241706,
+      "tag": "0009_harsh_viper",
+      "breakpoints": true
     }
   ]
 }

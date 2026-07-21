@@ -16,6 +16,7 @@ import "./simple-flow.css";
 import "./guests.css";
 import "./guests-hierarchy.css";
 import "./monthly.css";
+import "./events.css";
 import "./brand.css";
 
 export const metadata: Metadata = {
