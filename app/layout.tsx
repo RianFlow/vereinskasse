@@ -15,6 +15,7 @@ import "./controls-extra.css";
 import "./simple-flow.css";
 import "./guests.css";
 import "./guests-hierarchy.css";
+import "./monthly.css";
 
 export const metadata: Metadata = {
   title: "Vereinskasse · SV Beispielhausen",
