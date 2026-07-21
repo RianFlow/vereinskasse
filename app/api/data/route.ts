@@ -16,14 +16,14 @@ const seedMembers = [
   { id:"M-1201",name:"Tom Schneider",role:"Mitglied",code:"VEREIN-1201",initials:"TS",active:true },
   { id:"M-1214",name:"Mia Roth",role:"Mitglied",code:"VEREIN-1214",initials:"MR",active:true },
   { id:"M-1228",name:"Jonas Wolf",role:"Mitglied",code:"VEREIN-1228",initials:"JW",active:true },
+  { id:"M-1240",name:"Alex Meier",role:"Mitglied",code:"VEREIN-1240",initials:"AM",active:true },
 ];
 
 async function ensureSeed() {
   const db = getDb();
   const existing = await db.select({ id: products.id }).from(products).limit(1);
   if (!existing.length) await db.insert(products).values(seedProducts.map(p => ({...p, updatedAt:new Date().toISOString()})));
-  const existingMembers = await db.select({ id: members.id }).from(members).limit(1);
-  if (!existingMembers.length) await db.insert(members).values(seedMembers);
+  await db.insert(members).values(seedMembers).onConflictDoNothing();
 }
 
 export async function GET() {
@@ -43,10 +43,10 @@ export async function PUT(request:Request) {
 export async function POST(request:Request) {
   try { const body=await request.json() as {id:string,total:number,items:number,time:string,member:string,memberId:string,method:string,cart:unknown,allocations?:{memberId:string;memberName:string;amount:number;kind:string}[],round?:{id:string;sponsorId:string;sponsorName:string;label:string;totalUnits:number;maxPerMember:number}};
     if(!body.id||!body.memberId) return Response.json({error:"Ungültige Buchung"},{status:400});
-    const operator=await env.DB.prepare("SELECT id,role FROM members WHERE id=? AND active=1").bind(body.memberId).first<{id:string;role:string}>(); const ownAccount=body.method==="Mitgliedskonto"&&body.allocations?.length===1&&body.allocations[0].memberId===body.memberId;if(!operator||(!["Kassendienst","Vorstand"].includes(operator.role)&&!ownAccount))return Response.json({error:"Keine Kassenberechtigung"},{status:403});
+    const operator=await env.DB.prepare("SELECT id,role FROM members WHERE id=? AND active=1").bind(body.memberId).first<{id:string;role:string}>(); const ownAccount=["Mitgliedskonto","Vertrauensliste"].includes(body.method)&&body.allocations?.length===1&&body.allocations[0].memberId===body.memberId;if(!operator||(!["Kassendienst","Vorstand"].includes(operator.role)&&!ownAccount))return Response.json({error:"Keine Kassenberechtigung"},{status:403});
     const backupKey=`sales/${body.time.slice(0,10)}/${body.id}.json`; const backup=JSON.stringify({...body,backedUpAt:new Date().toISOString()});
     await env.BACKUPS.put(backupKey,backup,{httpMetadata:{contentType:"application/json"}});
-    const statements=[env.DB.prepare("INSERT OR IGNORE INTO sales (id,total,items,time,member,member_id,method,cart_json,backup_key) VALUES (?,?,?,?,?,?,?,?,?)").bind(body.id,body.total,body.items,body.time,body.member,body.memberId,body.method,JSON.stringify(body.cart),backupKey),...(body.allocations||[]).map((a,i)=>env.DB.prepare("INSERT OR IGNORE INTO sale_allocations (id,sale_id,member_id,member_name,amount,kind) VALUES (?,?,?,?,?,?)").bind(`${body.id}-${i}`,body.id,a.memberId,a.memberName,a.amount,a.kind)),...(["Mitgliedskonto","Tageskonto"].includes(body.method)?(body.allocations||[]).map((a,i)=>env.DB.prepare("INSERT OR IGNORE INTO account_transactions (id,member_id,member_name,sale_id,type,amount,note,operator_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)").bind(`${body.id}-acct-${i}`,a.memberId,a.memberName,body.id,"Belastung",a.amount,body.method==="Tageskonto"?"Gast-/Tageskonto":a.kind==="runde"?"Runde":"Einkauf",body.memberId,body.time)):[]),...(body.round?[env.DB.prepare("INSERT OR IGNORE INTO rounds (id,sale_id,sponsor_id,sponsor_name,label,total_units,remaining,max_per_member,active,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(body.round.id,body.id,body.round.sponsorId,body.round.sponsorName,body.round.label,body.round.totalUnits,body.round.totalUnits,body.round.maxPerMember,1,body.time)]:[])];
+    const statements=[env.DB.prepare("INSERT OR IGNORE INTO sales (id,total,items,time,member,member_id,method,cart_json,backup_key) VALUES (?,?,?,?,?,?,?,?,?)").bind(body.id,body.total,body.items,body.time,body.member,body.memberId,body.method,JSON.stringify(body.cart),backupKey),...(body.allocations||[]).map((a,i)=>env.DB.prepare("INSERT OR IGNORE INTO sale_allocations (id,sale_id,member_id,member_name,amount,kind) VALUES (?,?,?,?,?,?)").bind(`${body.id}-${i}`,body.id,a.memberId,a.memberName,a.amount,a.kind)),...(["Mitgliedskonto","Vertrauensliste","Tageskonto"].includes(body.method)?(body.allocations||[]).map((a,i)=>env.DB.prepare("INSERT OR IGNORE INTO account_transactions (id,member_id,member_name,sale_id,type,amount,note,operator_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)").bind(`${body.id}-acct-${i}`,a.memberId,a.memberName,body.id,"Belastung",a.amount,body.method==="Tageskonto"?"Gast-/Tageskonto":body.method==="Vertrauensliste"?"Digitale Strichliste":a.kind==="runde"?"Runde":"Einkauf",body.memberId,body.time)):[]),...(body.round?[env.DB.prepare("INSERT OR IGNORE INTO rounds (id,sale_id,sponsor_id,sponsor_name,label,total_units,remaining,max_per_member,active,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(body.round.id,body.id,body.round.sponsorId,body.round.sponsorName,body.round.label,body.round.totalUnits,body.round.totalUnits,body.round.maxPerMember,1,body.time)]:[])];
     await env.DB.batch(statements);
     return Response.json({ok:true,id:body.id,backupKey},{status:201});
   } catch(e){ return Response.json({error:e instanceof Error?e.message:"Buchung fehlgeschlagen"},{status:500}); }
