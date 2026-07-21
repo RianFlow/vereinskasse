@@ -16,13 +16,14 @@ import "./simple-flow.css";
 import "./guests.css";
 import "./guests-hierarchy.css";
 import "./monthly.css";
+import "./brand.css";
 
 export const metadata: Metadata = {
-  title: "Vereinskasse · SV Beispielhausen",
-  description: "Die einfache, tabletfreundliche Kasse für den Verein.",
+  title: "Vereinskasse · SV Barver Darts",
+  description: "Die einfache, tabletfreundliche Kasse für den SV Barver Darts.",
   openGraph: {
-    title: "Vereinskasse",
-    description: "Einfach verkaufen. Gemeinsam feiern.",
+    title: "Vereinskasse · SV Barver Darts",
+    description: "Vereinsabend, Veranstaltungen und Monatsabrechnungen für den SV Barver Darts.",
     images: ["/og.png"],
   },
 };
