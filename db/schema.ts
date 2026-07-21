@@ -22,6 +22,7 @@ export const saleItems = sqliteTable("sale_items", { id:text("id").primaryKey(),
 export const payments = sqliteTable("payments", { id:text("id").primaryKey(),saleId:text("sale_id"),memberId:text("member_id"),method:text("method").notNull(),amount:real("amount").notNull(),tendered:real("tendered"),changeDue:real("change_due"),note:text("note").notNull(),operatorId:text("operator_id").notNull(),createdAt:text("created_at").notNull() });
 export const auditLogs = sqliteTable("audit_logs", { id:text("id").primaryKey(),action:text("action").notNull(),entityType:text("entity_type").notNull(),entityId:text("entity_id").notNull(),operatorId:text("operator_id").notNull(),detailsJson:text("details_json").notNull(),createdAt:text("created_at").notNull() });
 export const authSessions = sqliteTable("auth_sessions", { token:text("token").primaryKey(),memberId:text("member_id").notNull(),role:text("role").notNull(),expiresAt:text("expires_at").notNull(),createdAt:text("created_at").notNull() });
+export const guestAccounts = sqliteTable("guest_accounts", { id:text("id").primaryKey(),name:text("name").notNull(),type:text("type").notNull(),active:integer("active",{mode:"boolean"}).notNull().default(true),createdAt:text("created_at").notNull(),updatedAt:text("updated_at").notNull() });
 
 export const saleAllocations = sqliteTable("sale_allocations", {
   id: text("id").primaryKey(), saleId: text("sale_id").notNull(), memberId: text("member_id").notNull(),

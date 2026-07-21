@@ -50,6 +50,13 @@
       "when": 1784622454598,
       "tag": "0006_spooky_ravenous",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1784628342769,
+      "tag": "0007_blue_black_widow",
+      "breakpoints": true
     }
   ]
 }
