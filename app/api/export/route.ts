@@ -1,11 +1,4 @@
-import { desc } from "drizzle-orm";
-import { getDb } from "../../../db";
-import { saleAllocations, sales } from "../../../db/schema";
-
+import { env } from "cloudflare:workers";
+import { requireRole } from "../session";
 const q=(v:unknown)=>`"${String(v??"").replaceAll('"','""')}"`;
-export async function GET(){
-  const rows=await getDb().select().from(sales).orderBy(desc(sales.time));
-  const allocations=await getDb().select().from(saleAllocations); const bySale=new Map<string,string[]>(); allocations.forEach(a=>bySale.set(a.saleId,[...(bySale.get(a.saleId)||[]),`${a.memberName} (${a.amount.toFixed(2)} €${a.kind==="runde"?", Runde":""})`]));
-  const csv=["Buchungs-ID;Zeitpunkt;Kassenkraft;Zahlart;Artikel;Betrag;Aufteilung",...rows.map(r=>[r.id,r.time,`${r.member} (${r.memberId})`,r.method,r.items,r.total.toFixed(2),(bySale.get(r.id)||[]).join(" | ")].map(q).join(";"))].join("\r\n");
-  return new Response("\ufeff"+csv,{headers:{"content-type":"text/csv; charset=utf-8","content-disposition":`attachment; filename="vereinskasse-export-${new Date().toISOString().slice(0,10)}.csv"`}});
-}
+export async function GET(request:Request){const admin=await requireRole(request,["Vorstand"]);if(!admin)return Response.json({error:"Keine Berechtigung"},{status:403});const rows=await env.DB.prepare("SELECT s.id,s.time,s.member,s.member_id memberId,s.method,s.items,s.total,p.tendered,p.change_due changeDue,COALESCE(GROUP_CONCAT(si.quantity || 'x ' || si.product_name, ' | '),'') details FROM sales s LEFT JOIN payments p ON p.sale_id=s.id LEFT JOIN sale_items si ON si.sale_id=s.id GROUP BY s.id ORDER BY s.time DESC").all<Record<string,unknown>>();const csv=["Buchungs-ID;Zeitpunkt;Kassenkraft/Mitglied;Mitglieds-ID;Zahlart;Artikelanzahl;Betrag;Erhalten;Rückgeld;Positionen",...rows.results.map(r=>[r.id,r.time,r.member,r.memberId,r.method,r.items,Number(r.total).toFixed(2),r.tendered??"",r.changeDue??"",r.details].map(q).join(";"))].join("\r\n");return new Response("\ufeff"+csv,{headers:{"content-type":"text/csv; charset=utf-8","content-disposition":`attachment; filename="vereinskasse-pruefexport-${new Date().toISOString().slice(0,10)}.csv"`,"cache-control":"no-store"}})}

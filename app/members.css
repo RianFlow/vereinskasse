@@ -1,0 +1,1 @@
+.member-admin-grid article>button{border:1px solid var(--line);background:transparent;color:var(--green);border-radius:8px;padding:7px;font-size:11px;font-weight:800}.member-admin-grid article.inactive{opacity:.55}.member-admin-grid article.inactive>span{background:#79847f}.app.dark .member-admin-grid article>button{border-color:#343b37}.session-logout{cursor:pointer}

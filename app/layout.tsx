@@ -8,6 +8,10 @@ import "./pricing.css";
 import "./dark.css";
 import "./trust.css";
 import "./openaccounts.css";
+import "./cash.css";
+import "./accountdetails.css";
+import "./members.css";
+import "./controls-extra.css";
 
 export const metadata: Metadata = {
   title: "Vereinskasse · SV Beispielhausen",

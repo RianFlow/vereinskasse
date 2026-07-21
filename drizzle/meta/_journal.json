@@ -36,6 +36,20 @@
       "when": 1784613105802,
       "tag": "0004_deep_blue_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784622059259,
+      "tag": "0005_lying_rhodey",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784622454598,
+      "tag": "0006_spooky_ravenous",
+      "breakpoints": true
     }
   ]
 }
