@@ -16,3 +16,8 @@ export const sales = sqliteTable("sales", {
   time: text("time").notNull(), member: text("member").notNull(), memberId: text("member_id").notNull(),
   method: text("method").notNull(), cartJson: text("cart_json").notNull(), backupKey: text("backup_key"),
 });
+
+export const saleAllocations = sqliteTable("sale_allocations", {
+  id: text("id").primaryKey(), saleId: text("sale_id").notNull(), memberId: text("member_id").notNull(),
+  memberName: text("member_name").notNull(), amount: real("amount").notNull(), kind: text("kind").notNull(),
+});

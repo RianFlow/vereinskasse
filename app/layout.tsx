@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./identity.css";
+import "./allocation.css";
 
 export const metadata: Metadata = {
   title: "Vereinskasse · SV Beispielhausen",
