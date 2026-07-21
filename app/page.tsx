@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PricingPanel } from "./PricingPanel";
 
-type Product = { id: number; name: string; price: number; icon: string; category: string; color: string };
+type Product = { id: number; name: string; price: number; memberPrice?:number|null; icon: string; category: string; color: string };
+type Discount={id:string;name:string;percent:number;active:boolean};
 type Cart = Record<number, number>;
 type Member = { id: string; name: string; role: string; code: string; initials: string };
 type Sale = { id?: string; total: number; items: number; time: string; member?: string; memberId?: string; method?: string };
@@ -46,6 +48,7 @@ export default function Home() {
   const [rounds,setRounds]=useState<OpenRound[]>([]);
   const [claimRound,setClaimRound]=useState<OpenRound|null>(null);
   const [adminPrompt,setAdminPrompt]=useState(false); const [adminUser,setAdminUser]=useState<Member|null>(null); const [control,setControl]=useState<ControlData>({accounts:[],recent:[]});
+  const [discounts,setDiscounts]=useState<Discount[]>([]);const [memberPricing,setMemberPricing]=useState(false);
   const loadControl=()=>fetch("/api/control").then(r=>r.json()).then(setControl).catch(()=>{});
 
   useEffect(() => {
@@ -55,14 +58,15 @@ export default function Home() {
       setProducts(data.products || seed); setSales(data.sales || []);
     }
     fetch("/api/data").then(r => { if(!r.ok) throw new Error(); return r.json(); }).then(data => {
-      setProducts(data.products || seed); setSales(data.sales || []); setRounds(data.rounds || []); setStorageState("online"); loadControl();
+      setProducts(data.products || seed);setDiscounts(data.discounts||[]); setSales(data.sales || []); setRounds(data.rounds || []); setStorageState("online"); loadControl();
       const pending = JSON.parse(localStorage.getItem("vereinskasse-pending") || "[]") as unknown[];
       return Promise.all(pending.map(s => fetch("/api/data", {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(s)})));
     }).then(() => localStorage.removeItem("vereinskasse-pending")).catch(() => setStorageState("offline"));
   }, []);
   useEffect(() => { localStorage.setItem("vereinskasse-data", JSON.stringify({ products, sales })); }, [products, sales]);
 
-  const total = useMemo(() => products.reduce((sum, p) => sum + p.price * (cart[p.id] || 0), 0), [cart, products]);
+  const activeDiscount=discounts.find(d=>d.active);const unitPrice=(p:Product)=>Math.round((memberPricing&&p.memberPrice!=null?p.memberPrice:p.price)*(1-(activeDiscount?.percent||0)/100)*100)/100;
+  const total = useMemo(() => products.reduce((sum, p) => sum + unitPrice(p) * (cart[p.id] || 0), 0), [cart, products,memberPricing,activeDiscount]);
   const itemCount = Object.values(cart).reduce((a, b) => a + b, 0);
   const categories = ["Alle", ...Array.from(new Set(products.map(p => p.category)))];
   const shown = category === "Alle" ? products : products.filter(p => p.category === category);
@@ -99,22 +103,22 @@ export default function Home() {
     {view === "kasse" ? <section className="pos">
       <div className="catalog">
         <div className="title-row"><div><p className="eyebrow">VERKAUF</p><h1>Was darf es sein?</h1></div><span className="date">Heute · Vereinsfest</span></div>
-        <nav className="filters">{categories.map(c => <button key={c} className={category === c ? "active" : ""} onClick={() => setCategory(c)}>{c}</button>)}</nav>
+        <nav className="filters">{categories.map(c => <button key={c} className={category === c ? "active" : ""} onClick={() => setCategory(c)}>{c}</button>)}<button className={memberPricing?"active":""} onClick={()=>setMemberPricing(!memberPricing)}>♥ Mitglied</button>{activeDiscount&&<span className="discount-chip">−{activeDiscount.percent}% {activeDiscount.name}</span>}</nav>
         {rounds.some(r=>r.active&&r.remaining>0)&&<div className="open-rounds"><div className="rounds-title"><strong>🎉 Offene Runden</strong><small>Pro Mitglied gilt das festgelegte Limit</small></div>{rounds.filter(r=>r.active&&r.remaining>0).map(r=><button key={r.id} onClick={()=>setClaimRound(r)}><span>🎁</span><div><strong>{r.label}</strong><small>von {r.sponsorName} · max. {r.maxPerMember} pro Person</small></div><b>{r.remaining}<small> übrig</small></b></button>)}</div>}
         <div className="grid">{shown.map(p => <button className="product" key={p.id} onClick={() => add(p.id)} style={{ "--tile": p.color } as React.CSSProperties}>
-          <span className="product-icon">{p.icon}</span><span className="product-name">{p.name}</span><span className="price">{money(p.price)}</span>{cart[p.id] ? <b className="badge">{cart[p.id]}</b> : null}
+          <span className="product-icon">{p.icon}</span><span className="product-name">{p.name}</span><span className="price">{money(unitPrice(p))}</span>{memberPricing&&p.memberPrice!=null&&<small className="old-price">statt {money(p.price)}</small>}{cart[p.id] ? <b className="badge">{cart[p.id]}</b> : null}
         </button>)}</div>
       </div>
       <aside className="cart">
         <div className="cart-head"><div><p className="eyebrow">AKTUELLER BON</p><h2>Bestellung</h2></div><button className="clear" onClick={() => setCart({})}>Leeren</button></div>
-        <div className="cart-items">{itemCount === 0 ? <div className="empty"><span>🧾</span><strong>Noch nichts gewählt</strong><p>Tippe links auf einen Artikel.</p></div> : products.filter(p => cart[p.id]).map(p => <div className="line" key={p.id}><span className="mini">{p.icon}</span><div><strong>{p.name}</strong><small>{money(p.price)} · {cart[p.id]}×</small></div><div className="stepper"><button onClick={() => change(p.id, -1)}>−</button><span>{cart[p.id]}</span><button onClick={() => change(p.id, 1)}>+</button></div><b>{money(p.price * cart[p.id])}</b></div>)}</div>
+        <div className="cart-items">{itemCount === 0 ? <div className="empty"><span>🧾</span><strong>Noch nichts gewählt</strong><p>Tippe links auf einen Artikel.</p></div> : products.filter(p => cart[p.id]).map(p => <div className="line" key={p.id}><span className="mini">{p.icon}</span><div><strong>{p.name}</strong><small>{money(unitPrice(p))} · {cart[p.id]}×</small></div><div className="stepper"><button onClick={() => change(p.id, -1)}>−</button><span>{cart[p.id]}</span><button onClick={() => change(p.id, 1)}>+</button></div><b>{money(unitPrice(p) * cart[p.id])}</b></div>)}</div>
         <div className="checkout"><div className="sum"><span>Gesamt <small>{itemCount} Artikel</small></span><strong>{money(total)}</strong></div><button className="pay cash" disabled={!itemCount} onClick={() => checkout("Bar")}>💶 Bar bezahlen</button><button className="pay paypal" disabled={!itemCount} onClick={() => checkout("PayPal")}>PayPal <span>Demo</span></button><button className="pay split-pay" disabled={!itemCount} onClick={() => checkout("Mitgliedskonto")}>👥 Aufteilen oder Runde buchen</button></div>
       </aside>
       {paid && <div className="toast">✓ Zahlung erfasst – Bon abgeschlossen</div>}
       {identify && !operator && <IdentityDialog method={identify} onClose={() => setIdentify(null)} onVerified={authorizeCheckout} />}
       {operator && <AllocationDialog total={total} operator={operator} onClose={() => {setOperator(null);setIdentify(null)}} onConfirm={finishCheckout} />}
       {claimRound&&<ClaimDialog round={claimRound} onClose={()=>setClaimRound(null)} onClaim={(member)=>{fetch("/api/rounds",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({roundId:claimRound.id,memberId:member.id,memberName:member.name})}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setRounds(rs=>rs.map(x=>x.id===claimRound.id?{...x,remaining:Number(d.round.remaining),active:Boolean(d.round.active)}:x));setClaimRound(null);setPaid(true);setTimeout(()=>setPaid(false),2500)}).catch(e=>alert(e.message))}}/>}
-    </section> : <Admin products={products} setProducts={saveProducts} sales={sales} storageState={storageState} adminUser={adminUser!} control={control} refresh={loadControl} />}
+    </section> : <Admin products={products} setProducts={saveProducts} discounts={discounts} setDiscounts={d=>{setDiscounts(d);fetch("/api/data",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({discounts:d,operatorId:adminUser?.id})})}} sales={sales} storageState={storageState} adminUser={adminUser!} control={control} refresh={loadControl} />}
     {adminPrompt&&<IdentityDialog method="Adminbereich" onClose={()=>setAdminPrompt(false)} onVerified={m=>{if(m.role!=="Vorstand"){alert("Der Adminbereich ist nur für den Vorstand freigegeben.");return}setAdminUser(m);setAdminPrompt(false);setView("admin");loadControl()}}/>}
   </main>;
 }
@@ -167,11 +171,12 @@ function ClaimDialog({round,onClose,onClaim}:{round:OpenRound;onClose:()=>void;o
   return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="identity-card"><button className="modal-close" onClick={onClose}>×</button><div className="identity-icon">🎁</div><p className="eyebrow">RUNDE EINLÖSEN</p><h2>{round.label}</h2><p className="identity-sub">Noch {round.remaining} verfügbar · höchstens {round.maxPerMember} pro Mitglied. Bitte Mitglied identifizieren.</p><div className="code-entry"><input autoFocus placeholder="Karte oder QR-Kennung" value={code} onChange={e=>{setCode(e.target.value);verify(e.target.value)}}/><button onClick={()=>verify(code)}>Prüfen</button></div><div className="claim-members">{members.filter(m=>m.role==="Mitglied").map(m=><button key={m.id} onClick={()=>onClaim(m)}><span>{m.initials}</span><div><strong>{m.name}</strong><small>{m.id}</small></div><b>1 einlösen</b></button>)}</div></div></div>
 }
 
-function Admin({ products, setProducts, sales, storageState,adminUser,control,refresh }: { products: Product[]; setProducts: (p: Product[]) => void; sales: Sale[]; storageState:string;adminUser:Member;control:ControlData;refresh:()=>void }) {
+function Admin({ products, setProducts,discounts,setDiscounts, sales, storageState,adminUser,control,refresh }: { products: Product[]; setProducts: (p: Product[]) => void;discounts:Discount[];setDiscounts:(d:Discount[])=>void; sales: Sale[]; storageState:string;adminUser:Member;control:ControlData;refresh:()=>void }) {
   const revenue = sales.reduce((s, x) => s + x.total, 0);
   const items = sales.reduce((s, x) => s + x.items, 0);
   const update = (id: number, field: "name" | "price", value: string) => setProducts(products.map(p => p.id === id ? { ...p, [field]: field === "price" ? Number(value) : value } : p));
   return <section className="admin">
+    <PricingPanel products={products} setProducts={setProducts} discounts={discounts} setDiscounts={setDiscounts}/>
     <div className="admin-title"><div><p className="eyebrow">ADMINBEREICH</p><h1>Guten Abend, Vorstand 👋</h1><p>Produkte pflegen und den heutigen Verkauf im Blick behalten.</p></div><div className="admin-actions"><a href="/api/export">↓ Datenexport</a><button onClick={() => setProducts([...products, { id: Date.now(), name: "Neuer Artikel", price: 1, icon: "✨", category: "Sonstiges", color: "#a6a1d8" }])}>+ Artikel hinzufügen</button></div></div>
     <div className="stats"><article><span>Heutiger Umsatz</span><strong>{money(revenue)}</strong><small>seit Kassenöffnung</small></article><article><span>Verkäufe</span><strong>{sales.length}</strong><small>abgeschlossene Bons</small></article><article><span>Artikel verkauft</span><strong>{items}</strong><small>über alle Kategorien</small></article></div>
     <div className="admin-grid"><section className="panel products-panel"><div className="panel-head"><h2>Artikel & Preise</h2><span>{products.length} Artikel</span></div>{products.map(p => <div className="edit-row" key={p.id}><span className="mini big">{p.icon}</span><input aria-label="Artikelname" value={p.name} onChange={e => update(p.id, "name", e.target.value)} /><span className="cat">{p.category}</span><div className="price-input"><input aria-label="Preis" type="number" step="0.5" value={p.price} onChange={e => update(p.id, "price", e.target.value)} /><span>€</span></div><button className="delete" onClick={() => setProducts(products.filter(x => x.id !== p.id))}>×</button></div>)}</section>

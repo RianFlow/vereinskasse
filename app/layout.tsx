@@ -4,6 +4,7 @@ import "./identity.css";
 import "./allocation.css";
 import "./rounds.css";
 import "./controls.css";
+import "./pricing.css";
 
 export const metadata: Metadata = {
   title: "Vereinskasse · SV Beispielhausen",

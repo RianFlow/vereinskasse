@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { desc } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { members, products, roundClaims, rounds, saleAllocations, sales } from "../../../db/schema";
+import { discountRules, members, products, roundClaims, rounds, saleAllocations, sales } from "../../../db/schema";
 
 const seedProducts = [
   { id:1,name:"Helles",price:3,icon:"🍺",category:"Getränke",color:"#f4b942" },{ id:2,name:"Radler",price:3,icon:"🍋",category:"Getränke",color:"#f7d66d" },
@@ -27,14 +27,14 @@ async function ensureSeed() {
 }
 
 export async function GET() {
-  try { await ensureSeed(); const db=getDb(); return Response.json({ products:await db.select().from(products), members:await db.select().from(members), sales:await db.select().from(sales).orderBy(desc(sales.time)).limit(500), allocations:await db.select().from(saleAllocations), rounds:await db.select().from(rounds).orderBy(desc(rounds.createdAt)), roundClaims:await db.select().from(roundClaims) }); }
+  try { await ensureSeed(); const db=getDb(); return Response.json({ products:await db.select().from(products), discounts:await db.select().from(discountRules), members:await db.select().from(members), sales:await db.select().from(sales).orderBy(desc(sales.time)).limit(500), allocations:await db.select().from(saleAllocations), rounds:await db.select().from(rounds).orderBy(desc(rounds.createdAt)), roundClaims:await db.select().from(roundClaims) }); }
   catch (e) { return Response.json({error:e instanceof Error?e.message:"Speicher nicht verfügbar"},{status:500}); }
 }
 
 export async function PUT(request:Request) {
-  try { const body=await request.json() as {products?:typeof seedProducts;operatorId?:string}; if(!body.products) return Response.json({error:"products required"},{status:400});
+  try { const body=await request.json() as {products?:Array<(typeof seedProducts)[number]&{memberPrice?:number|null}>;discounts?:{id:string;name:string;percent:number;active:boolean}[];operatorId?:string}; if(!body.products&&!body.discounts) return Response.json({error:"data required"},{status:400});
     const admin=await env.DB.prepare("SELECT role FROM members WHERE id=? AND active=1").bind(body.operatorId).first<{role:string}>();if(admin?.role!=="Vorstand")return Response.json({error:"Nur der Vorstand darf Artikel ändern"},{status:403});
-    const now=new Date().toISOString(); const statements=[env.DB.prepare("DELETE FROM products"),...body.products.map(p=>env.DB.prepare("INSERT INTO products (id,name,price,icon,category,color,updated_at) VALUES (?,?,?,?,?,?,?)").bind(p.id,p.name,p.price,p.icon,p.category,p.color,now))];
+    const now=new Date().toISOString(); const statements=body.products?[env.DB.prepare("DELETE FROM products"),...body.products.map(p=>env.DB.prepare("INSERT INTO products (id,name,price,member_price,icon,category,color,updated_at) VALUES (?,?,?,?,?,?,?,?)").bind(p.id,p.name,p.price,p.memberPrice??null,p.icon,p.category,p.color,now))]:[env.DB.prepare("DELETE FROM discount_rules"),...(body.discounts||[]).map(d=>env.DB.prepare("INSERT INTO discount_rules (id,name,percent,active,updated_at) VALUES (?,?,?,?,?)").bind(d.id,d.name,d.percent,d.active?1:0,now))];
     await env.DB.batch(statements);
     return Response.json({ok:true});
   } catch(e){ return Response.json({error:e instanceof Error?e.message:"Speichern fehlgeschlagen"},{status:500}); }

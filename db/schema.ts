@@ -2,9 +2,11 @@ import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const products = sqliteTable("products", {
   id: integer("id").primaryKey(), name: text("name").notNull(), price: real("price").notNull(),
+  memberPrice: real("member_price"),
   icon: text("icon").notNull(), category: text("category").notNull(), color: text("color").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+export const discountRules=sqliteTable("discount_rules",{id:text("id").primaryKey(),name:text("name").notNull(),percent:real("percent").notNull(),active:integer("active",{mode:"boolean"}).notNull().default(false),updatedAt:text("updated_at").notNull()});
 
 export const members = sqliteTable("members", {
   id: text("id").primaryKey(), name: text("name").notNull(), role: text("role").notNull(),
