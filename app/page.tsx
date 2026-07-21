@@ -53,11 +53,13 @@ export default function Home() {
   const [darkMode,setDarkMode]=useState(true);
   const [activeMember,setActiveMember]=useState<Member|null>(null); const [memberPrompt,setMemberPrompt]=useState(false);
   const [listMember,setListMember]=useState<Member|null>(null);
+  const [memberFinder,setMemberFinder]=useState(false); const [recentMemberIds,setRecentMemberIds]=useState<string[]>([]);
   const loadControl=()=>fetch("/api/control").then(r=>r.json()).then(setControl).catch(()=>{});
 
   useEffect(() => {
     setDarkMode(localStorage.getItem("vereinskasse-theme") !== "light");
     const remembered=sessionStorage.getItem("vereinskasse-active-member"); if(remembered)setActiveMember(members.find(m=>m.id===remembered)||null);
+    setRecentMemberIds(JSON.parse(localStorage.getItem("vereinskasse-recent-members")||"[]"));
     const saved = localStorage.getItem("vereinskasse-data");
     if (saved) {
       const data = JSON.parse(saved);
@@ -90,7 +92,8 @@ export default function Home() {
   const authorizeCheckout = (member: Member) => { if(!["Kassendienst","Vorstand"].includes(member.role)){alert("Dieses Mitglied hat keine Kassenberechtigung.");return} setOperator(member); };
   const selectMember=(member:Member|null)=>{setActiveMember(member);setMemberPrompt(false);if(member)sessionStorage.setItem("vereinskasse-active-member",member.id);else sessionStorage.removeItem("vereinskasse-active-member")};
   const billingMember=listMember||activeMember;
-  const finishMemberCheckout=()=>{if(!billingMember||!itemCount)return;const sale={id:crypto.randomUUID(),total,items:itemCount,time:new Date().toISOString(),member:billingMember.name,memberId:billingMember.id,method:listMember?"Vertrauensliste":"Mitgliedskonto",cart,allocations:[{memberId:billingMember.id,memberName:billingMember.name,amount:total,kind:"anteil"}]};setSales(s=>[sale,...s]);fetch("/api/data",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(sale)}).then(r=>{if(!r.ok)throw new Error();setStorageState("online")}).catch(()=>{const pending=JSON.parse(localStorage.getItem("vereinskasse-pending")||"[]");pending.push(sale);localStorage.setItem("vereinskasse-pending",JSON.stringify(pending));setStorageState("offline")});setCart({});setPaid(true);setListMember(null);setTimeout(()=>setPaid(false),3500)};
+  const chooseListMember=(member:Member)=>{setListMember(member);setMemberFinder(false)};
+  const finishMemberCheckout=()=>{if(!billingMember||!itemCount)return;const sale={id:crypto.randomUUID(),total,items:itemCount,time:new Date().toISOString(),member:billingMember.name,memberId:billingMember.id,method:listMember?"Vertrauensliste":"Mitgliedskonto",cart,allocations:[{memberId:billingMember.id,memberName:billingMember.name,amount:total,kind:"anteil"}]};setSales(s=>[sale,...s]);fetch("/api/data",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(sale)}).then(r=>{if(!r.ok)throw new Error();setStorageState("online")}).catch(()=>{const pending=JSON.parse(localStorage.getItem("vereinskasse-pending")||"[]");pending.push(sale);localStorage.setItem("vereinskasse-pending",JSON.stringify(pending));setStorageState("offline")});const recent=[billingMember.id,...recentMemberIds.filter(id=>id!==billingMember.id)].slice(0,5);setRecentMemberIds(recent);localStorage.setItem("vereinskasse-recent-members",JSON.stringify(recent));setCart({});setPaid(true);setListMember(null);setTimeout(()=>setPaid(false),3500)};
   const finishCheckout = (allocations: Allocation[], round?:RoundSpec) => {
     if(!operator) return;
     const sale = { id: crypto.randomUUID(), total, items: itemCount, time: new Date().toISOString(), member: operator.name, memberId: operator.id, method: identify || "Mitgliedskonto", cart, allocations, round };
@@ -112,7 +115,7 @@ export default function Home() {
 
     {view === "kasse" ? <section className="pos">
       <div className="catalog">
-        <div className="title-row"><div><p className="eyebrow">VERKAUF</p><h1>Was darf es sein?</h1></div><span className="date">Heute · Vereinsfest</span></div><div className="trust-list"><div><strong>Für wen buchen?</strong><small>Digitale Strichliste · keine Bestätigung nötig</small></div><div className="trust-members">{members.filter(m=>m.role==="Mitglied").map(m=><button key={m.id} className={listMember?.id===m.id?"active":""} onClick={()=>setListMember(listMember?.id===m.id?null:m)}><span>{m.initials}</span>{m.name.split(" ")[0]}</button>)}</div></div>
+        <div className="title-row"><div><p className="eyebrow">VERKAUF</p><h1>Was darf es sein?</h1></div><span className="date">Heute · Vereinsfest</span></div><div className="trust-list"><div><strong>Für wen buchen?</strong><small>{recentMemberIds.length?"Zuletzt verwendet":"Mitglied suchen und auswählen"}</small></div><div className="trust-members">{recentMemberIds.map(id=>members.find(m=>m.id===id)).filter((m):m is Member=>Boolean(m)).map(m=><button key={m.id} className={listMember?.id===m.id?"active":""} onClick={()=>chooseListMember(m)}><span>{m.initials}</span>{m.name.split(" ")[0]}</button>)}<button className="open-member-finder" onClick={()=>setMemberFinder(true)}>⌕ Mitglied suchen</button></div></div>
         <nav className="filters">{categories.map(c => <button key={c} className={category === c ? "active" : ""} onClick={() => setCategory(c)}>{c}</button>)}<button className={memberPricing?"active":""} onClick={()=>setMemberPricing(!memberPricing)}>♥ Mitglied</button>{activeDiscount&&<span className="discount-chip">−{activeDiscount.percent}% {activeDiscount.name}</span>}</nav>
         {rounds.some(r=>r.active&&r.remaining>0)&&<div className="open-rounds"><div className="rounds-title"><strong>🎉 Offene Runden</strong><small>Pro Mitglied gilt das festgelegte Limit</small></div>{rounds.filter(r=>r.active&&r.remaining>0).map(r=><button key={r.id} onClick={()=>setClaimRound(r)}><span>🎁</span><div><strong>{r.label}</strong><small>von {r.sponsorName} · max. {r.maxPerMember} pro Person</small></div><b>{r.remaining}<small> übrig</small></b></button>)}</div>}
         <div className="grid">{shown.map(p => <button className="product" key={p.id} onClick={() => add(p.id)} style={{ "--tile": p.color } as React.CSSProperties}>
@@ -132,7 +135,13 @@ export default function Home() {
     </section> : <Admin products={products} setProducts={saveProducts} discounts={discounts} setDiscounts={d=>{setDiscounts(d);fetch("/api/data",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({discounts:d,operatorId:adminUser?.id})})}} sales={sales} storageState={storageState} adminUser={adminUser!} control={control} refresh={loadControl} />}
     {adminPrompt&&<IdentityDialog method="Adminbereich" onClose={()=>setAdminPrompt(false)} onVerified={m=>{if(m.role!=="Vorstand"){alert("Der Adminbereich ist nur für den Vorstand freigegeben.");return}setAdminUser(m);setAdminPrompt(false);setView("admin");loadControl()}}/>}
     {memberPrompt&&<MemberSessionDialog current={activeMember} onClose={()=>setMemberPrompt(false)} onSelect={selectMember}/>}
+    {memberFinder&&<MemberFinder current={listMember} onClose={()=>setMemberFinder(false)} onSelect={chooseListMember}/>}
   </main>;
+}
+
+function MemberFinder({current,onClose,onSelect}:{current:Member|null;onClose:()=>void;onSelect:(m:Member)=>void}){
+  const [query,setQuery]=useState("");const normalized=query.trim().toLocaleLowerCase("de-DE");const all=members.filter(m=>m.role==="Mitglied").sort((a,b)=>a.name.localeCompare(b.name,"de"));const filtered=all.filter(m=>!normalized||(normalized.length===1?m.name.toLocaleLowerCase("de-DE").startsWith(normalized):m.name.toLocaleLowerCase("de-DE").includes(normalized)||m.id.toLowerCase().includes(normalized)));const groups=Object.entries(Object.groupBy(filtered,m=>m.name[0].toUpperCase()));
+  return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="identity-card finder-card"><button className="modal-close" onClick={onClose}>×</button><p className="eyebrow">DIGITALE STRICHLISTE</p><h2>Mitglied finden</h2><label className="member-search"><span>⌕</span><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Name oder Mitgliedsnummer eingeben"/><small>{filtered.length} Treffer</small></label><div className="alphabet-bar">{"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").filter(l=>all.some(m=>m.name.startsWith(l))).map(l=><button key={l} onClick={()=>setQuery(l)}>{l}</button>)}</div><div className="finder-results">{groups.map(([letter,people])=><section key={letter}><b>{letter}</b><div>{people!.map(m=><button key={m.id} className={current?.id===m.id?"active":""} onClick={()=>onSelect(m)}><span>{m.initials}</span><div><strong>{m.name}</strong><small>{m.id}</small></div><em>{current?.id===m.id?"Ausgewählt":"Auswählen"}</em></button>)}</div></section>)}{!filtered.length&&<p>Kein Mitglied gefunden. Bitte Schreibweise prüfen.</p>}</div></div></div>
 }
 
 function MemberSessionDialog({current,onClose,onSelect}:{current:Member|null;onClose:()=>void;onSelect:(m:Member|null)=>void}){
