@@ -21,3 +21,13 @@ export const saleAllocations = sqliteTable("sale_allocations", {
   id: text("id").primaryKey(), saleId: text("sale_id").notNull(), memberId: text("member_id").notNull(),
   memberName: text("member_name").notNull(), amount: real("amount").notNull(), kind: text("kind").notNull(),
 });
+
+export const rounds = sqliteTable("rounds", {
+  id:text("id").primaryKey(), saleId:text("sale_id").notNull(), sponsorId:text("sponsor_id").notNull(), sponsorName:text("sponsor_name").notNull(),
+  label:text("label").notNull(), totalUnits:integer("total_units").notNull(), remaining:integer("remaining").notNull(), maxPerMember:integer("max_per_member").notNull().default(1),
+  active:integer("active",{mode:"boolean"}).notNull().default(true), createdAt:text("created_at").notNull(),
+});
+
+export const roundClaims = sqliteTable("round_claims", {
+  id:text("id").primaryKey(), roundId:text("round_id").notNull(), memberId:text("member_id").notNull(), memberName:text("member_name").notNull(), quantity:integer("quantity").notNull().default(1), claimedAt:text("claimed_at").notNull(),
+});

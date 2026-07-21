@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { desc } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { members, products, saleAllocations, sales } from "../../../db/schema";
+import { members, products, roundClaims, rounds, saleAllocations, sales } from "../../../db/schema";
 
 const seedProducts = [
   { id:1,name:"Helles",price:3,icon:"🍺",category:"Getränke",color:"#f4b942" },{ id:2,name:"Radler",price:3,icon:"🍋",category:"Getränke",color:"#f7d66d" },
@@ -27,7 +27,7 @@ async function ensureSeed() {
 }
 
 export async function GET() {
-  try { await ensureSeed(); const db=getDb(); return Response.json({ products:await db.select().from(products), members:await db.select().from(members), sales:await db.select().from(sales).orderBy(desc(sales.time)).limit(500), allocations:await db.select().from(saleAllocations) }); }
+  try { await ensureSeed(); const db=getDb(); return Response.json({ products:await db.select().from(products), members:await db.select().from(members), sales:await db.select().from(sales).orderBy(desc(sales.time)).limit(500), allocations:await db.select().from(saleAllocations), rounds:await db.select().from(rounds).orderBy(desc(rounds.createdAt)), roundClaims:await db.select().from(roundClaims) }); }
   catch (e) { return Response.json({error:e instanceof Error?e.message:"Speicher nicht verfügbar"},{status:500}); }
 }
 
@@ -40,11 +40,11 @@ export async function PUT(request:Request) {
 }
 
 export async function POST(request:Request) {
-  try { const body=await request.json() as {id:string,total:number,items:number,time:string,member:string,memberId:string,method:string,cart:unknown,allocations?:{memberId:string;memberName:string;amount:number;kind:string}[]};
+  try { const body=await request.json() as {id:string,total:number,items:number,time:string,member:string,memberId:string,method:string,cart:unknown,allocations?:{memberId:string;memberName:string;amount:number;kind:string}[],round?:{id:string;sponsorId:string;sponsorName:string;label:string;totalUnits:number;maxPerMember:number}};
     if(!body.id||!body.memberId) return Response.json({error:"Ungültige Buchung"},{status:400});
     const backupKey=`sales/${body.time.slice(0,10)}/${body.id}.json`; const backup=JSON.stringify({...body,backedUpAt:new Date().toISOString()});
     await env.BACKUPS.put(backupKey,backup,{httpMetadata:{contentType:"application/json"}});
-    const statements=[env.DB.prepare("INSERT OR IGNORE INTO sales (id,total,items,time,member,member_id,method,cart_json,backup_key) VALUES (?,?,?,?,?,?,?,?,?)").bind(body.id,body.total,body.items,body.time,body.member,body.memberId,body.method,JSON.stringify(body.cart),backupKey),...(body.allocations||[]).map((a,i)=>env.DB.prepare("INSERT OR IGNORE INTO sale_allocations (id,sale_id,member_id,member_name,amount,kind) VALUES (?,?,?,?,?,?)").bind(`${body.id}-${i}`,body.id,a.memberId,a.memberName,a.amount,a.kind))];
+    const statements=[env.DB.prepare("INSERT OR IGNORE INTO sales (id,total,items,time,member,member_id,method,cart_json,backup_key) VALUES (?,?,?,?,?,?,?,?,?)").bind(body.id,body.total,body.items,body.time,body.member,body.memberId,body.method,JSON.stringify(body.cart),backupKey),...(body.allocations||[]).map((a,i)=>env.DB.prepare("INSERT OR IGNORE INTO sale_allocations (id,sale_id,member_id,member_name,amount,kind) VALUES (?,?,?,?,?,?)").bind(`${body.id}-${i}`,body.id,a.memberId,a.memberName,a.amount,a.kind)),...(body.round?[env.DB.prepare("INSERT OR IGNORE INTO rounds (id,sale_id,sponsor_id,sponsor_name,label,total_units,remaining,max_per_member,active,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(body.round.id,body.id,body.round.sponsorId,body.round.sponsorName,body.round.label,body.round.totalUnits,body.round.totalUnits,body.round.maxPerMember,1,body.time)]:[])];
     await env.DB.batch(statements);
     return Response.json({ok:true,id:body.id,backupKey},{status:201});
   } catch(e){ return Response.json({error:e instanceof Error?e.message:"Buchung fehlgeschlagen"},{status:500}); }

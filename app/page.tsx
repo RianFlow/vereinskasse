@@ -7,6 +7,8 @@ type Cart = Record<number, number>;
 type Member = { id: string; name: string; role: string; code: string; initials: string };
 type Sale = { id?: string; total: number; items: number; time: string; member?: string; memberId?: string; method?: string };
 type Allocation = { memberId: string; memberName: string; amount: number; kind: "anteil" | "runde" };
+type RoundSpec = { id:string; sponsorId:string; sponsorName:string; label:string; totalUnits:number; maxPerMember:number };
+type OpenRound = RoundSpec & { remaining:number; active:boolean; createdAt:string };
 
 const members: Member[] = [
   { id: "M-1042", name: "Anna Becker", role: "Kassendienst", code: "VEREIN-1042", initials: "AB" },
@@ -40,6 +42,8 @@ export default function Home() {
   const [identify, setIdentify] = useState<string | null>(null);
   const [operator, setOperator] = useState<Member | null>(null);
   const [storageState, setStorageState] = useState<"online" | "offline" | "loading">("loading");
+  const [rounds,setRounds]=useState<OpenRound[]>([]);
+  const [claimRound,setClaimRound]=useState<OpenRound|null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("vereinskasse-data");
@@ -48,7 +52,7 @@ export default function Home() {
       setProducts(data.products || seed); setSales(data.sales || []);
     }
     fetch("/api/data").then(r => { if(!r.ok) throw new Error(); return r.json(); }).then(data => {
-      setProducts(data.products || seed); setSales(data.sales || []); setStorageState("online");
+      setProducts(data.products || seed); setSales(data.sales || []); setRounds(data.rounds || []); setStorageState("online");
       const pending = JSON.parse(localStorage.getItem("vereinskasse-pending") || "[]") as unknown[];
       return Promise.all(pending.map(s => fetch("/api/data", {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(s)})));
     }).then(() => localStorage.removeItem("vereinskasse-pending")).catch(() => setStorageState("offline"));
@@ -70,14 +74,15 @@ export default function Home() {
     setProducts(next); fetch("/api/data",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({products:next})}).then(r=>{if(!r.ok)throw new Error();setStorageState("online")}).catch(()=>setStorageState("offline"));
   };
   const authorizeCheckout = (member: Member) => { setOperator(member); };
-  const finishCheckout = (allocations: Allocation[]) => {
+  const finishCheckout = (allocations: Allocation[], round?:RoundSpec) => {
     if(!operator) return;
-    const sale = { id: crypto.randomUUID(), total, items: itemCount, time: new Date().toISOString(), member: operator.name, memberId: operator.id, method: identify || "Mitgliedskonto", cart, allocations };
+    const sale = { id: crypto.randomUUID(), total, items: itemCount, time: new Date().toISOString(), member: operator.name, memberId: operator.id, method: identify || "Mitgliedskonto", cart, allocations, round };
     setSales(s => [sale, ...s]);
     fetch("/api/data",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(sale)}).then(r=>{if(!r.ok)throw new Error();setStorageState("online")}).catch(()=>{
       const pending=JSON.parse(localStorage.getItem("vereinskasse-pending")||"[]"); pending.push(sale); localStorage.setItem("vereinskasse-pending",JSON.stringify(pending)); setStorageState("offline");
     });
     setCart({}); setPaid(true);
+    if(round)setRounds(r=>[{...round,remaining:round.totalUnits,active:true,createdAt:sale.time},...r]);
     setIdentify(null); setOperator(null);
     setTimeout(() => setPaid(false), 3500);
   };
@@ -92,6 +97,7 @@ export default function Home() {
       <div className="catalog">
         <div className="title-row"><div><p className="eyebrow">VERKAUF</p><h1>Was darf es sein?</h1></div><span className="date">Heute · Vereinsfest</span></div>
         <nav className="filters">{categories.map(c => <button key={c} className={category === c ? "active" : ""} onClick={() => setCategory(c)}>{c}</button>)}</nav>
+        {rounds.some(r=>r.active&&r.remaining>0)&&<div className="open-rounds"><div className="rounds-title"><strong>🎉 Offene Runden</strong><small>Pro Mitglied gilt das festgelegte Limit</small></div>{rounds.filter(r=>r.active&&r.remaining>0).map(r=><button key={r.id} onClick={()=>setClaimRound(r)}><span>🎁</span><div><strong>{r.label}</strong><small>von {r.sponsorName} · max. {r.maxPerMember} pro Person</small></div><b>{r.remaining}<small> übrig</small></b></button>)}</div>}
         <div className="grid">{shown.map(p => <button className="product" key={p.id} onClick={() => add(p.id)} style={{ "--tile": p.color } as React.CSSProperties}>
           <span className="product-icon">{p.icon}</span><span className="product-name">{p.name}</span><span className="price">{money(p.price)}</span>{cart[p.id] ? <b className="badge">{cart[p.id]}</b> : null}
         </button>)}</div>
@@ -104,6 +110,7 @@ export default function Home() {
       {paid && <div className="toast">✓ Zahlung erfasst – Bon abgeschlossen</div>}
       {identify && !operator && <IdentityDialog method={identify} onClose={() => setIdentify(null)} onVerified={authorizeCheckout} />}
       {operator && <AllocationDialog total={total} operator={operator} onClose={() => {setOperator(null);setIdentify(null)}} onConfirm={finishCheckout} />}
+      {claimRound&&<ClaimDialog round={claimRound} onClose={()=>setClaimRound(null)} onClaim={(member)=>{fetch("/api/rounds",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({roundId:claimRound.id,memberId:member.id,memberName:member.name})}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setRounds(rs=>rs.map(x=>x.id===claimRound.id?{...x,remaining:Number(d.round.remaining),active:Boolean(d.round.active)}:x));setClaimRound(null);setPaid(true);setTimeout(()=>setPaid(false),2500)}).catch(e=>alert(e.message))}}/>}
     </section> : <Admin products={products} setProducts={saveProducts} sales={sales} storageState={storageState} />}
   </main>;
 }
@@ -132,20 +139,28 @@ function IdentityDialog({ method, onClose, onVerified }: { method: string; onClo
   </div></div>;
 }
 
-function AllocationDialog({ total, operator, onClose, onConfirm }: { total:number; operator:Member; onClose:()=>void; onConfirm:(a:Allocation[])=>void }) {
+function AllocationDialog({ total, operator, onClose, onConfirm }: { total:number; operator:Member; onClose:()=>void; onConfirm:(a:Allocation[],r?:RoundSpec)=>void }) {
   const [mode,setMode]=useState<"single"|"equal"|"custom"|"round">("single");
   const [selected,setSelected]=useState<string[]>(["M-1201"]);
   const [amounts,setAmounts]=useState<Record<string,string>>({"M-1201":total.toFixed(2)});
+  const [roundLabel,setRoundLabel]=useState("Getränk der Geburtstagsrunde");
+  const [roundUnits,setRoundUnits]=useState(5);
+  const [roundLimit,setRoundLimit]=useState(1);
   const toggle=(id:string)=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const allocations:Allocation[]=mode==="round"||mode==="single" ? [{memberId:selected[0]||members[0].id,memberName:members.find(m=>m.id===(selected[0]||members[0].id))!.name,amount:total,kind:mode==="round"?"runde":"anteil"}] : selected.map((id,i)=>({memberId:id,memberName:members.find(m=>m.id===id)!.name,amount:mode==="equal"?Math.round(((i===selected.length-1?total-(Math.floor(total*100/selected.length)/100)*(selected.length-1):Math.floor(total*100/selected.length)/100))*100)/100:Number(amounts[id]||0),kind:"anteil"}));
   const assigned=Math.round(allocations.reduce((s,a)=>s+a.amount,0)*100)/100; const valid=allocations.length>0&&Math.abs(assigned-total)<0.01;
   return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="identity-card allocation-card"><button className="modal-close" onClick={onClose}>×</button><p className="eyebrow">MITGLIEDERKONTO</p><h2>Einkauf zuordnen</h2><p className="identity-sub">Freigegeben durch {operator.name}. Wer übernimmt die {money(total)}?</p>
     <div className="allocation-modes"><button className={mode==="single"?"active":""} onClick={()=>setMode("single")}>Eine Person</button><button className={mode==="equal"?"active":""} onClick={()=>setMode("equal")}>Gleichmäßig</button><button className={mode==="custom"?"active":""} onClick={()=>setMode("custom")}>Eigene Anteile</button><button className={mode==="round"?"active":""} onClick={()=>setMode("round")}>🎂 Runde</button></div>
-    {mode==="round"&&<div className="round-note"><strong>Eine Person gibt die Runde aus</strong><small>Der gesamte Einkauf wird auf das gewählte Mitglied gebucht.</small></div>}
+    {mode==="round"&&<div className="round-note"><strong>Eine Person eröffnet eine begrenzte Runde</strong><small>Jedes Mitglied kann später nur bis zum persönlichen Limit darauf buchen.</small><label>Bezeichnung<input value={roundLabel} onChange={e=>setRoundLabel(e.target.value)}/></label><div className="round-fields"><label>Getränke / Artikel<input type="number" min="1" value={roundUnits} onChange={e=>setRoundUnits(Math.max(1,Number(e.target.value)))}/></label><label>Max. pro Mitglied<input type="number" min="1" value={roundLimit} onChange={e=>setRoundLimit(Math.max(1,Number(e.target.value)))}/></label></div></div>}
     <div className="allocation-members">{members.filter(m=>m.role==="Mitglied").map(m=>{const active=selected.includes(m.id);return <button key={m.id} className={active?"active":""} onClick={()=>{if(mode==="single"||mode==="round")setSelected([m.id]);else toggle(m.id)}}><span>{m.initials}</span><div><strong>{m.name}</strong><small>{m.id}</small></div>{active&&mode==="custom"?<input aria-label={`Anteil ${m.name}`} type="number" step="0.01" value={amounts[m.id]||""} onClick={e=>e.stopPropagation()} onChange={e=>setAmounts({...amounts,[m.id]:e.target.value})}/>:<b>{active?"✓":"+"}</b>}</button>})}</div>
     <div className={`allocation-total ${valid?"ok":"bad"}`}><span>Zugeordnet<strong>{money(assigned)}</strong></span><span>Noch offen<strong>{money(Math.max(0,total-assigned))}</strong></span></div>
-    <button className="confirm-allocation" disabled={!valid} onClick={()=>onConfirm(allocations)}>{mode==="round"?"Runde auf Mitglied buchen":"Aufteilung übernehmen"}</button>
+    <button className="confirm-allocation" disabled={!valid||mode==="round"&&!roundLabel.trim()} onClick={()=>onConfirm(allocations,mode==="round"?{id:crypto.randomUUID(),sponsorId:allocations[0].memberId,sponsorName:allocations[0].memberName,label:roundLabel.trim(),totalUnits:roundUnits,maxPerMember:roundLimit}:undefined)}>{mode==="round"?`Runde mit ${roundUnits} Einheiten eröffnen`:"Aufteilung übernehmen"}</button>
   </div></div>;
+}
+
+function ClaimDialog({round,onClose,onClaim}:{round:OpenRound;onClose:()=>void;onClaim:(m:Member)=>void}){
+  const [code,setCode]=useState(""); const verify=(value:string)=>{const m=members.find(x=>x.code.toLowerCase()===value.trim().toLowerCase()||x.id.toLowerCase()===value.trim().toLowerCase());if(m)onClaim(m)};
+  return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="identity-card"><button className="modal-close" onClick={onClose}>×</button><div className="identity-icon">🎁</div><p className="eyebrow">RUNDE EINLÖSEN</p><h2>{round.label}</h2><p className="identity-sub">Noch {round.remaining} verfügbar · höchstens {round.maxPerMember} pro Mitglied. Bitte Mitglied identifizieren.</p><div className="code-entry"><input autoFocus placeholder="Karte oder QR-Kennung" value={code} onChange={e=>{setCode(e.target.value);verify(e.target.value)}}/><button onClick={()=>verify(code)}>Prüfen</button></div><div className="claim-members">{members.filter(m=>m.role==="Mitglied").map(m=><button key={m.id} onClick={()=>onClaim(m)}><span>{m.initials}</span><div><strong>{m.name}</strong><small>{m.id}</small></div><b>1 einlösen</b></button>)}</div></div></div>
 }
 
 function Admin({ products, setProducts, sales, storageState }: { products: Product[]; setProducts: (p: Product[]) => void; sales: Sale[]; storageState:string }) {

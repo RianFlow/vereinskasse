@@ -15,6 +15,13 @@
       "when": 1784609814980,
       "tag": "0001_glorious_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784610163034,
+      "tag": "0002_dashing_boomer",
+      "breakpoints": true
     }
   ]
 }
