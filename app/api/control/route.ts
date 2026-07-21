@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 async function person(id:string){return env.DB.prepare("SELECT id,name,role FROM members WHERE id=? AND active=1").bind(id).first<{id:string;name:string;role:string}>()}
 export async function GET(){
  const shift=await env.DB.prepare("SELECT * FROM shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1").first();
- const accounts=await env.DB.prepare("SELECT member_id as memberId,member_name as memberName,ROUND(SUM(amount),2) as balance FROM account_transactions GROUP BY member_id,member_name ORDER BY member_name").all();
+ const accounts=await env.DB.prepare("SELECT member_id as memberId,member_name as memberName,ROUND(SUM(amount),2) as balance,CASE WHEN member_id LIKE 'GAST-%' THEN 'guest' ELSE 'member' END as accountType FROM account_transactions GROUP BY member_id,member_name HAVING ROUND(SUM(amount),2) > 0 ORDER BY accountType DESC,member_name").all();
  const recent=await env.DB.prepare("SELECT s.*,r.id as reversal_id,r.reason as reversal_reason FROM sales s LEFT JOIN reversals r ON r.sale_id=s.id ORDER BY s.time DESC LIMIT 20").all();
  return Response.json({shift,accounts:accounts.results,recent:recent.results});
 }
