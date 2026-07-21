@@ -49,9 +49,11 @@ export default function Home() {
   const [claimRound,setClaimRound]=useState<OpenRound|null>(null);
   const [adminPrompt,setAdminPrompt]=useState(false); const [adminUser,setAdminUser]=useState<Member|null>(null); const [control,setControl]=useState<ControlData>({accounts:[],recent:[]});
   const [discounts,setDiscounts]=useState<Discount[]>([]);const [memberPricing,setMemberPricing]=useState(false);
+  const [darkMode,setDarkMode]=useState(true);
   const loadControl=()=>fetch("/api/control").then(r=>r.json()).then(setControl).catch(()=>{});
 
   useEffect(() => {
+    setDarkMode(localStorage.getItem("vereinskasse-theme") !== "light");
     const saved = localStorage.getItem("vereinskasse-data");
     if (saved) {
       const data = JSON.parse(saved);
@@ -64,6 +66,7 @@ export default function Home() {
     }).then(() => localStorage.removeItem("vereinskasse-pending")).catch(() => setStorageState("offline"));
   }, []);
   useEffect(() => { localStorage.setItem("vereinskasse-data", JSON.stringify({ products, sales })); }, [products, sales]);
+  useEffect(() => { localStorage.setItem("vereinskasse-theme", darkMode ? "dark" : "light"); }, [darkMode]);
 
   const activeDiscount=discounts.find(d=>d.active);const unitPrice=(p:Product)=>Math.round((memberPricing&&p.memberPrice!=null?p.memberPrice:p.price)*(1-(activeDiscount?.percent||0)/100)*100)/100;
   const total = useMemo(() => products.reduce((sum, p) => sum + unitPrice(p) * (cart[p.id] || 0), 0), [cart, products,memberPricing,activeDiscount]);
@@ -94,10 +97,10 @@ export default function Home() {
     setTimeout(() => setPaid(false), 3500);
   };
 
-  return <main className="app">
+  return <main className={`app ${darkMode ? "dark" : "light"}`}>
     <header>
       <div className="brand"><span className="crest">V</span><div><strong>Vereinskasse</strong><small>SV Beispielhausen</small></div></div>
-      <div className="header-actions"><span className={`status ${storageState}`}><i /> {storageState === "online" ? "Zentral gespeichert" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span><button className="mode" onClick={() => {if(view==="admin")setView("kasse");else setAdminPrompt(true)}}>{view === "kasse" ? "⚙ Admin" : "← Zur Kasse"}</button></div>
+      <div className="header-actions"><span className={`status ${storageState}`}><i /> {storageState === "online" ? "Zentral gespeichert" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span><button className="theme-toggle" onClick={()=>setDarkMode(v=>!v)} aria-label={darkMode ? "Hellen Modus einschalten" : "Dunklen Modus einschalten"} title={darkMode ? "Heller Modus" : "Darkmode"}>{darkMode ? "☀" : "☾"}</button><button className="mode" onClick={() => {if(view==="admin")setView("kasse");else setAdminPrompt(true)}}>{view === "kasse" ? "⚙ Admin" : "← Zur Kasse"}</button></div>
     </header>
 
     {view === "kasse" ? <section className="pos">
