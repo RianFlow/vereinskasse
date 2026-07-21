@@ -132,7 +132,7 @@ export default function Home() {
 
   return <MembersContext.Provider value={clubMembers}><main className={`app ${darkMode ? "dark" : "light"}`}>
     <header>
-      <div className="brand"><span className="brand-logo"><Image src="/sv-barver-darts.png" alt="Logo SV Barver Darts" width={52} height={52} priority/></span><div><strong>Vereinskasse</strong><small>SV Barver Darts</small></div></div>
+      <div className="brand"><span className="brand-logo"><Image src="/sv-barver-darts.png" alt="Logo SV Barver Darts" width={52} height={52} priority unoptimized/></span><div><strong>Vereinskasse</strong><small>SV Barver Darts</small></div></div>
       <div className="header-actions"><span className={`status ${storageState}`}><i /> {storageState === "online" ? "Zentral gespeichert" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span>{view==="kasse"&&(activeMember?<button className="member-session" onClick={()=>setMemberPrompt(true)}><span>{activeMember.initials}</span><div><small>Angemeldet</small><strong>{activeMember.name}</strong></div></button>:<button className="member-login" onClick={()=>setMemberPrompt(true)}>◉ Mitglied anmelden</button>)}<button className="theme-toggle" onClick={()=>setDarkMode(v=>!v)} aria-label={darkMode ? "Hellen Modus einschalten" : "Dunklen Modus einschalten"} title={darkMode ? "Heller Modus" : "Darkmode"}>{darkMode ? "☀" : "☾"}</button><button className="mode" onClick={() => {if(view==="admin")setView("kasse");else setAdminPrompt(true)}}>{view === "kasse" ? "⚙ Admin" : "← Zur Kasse"}</button></div>
     </header>
 
