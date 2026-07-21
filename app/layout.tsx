@@ -17,6 +17,8 @@ import "./guests.css";
 import "./guests-hierarchy.css";
 import "./monthly.css";
 import "./events.css";
+import "./profiles.css";
+import "./profiles-dialog.css";
 import "./brand.css";
 
 export const metadata: Metadata = {
