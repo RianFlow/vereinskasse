@@ -9,6 +9,7 @@ type Sale = { id?: string; total: number; items: number; time: string; member?: 
 type Allocation = { memberId: string; memberName: string; amount: number; kind: "anteil" | "runde" };
 type RoundSpec = { id:string; sponsorId:string; sponsorName:string; label:string; totalUnits:number; maxPerMember:number };
 type OpenRound = RoundSpec & { remaining:number; active:boolean; createdAt:string };
+type ControlData={shift?:{id:string;opened_by_name:string;opened_at:string;opening_cash:number}|null;accounts:{memberId:string;memberName:string;balance:number}[];recent:{id:string;time:string;total:number;member:string;method:string;reversal_id?:string;reversal_reason?:string}[]};
 
 const members: Member[] = [
   { id: "M-1042", name: "Anna Becker", role: "Kassendienst", code: "VEREIN-1042", initials: "AB" },
@@ -44,6 +45,8 @@ export default function Home() {
   const [storageState, setStorageState] = useState<"online" | "offline" | "loading">("loading");
   const [rounds,setRounds]=useState<OpenRound[]>([]);
   const [claimRound,setClaimRound]=useState<OpenRound|null>(null);
+  const [adminPrompt,setAdminPrompt]=useState(false); const [adminUser,setAdminUser]=useState<Member|null>(null); const [control,setControl]=useState<ControlData>({accounts:[],recent:[]});
+  const loadControl=()=>fetch("/api/control").then(r=>r.json()).then(setControl).catch(()=>{});
 
   useEffect(() => {
     const saved = localStorage.getItem("vereinskasse-data");
@@ -52,7 +55,7 @@ export default function Home() {
       setProducts(data.products || seed); setSales(data.sales || []);
     }
     fetch("/api/data").then(r => { if(!r.ok) throw new Error(); return r.json(); }).then(data => {
-      setProducts(data.products || seed); setSales(data.sales || []); setRounds(data.rounds || []); setStorageState("online");
+      setProducts(data.products || seed); setSales(data.sales || []); setRounds(data.rounds || []); setStorageState("online"); loadControl();
       const pending = JSON.parse(localStorage.getItem("vereinskasse-pending") || "[]") as unknown[];
       return Promise.all(pending.map(s => fetch("/api/data", {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(s)})));
     }).then(() => localStorage.removeItem("vereinskasse-pending")).catch(() => setStorageState("offline"));
@@ -71,9 +74,9 @@ export default function Home() {
     setIdentify(method);
   };
   const saveProducts = (next: Product[]) => {
-    setProducts(next); fetch("/api/data",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({products:next})}).then(r=>{if(!r.ok)throw new Error();setStorageState("online")}).catch(()=>setStorageState("offline"));
+    setProducts(next); fetch("/api/data",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({products:next,operatorId:adminUser?.id})}).then(r=>{if(!r.ok)throw new Error();setStorageState("online")}).catch(()=>setStorageState("offline"));
   };
-  const authorizeCheckout = (member: Member) => { setOperator(member); };
+  const authorizeCheckout = (member: Member) => { if(!["Kassendienst","Vorstand"].includes(member.role)){alert("Dieses Mitglied hat keine Kassenberechtigung.");return} setOperator(member); };
   const finishCheckout = (allocations: Allocation[], round?:RoundSpec) => {
     if(!operator) return;
     const sale = { id: crypto.randomUUID(), total, items: itemCount, time: new Date().toISOString(), member: operator.name, memberId: operator.id, method: identify || "Mitgliedskonto", cart, allocations, round };
@@ -90,7 +93,7 @@ export default function Home() {
   return <main className="app">
     <header>
       <div className="brand"><span className="crest">V</span><div><strong>Vereinskasse</strong><small>SV Beispielhausen</small></div></div>
-      <div className="header-actions"><span className={`status ${storageState}`}><i /> {storageState === "online" ? "Zentral gespeichert" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span><button className="mode" onClick={() => setView(view === "kasse" ? "admin" : "kasse")}>{view === "kasse" ? "⚙ Admin" : "← Zur Kasse"}</button></div>
+      <div className="header-actions"><span className={`status ${storageState}`}><i /> {storageState === "online" ? "Zentral gespeichert" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span><button className="mode" onClick={() => {if(view==="admin")setView("kasse");else setAdminPrompt(true)}}>{view === "kasse" ? "⚙ Admin" : "← Zur Kasse"}</button></div>
     </header>
 
     {view === "kasse" ? <section className="pos">
@@ -111,7 +114,8 @@ export default function Home() {
       {identify && !operator && <IdentityDialog method={identify} onClose={() => setIdentify(null)} onVerified={authorizeCheckout} />}
       {operator && <AllocationDialog total={total} operator={operator} onClose={() => {setOperator(null);setIdentify(null)}} onConfirm={finishCheckout} />}
       {claimRound&&<ClaimDialog round={claimRound} onClose={()=>setClaimRound(null)} onClaim={(member)=>{fetch("/api/rounds",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({roundId:claimRound.id,memberId:member.id,memberName:member.name})}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setRounds(rs=>rs.map(x=>x.id===claimRound.id?{...x,remaining:Number(d.round.remaining),active:Boolean(d.round.active)}:x));setClaimRound(null);setPaid(true);setTimeout(()=>setPaid(false),2500)}).catch(e=>alert(e.message))}}/>}
-    </section> : <Admin products={products} setProducts={saveProducts} sales={sales} storageState={storageState} />}
+    </section> : <Admin products={products} setProducts={saveProducts} sales={sales} storageState={storageState} adminUser={adminUser!} control={control} refresh={loadControl} />}
+    {adminPrompt&&<IdentityDialog method="Adminbereich" onClose={()=>setAdminPrompt(false)} onVerified={m=>{if(m.role!=="Vorstand"){alert("Der Adminbereich ist nur für den Vorstand freigegeben.");return}setAdminUser(m);setAdminPrompt(false);setView("admin");loadControl()}}/>}
   </main>;
 }
 
@@ -163,7 +167,7 @@ function ClaimDialog({round,onClose,onClaim}:{round:OpenRound;onClose:()=>void;o
   return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="identity-card"><button className="modal-close" onClick={onClose}>×</button><div className="identity-icon">🎁</div><p className="eyebrow">RUNDE EINLÖSEN</p><h2>{round.label}</h2><p className="identity-sub">Noch {round.remaining} verfügbar · höchstens {round.maxPerMember} pro Mitglied. Bitte Mitglied identifizieren.</p><div className="code-entry"><input autoFocus placeholder="Karte oder QR-Kennung" value={code} onChange={e=>{setCode(e.target.value);verify(e.target.value)}}/><button onClick={()=>verify(code)}>Prüfen</button></div><div className="claim-members">{members.filter(m=>m.role==="Mitglied").map(m=><button key={m.id} onClick={()=>onClaim(m)}><span>{m.initials}</span><div><strong>{m.name}</strong><small>{m.id}</small></div><b>1 einlösen</b></button>)}</div></div></div>
 }
 
-function Admin({ products, setProducts, sales, storageState }: { products: Product[]; setProducts: (p: Product[]) => void; sales: Sale[]; storageState:string }) {
+function Admin({ products, setProducts, sales, storageState,adminUser,control,refresh }: { products: Product[]; setProducts: (p: Product[]) => void; sales: Sale[]; storageState:string;adminUser:Member;control:ControlData;refresh:()=>void }) {
   const revenue = sales.reduce((s, x) => s + x.total, 0);
   const items = sales.reduce((s, x) => s + x.items, 0);
   const update = (id: number, field: "name" | "price", value: string) => setProducts(products.map(p => p.id === id ? { ...p, [field]: field === "price" ? Number(value) : value } : p));
@@ -172,6 +176,8 @@ function Admin({ products, setProducts, sales, storageState }: { products: Produ
     <div className="stats"><article><span>Heutiger Umsatz</span><strong>{money(revenue)}</strong><small>seit Kassenöffnung</small></article><article><span>Verkäufe</span><strong>{sales.length}</strong><small>abgeschlossene Bons</small></article><article><span>Artikel verkauft</span><strong>{items}</strong><small>über alle Kategorien</small></article></div>
     <div className="admin-grid"><section className="panel products-panel"><div className="panel-head"><h2>Artikel & Preise</h2><span>{products.length} Artikel</span></div>{products.map(p => <div className="edit-row" key={p.id}><span className="mini big">{p.icon}</span><input aria-label="Artikelname" value={p.name} onChange={e => update(p.id, "name", e.target.value)} /><span className="cat">{p.category}</span><div className="price-input"><input aria-label="Preis" type="number" step="0.5" value={p.price} onChange={e => update(p.id, "price", e.target.value)} /><span>€</span></div><button className="delete" onClick={() => setProducts(products.filter(x => x.id !== p.id))}>×</button></div>)}</section>
       <aside className="panel settings"><h2>Kassen-Einstellungen</h2><label>Vereinsname<input defaultValue="SV Beispielhausen" /></label><label>Akzentfarbe<div className="colors"><i className="selected"/><i/><i/><i/></div></label><div className="integration"><div className="paypal-mark">P</div><div><strong>PayPal anbinden</strong><small>API-Zugangsdaten werden für den Livebetrieb ergänzt.</small></div><span className="demo-pill">Demo</span></div></aside>
-    </div><section className="panel identity-admin"><div className="panel-head"><div><p className="eyebrow">ZUGANG & SICHERHEIT</p><h2>Mitgliederkarten</h2></div><button>+ Mitglied anlegen</button></div><div className="backup-banner"><span>✓</span><div><strong>Zentrale Speicherung + zweite Sicherung</strong><small>{storageState === "online" ? "Jede Buchung liegt in der Datenbank und zusätzlich im Sicherungsspeicher." : "Offline-Buchungen werden auf diesem Tablet vorgemerkt und automatisch übertragen."}</small></div></div><div className="member-admin-grid">{members.map(m => <article key={m.id}><span>{m.initials}</span><div><strong>{m.name}</strong><small>{m.id} · {m.role}</small></div><em>● Aktiv</em></article>)}</div><div className="last-sales"><strong>Letzte zugeordnete Buchungen</strong>{sales.slice(0,3).map((s,i) => <span key={i}>{s.member || "Ohne Zuordnung"}<b>{money(s.total)}</b></span>)}</div></section>
+    </div><ControlPanel user={adminUser} data={control} refresh={refresh}/><section className="panel identity-admin"><div className="panel-head"><div><p className="eyebrow">ZUGANG & SICHERHEIT</p><h2>Mitgliederkarten</h2></div><button>+ Mitglied anlegen</button></div><div className="backup-banner"><span>✓</span><div><strong>Zentrale Speicherung + zweite Sicherung</strong><small>{storageState === "online" ? "Jede Buchung liegt in der Datenbank und zusätzlich im Sicherungsspeicher." : "Offline-Buchungen werden auf diesem Tablet vorgemerkt und automatisch übertragen."}</small></div></div><div className="member-admin-grid">{members.map(m => <article key={m.id}><span>{m.initials}</span><div><strong>{m.name}</strong><small>{m.id} · {m.role}</small></div><em>● Aktiv</em></article>)}</div><div className="last-sales"><strong>Letzte zugeordnete Buchungen</strong>{sales.slice(0,3).map((s,i) => <span key={i}>{s.member || "Ohne Zuordnung"}<b>{money(s.total)}</b></span>)}</div></section>
   </section>;
 }
+
+function ControlPanel({user,data,refresh}:{user:Member;data:ControlData;refresh:()=>void}){const act=async(body:Record<string,unknown>)=>{const r=await fetch("/api/control",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...body,operatorId:user.id})});const d=await r.json();if(!r.ok)alert(d.error);else{if(d.expected!==undefined)alert(`Soll: ${money(d.expected)} · Differenz: ${money(d.difference)}`);refresh()}};return <section className="control-grid"><article className="panel"><p className="eyebrow">KASSENSCHICHT</p><h2>{data.shift?"Kasse geöffnet":"Kasse geschlossen"}</h2>{data.shift?<><p>Eröffnet von {data.shift.opened_by_name}<br/>Anfangsbestand {money(data.shift.opening_cash)}</p><button onClick={()=>{const v=prompt("Gezählter Barbestand in Euro");if(v)act({action:"close",countedCash:Number(v.replace(",","."))})}}>Kassenabschluss durchführen</button></>:<button onClick={()=>{const v=prompt("Anfangsbestand in Euro","100");if(v)act({action:"open",openingCash:Number(v.replace(",","."))})}}>Kasse eröffnen</button>}</article><article className="panel accounts-panel"><p className="eyebrow">MITGLIEDSKONTEN</p><h2>Offene Salden</h2>{data.accounts.length?data.accounts.map(a=><div key={a.memberId}><span>{a.memberName}</span><b>{money(Number(a.balance))}</b><button onClick={()=>{const v=prompt(`Zahlung von ${a.memberName} in Euro`);if(v)act({action:"payment",memberId:a.memberId,memberName:a.memberName,amount:Number(v.replace(",","."))})}}>Zahlung</button></div>):<p>Noch keine offenen Mitgliedsbuchungen.</p>}</article><article className="panel recent-panel"><p className="eyebrow">KORREKTUREN</p><h2>Letzte Buchungen</h2>{data.recent.slice(0,6).map(s=><div key={s.id} className={s.reversal_id?"reversed":""}><span>{new Date(s.time).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})} · {s.method}<small>{s.member}</small></span><b>{money(s.total)}</b>{s.reversal_id?<em>Storniert</em>:<button onClick={()=>{const reason=prompt("Stornogrund");if(reason)act({action:"reverse",saleId:s.id,reason})}}>Storno</button>}</div>)}</article></section>}

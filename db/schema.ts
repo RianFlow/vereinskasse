@@ -31,3 +31,7 @@ export const rounds = sqliteTable("rounds", {
 export const roundClaims = sqliteTable("round_claims", {
   id:text("id").primaryKey(), roundId:text("round_id").notNull(), memberId:text("member_id").notNull(), memberName:text("member_name").notNull(), quantity:integer("quantity").notNull().default(1), claimedAt:text("claimed_at").notNull(),
 });
+
+export const shifts = sqliteTable("shifts", { id:text("id").primaryKey(), openedBy:text("opened_by").notNull(), openedByName:text("opened_by_name").notNull(), openedAt:text("opened_at").notNull(), openingCash:real("opening_cash").notNull(), closedBy:text("closed_by"), closedAt:text("closed_at"), expectedCash:real("expected_cash"), countedCash:real("counted_cash"), difference:real("difference"), status:text("status").notNull() });
+export const reversals = sqliteTable("reversals", { id:text("id").primaryKey(), saleId:text("sale_id").notNull(), reason:text("reason").notNull(), amount:real("amount").notNull(), operatorId:text("operator_id").notNull(), operatorName:text("operator_name").notNull(), createdAt:text("created_at").notNull() });
+export const accountTransactions = sqliteTable("account_transactions", { id:text("id").primaryKey(), memberId:text("member_id").notNull(), memberName:text("member_name").notNull(), saleId:text("sale_id"), type:text("type").notNull(), amount:real("amount").notNull(), note:text("note").notNull(), operatorId:text("operator_id").notNull(), createdAt:text("created_at").notNull() });
