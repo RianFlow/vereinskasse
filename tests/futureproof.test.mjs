@@ -77,7 +77,7 @@ test("ist als Vollbild-Web-App auf Tablets installierbar",async()=>{
 test("startet nach jeder manuellen Buchung ohne den vorherigen Namen",async()=>{
   const page=await read("app/page.tsx");
   assert.ok(page.includes("const billingMember=listMember||activeMember"),"Angemeldete Sitzung und manuelle Auswahl sind nicht getrennt");
-  assert.ok(page.includes("setCart({});setListMember(null);showUndo"),"Manuell gewähltes Mitglied bleibt nach der Buchung ausgewählt");
+  assert.ok(page.includes("setMemberPricing(true);setListMember(null);showUndo"),"Manuell gewähltes Mitglied bleibt nach der Buchung ausgewählt");
   assert.ok(page.includes("setSelectedGuest(null);setListMember(null)"),"Gast oder Mitglied bleibt nach einem anderen Abschluss ausgewählt");
 });
 
@@ -96,4 +96,12 @@ test("zeigt Bestellung, Summe und häufige Bezahlarten wie eine direkte Kasse",a
   assert.ok(page.includes('setOperator(activeMember)'),"Angemeldeter Kassendienst kann nicht direkt fortfahren");
   assert.ok(!page.includes("Weitere Aktionen"),"Häufige Bezahlarten sind noch versteckt");
   for(const feature of ["direct-payment-grid","pos-total","position:sticky","min-height:78px"])assert.ok(style.includes(feature),`${feature} fehlt`);
+});
+
+test("nutzt standardmäßig Mitgliedspreise und bietet Nichtmitglied erst beim Bezahlen an",async()=>{
+  const [page,style]=await Promise.all([read("app/page.tsx"),read("app/price-mode.css")]);
+  assert.ok(page.includes("[memberPricing,setMemberPricing]=useState(true)"),"Mitgliedspreis ist nicht der Standard");
+  for(const feature of ["price-mode-switch","Mitgliedspreise","Nichtmitglied","Normalpreise"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes("setCart({});setMemberPricing(true)"),"Preisart wird nach einer Buchung nicht zurückgesetzt");
+  assert.ok(style.includes(".price-mode-switch")&&style.includes("active.non-member"));
 });
