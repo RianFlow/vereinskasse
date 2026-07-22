@@ -96,6 +96,7 @@ test("zeigt Bestellung, Summe und häufige Bezahlarten wie eine direkte Kasse",a
   assert.ok(page.includes('setOperator(activeMember)'),"Angemeldeter Kassendienst kann nicht direkt fortfahren");
   assert.ok(!page.includes("Weitere Aktionen"),"Häufige Bezahlarten sind noch versteckt");
   for(const feature of ["direct-payment-grid","pos-total","position:sticky","min-height:78px"])assert.ok(style.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes("Betrag aufteilen")&&page.includes("club-payments"),"Betrag aufteilen fehlt beim Vereinsabend");
 });
 
 test("nutzt standardmäßig Mitgliedspreise und bietet Nichtmitglied erst beim Bezahlen an",async()=>{
