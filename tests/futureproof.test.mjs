@@ -73,3 +73,19 @@ test("ist als Vollbild-Web-App auf Tablets installierbar",async()=>{
   assert.deepEqual([icon512.readUInt32BE(16),icon512.readUInt32BE(20)],[512,512]);
   for(const feature of ["manifest.webmanifest","appleWebApp","apple-touch-icon.png","viewportFit"])assert.ok(layout.includes(feature),`${feature} fehlt`);
 });
+
+test("startet nach jeder manuellen Buchung ohne den vorherigen Namen",async()=>{
+  const page=await read("app/page.tsx");
+  assert.ok(page.includes("const billingMember=listMember||activeMember"),"Angemeldete Sitzung und manuelle Auswahl sind nicht getrennt");
+  assert.ok(page.includes("setCart({});setListMember(null);showUndo"),"Manuell gewähltes Mitglied bleibt nach der Buchung ausgewählt");
+  assert.ok(page.includes("setSelectedGuest(null);setListMember(null)"),"Gast oder Mitglied bleibt nach einem anderen Abschluss ausgewählt");
+});
+
+test("verwendet tabletfreundliche Zahlenfelder mit großen Schritten und Zifferntastatur",async()=>{
+  const [page,pricing,field,style]=await Promise.all([read("app/page.tsx"),read("app/PricingPanel.tsx"),read("app/TabletNumberField.tsx"),read("app/tablet-number.css")]);
+  for(const feature of ["Getränke oder Artikel","Maximum pro Mitglied","Preis ${p.name}","Gezählter Barbestand","Hälfte"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(pricing.includes("TabletNumberField")&&pricing.includes("Mitgliedspreis")&&pricing.includes("Rabatt"));
+  for(const feature of ["inputMode","verringern","erhöhen","allowEmpty","event.currentTarget.select"])assert.ok(field.includes(feature),`${feature} fehlt`);
+  assert.ok(style.includes("grid-template-columns:44px")&&style.includes("touch-action:manipulation"));
+  assert.ok(!page.includes('type="number"'),"Kleine Browser-Zahlenfelder sind noch vorhanden");
+});
