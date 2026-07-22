@@ -8,7 +8,7 @@ type ProductRow={productId:number;productName:string;quantity:number;total:numbe
 const listSql=`SELECT e.id,e.name,e.starts_at startsAt,e.ends_at endsAt,e.status,e.notes,e.created_by createdBy,
   (SELECT COUNT(*) FROM sales s LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.event_id=e.id AND r.id IS NULL) salesCount,
   COALESCE((SELECT SUM(s.total) FROM sales s LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.event_id=e.id AND r.id IS NULL),0) revenue,
-  COALESCE((SELECT SUM(si.quantity) FROM sale_items si JOIN sales s ON s.id=si.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.event_id=e.id AND r.id IS NULL),0) itemsCount
+  COALESCE((SELECT SUM(si.quantity) FROM sale_items si JOIN sales s ON s.id=si.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.event_id=e.id AND r.id IS NULL AND si.counts_for_consumption=1),0) itemsCount
   FROM events e WHERE e.profile_id=? ORDER BY CASE WHEN e.status='active' THEN 0 ELSE 1 END,e.starts_at DESC`;
 
 export async function GET(request:Request){
@@ -18,9 +18,9 @@ export async function GET(request:Request){
     const events=await env.DB.prepare(listSql).bind(profile.id).all<EventRow>();
     if(!id)return Response.json({events:events.results});
     const selected=events.results.find(e=>e.id===id);if(!selected)return Response.json({error:"Veranstaltung nicht gefunden"},{status:404});
-    const products=await env.DB.prepare("SELECT si.product_id productId,si.product_name productName,SUM(si.quantity) quantity,ROUND(SUM(si.total),2) total FROM sale_items si JOIN sales s ON s.id=si.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.event_id=? AND r.id IS NULL GROUP BY si.product_id,si.product_name ORDER BY quantity DESC,si.product_name").bind(id).all<ProductRow>();
+    const products=await env.DB.prepare("SELECT si.product_id productId,si.product_name productName,SUM(si.quantity) quantity,ROUND(SUM(si.total),2) total FROM sale_items si JOIN sales s ON s.id=si.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.event_id=? AND r.id IS NULL AND si.counts_for_consumption=1 GROUP BY si.product_id,si.product_name ORDER BY quantity DESC,si.product_name").bind(id).all<ProductRow>();
     const previous=events.results.filter(e=>e.startsAt<selected.startsAt&&e.id!==id).sort((a,b)=>b.startsAt.localeCompare(a.startsAt))[0]||null;
-    const previousProducts=previous?await env.DB.prepare("SELECT si.product_id productId,si.product_name productName,SUM(si.quantity) quantity,ROUND(SUM(si.total),2) total FROM sale_items si JOIN sales s ON s.id=si.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.event_id=? AND r.id IS NULL GROUP BY si.product_id,si.product_name").bind(previous.id).all<ProductRow>():{results:[] as ProductRow[]};
+    const previousProducts=previous?await env.DB.prepare("SELECT si.product_id productId,si.product_name productName,SUM(si.quantity) quantity,ROUND(SUM(si.total),2) total FROM sale_items si JOIN sales s ON s.id=si.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.event_id=? AND r.id IS NULL AND si.counts_for_consumption=1 GROUP BY si.product_id,si.product_name").bind(previous.id).all<ProductRow>():{results:[] as ProductRow[]};
     const current=new Map(products.results.map(p=>[p.productId,p])),comparison=new Map(previousProducts.results.map(p=>[p.productId,p]));
     const productIds=[...new Set([...current.keys(),...comparison.keys()])];
     const rows=productIds.map(productId=>{const now=current.get(productId),before=comparison.get(productId),quantity=Number(now?.quantity||0);return {productId,productName:now?.productName||before?.productName||"Unbekannter Artikel",quantity,total:Number(now?.total||0),previousQuantity:Number(before?.quantity||0),recommendedQuantity:Math.ceil(quantity*1.1)}}).sort((a,b)=>b.quantity-a.quantity||a.productName.localeCompare(b.productName,"de"));

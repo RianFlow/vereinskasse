@@ -85,6 +85,13 @@
       "when": 1784701198688,
       "tag": "0011_same_valeria_richards",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1784701986078,
+      "tag": "0012_wide_shinobi_shaw",
+      "breakpoints": true
     }
   ]
 }
