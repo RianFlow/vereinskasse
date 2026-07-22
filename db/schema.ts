@@ -56,3 +56,17 @@ export const roundClaims = sqliteTable("round_claims", {
 export const shifts = sqliteTable("shifts", { id:text("id").primaryKey(),profileId:text("profile_id").notNull().default("darts"), openedBy:text("opened_by").notNull(), openedByName:text("opened_by_name").notNull(), openedAt:text("opened_at").notNull(), openingCash:real("opening_cash").notNull(), closedBy:text("closed_by"), closedAt:text("closed_at"), expectedCash:real("expected_cash"), countedCash:real("counted_cash"), difference:real("difference"), status:text("status").notNull() });
 export const reversals = sqliteTable("reversals", { id:text("id").primaryKey(), saleId:text("sale_id").notNull(), reason:text("reason").notNull(), amount:real("amount").notNull(), operatorId:text("operator_id").notNull(), operatorName:text("operator_name").notNull(), createdAt:text("created_at").notNull() },table=>[index("reversals_sale_idx").on(table.saleId)]);
 export const accountTransactions = sqliteTable("account_transactions", { id:text("id").primaryKey(),profileId:text("profile_id").notNull().default("darts"), memberId:text("member_id").notNull(), memberName:text("member_name").notNull(), saleId:text("sale_id"), type:text("type").notNull(), amount:real("amount").notNull(), note:text("note").notNull(), operatorId:text("operator_id").notNull(), createdAt:text("created_at").notNull() },table=>[index("account_transactions_profile_member_created_idx").on(table.profileId,table.memberId,table.createdAt),index("account_transactions_sale_idx").on(table.saleId)]);
+
+export const randomRewardCampaigns = sqliteTable("random_reward_campaigns", {
+  id:text("id").primaryKey(),profileId:text("profile_id").notNull().default("darts"),name:text("name").notNull(),
+  rewardType:text("reward_type").notNull(),rewardValue:real("reward_value").notNull().default(0),
+  totalWins:integer("total_wins").notNull(),remainingWins:integer("remaining_wins").notNull(),
+  startsAt:text("starts_at").notNull(),endsAt:text("ends_at").notNull(),status:text("status").notNull().default("active"),
+  createdBy:text("created_by").notNull(),createdAt:text("created_at").notNull(),
+},table=>[index("random_reward_campaigns_profile_status_time_idx").on(table.profileId,table.status,table.startsAt,table.endsAt)]);
+
+export const randomRewardSlots = sqliteTable("random_reward_slots", {
+  id:text("id").primaryKey(),profileId:text("profile_id").notNull().default("darts"),campaignId:text("campaign_id").notNull(),
+  triggerAt:text("trigger_at").notNull(),claimedAt:text("claimed_at"),saleId:text("sale_id"),winnerName:text("winner_name"),
+  rewardAmount:real("reward_amount"),rewardLabel:text("reward_label"),
+},table=>[index("random_reward_slots_profile_campaign_trigger_idx").on(table.profileId,table.campaignId,table.triggerAt),index("random_reward_slots_sale_idx").on(table.saleId)]);

@@ -48,7 +48,7 @@ test("stellt vergessene Profil-PINs im 2-aus-3-Verfahren wieder her",async()=>{
   assert.ok(profiles.includes("recoveryCards")&&profiles.includes('recoveryScheme:"2-of-3"'));
   assert.ok(helper.includes("PBKDF2")&&helper.includes("randomRecoveryCard"));
   assert.ok(schema.includes("profileRecoveryKeys")&&migration.includes("profile_recovery_keys"));
-  assert.ok(backup.includes("SCHEMA_VERSION=15")&&backup.includes('"profile_recovery_keys"'));
+  assert.ok(backup.includes("SCHEMA_VERSION=16")&&backup.includes('"profile_recovery_keys"'));
 });
 
 test("teilt den Adminbereich in übersichtliche Tablet-Bereiche",async()=>{
@@ -112,4 +112,19 @@ test("priorisiert offene Nichtmitglieder und markiert Mitgliedskonten nach einem
   assert.ok(page.includes("30*24*60*60*1000"),"Monatsfrist fehlt");
   for(const feature of [".account-overview.has-guest-debt",".open-account-list>button.guest",".accounts-panel>div.overdue",".account-payment-status"])assert.ok(style.includes(feature),`${feature} fehlt`);
   assert.ok(layout.includes('import "./account-urgency.css"'));
+});
+
+test("verteilt geheime Glücksmomente nur über den Adminbereich",async()=>{
+  const [page,panel,route,data,control,schema,migration,backup,receipt]=await Promise.all([read("app/page.tsx"),read("app/RandomRewardsPanel.tsx"),read("app/api/random-rewards/route.ts"),read("app/api/data/route.ts"),read("app/api/control/route.ts"),read("db/schema.ts"),read("drizzle/0016_tricky_jetstream.sql"),read("app/api/backup/route.ts"),read("app/api/receipt/route.ts")]);
+  for(const feature of ['adminSection==="rewards"',"RandomRewardsPanel","RewardWinDialog","Heute geht etwas aufs Haus"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  for(const feature of ["Ein Artikel gratis","Besonderer Rabatt","Zukünftige Gewinnzeitpunkte","Manipulationsgeschützt","Anzahl der Gewinne"])assert.ok(panel.includes(feature),`${feature} fehlt`);
+  assert.ok(route.includes('requireRole(request,["Vorstand"])'),"Aktionen sind nicht auf den Vorstand beschränkt");
+  assert.ok(route.includes("crypto.getRandomValues")&&route.includes("windowStart"),"Gewinnmomente werden nicht sicher verteilt");
+  assert.ok(!route.includes("triggerAt:campaign"),"Zukünftige Gewinnzeitpunkte dürfen nicht ausgegeben werden");
+  for(const feature of ["random_reward_slots","reward_amount","remaining_wins","rewardRestored"])assert.ok(data.includes(feature)||control.includes(feature),`${feature} fehlt`);
+  assert.ok(data.includes("finalTotal")&&data.includes("adjustedAllocations"),"Gewinn wird nicht sauber auf Endbetrag und Zechen verteilt");
+  assert.ok(schema.includes("randomRewardCampaigns")&&schema.includes("randomRewardSlots"));
+  assert.ok(migration.includes("random_reward_campaigns")&&migration.includes("random_reward_slots"));
+  assert.ok(backup.includes("SCHEMA_VERSION=16")&&backup.includes('"random_reward_campaigns"')&&backup.includes('"random_reward_slots"'));
+  assert.ok(receipt.includes("rr.reward_amount")&&receipt.includes("rewardRow"),"Gewinn fehlt auf dem Beleg");
 });
