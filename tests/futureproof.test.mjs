@@ -38,3 +38,15 @@ test("nimmt die letzte Buchung sicher und nachvollziehbar zurück",async()=>{
   assert.ok(data.includes("-Number(allocation.amount)"),"Gegenbuchung für offene Konten fehlt");
   assert.ok(style.includes("animation:undo-window 10s"));
 });
+
+test("stellt vergessene Profil-PINs im 2-aus-3-Verfahren wieder her",async()=>{
+  const [page,recovery,profiles,helper,schema,migration,backup]=await Promise.all([read("app/page.tsx"),read("app/api/profile-recovery/route.ts"),read("app/api/profiles/route.ts"),read("app/api/profile-session.ts"),read("db/schema.ts"),read("drizzle/0015_wet_raider.sql"),read("app/api/backup/route.ts")]);
+  for(const feature of ["2 aus 3","PIN vergessen?","Karten erneuern","Drei Notfallkarten","müssen drei neue Karten erzeugt werden"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  for(const feature of ["PROFILE_PIN_RECOVERED","PROFILE_RECOVERY_CARDS_ISSUED","used_at IS NULL","newCardsRequired:true","15 Minuten"])assert.ok(recovery.includes(feature),`${feature} fehlt`);
+  assert.ok(recovery.includes('new Set(slots).size!==2'),"Zwei unterschiedliche Karten werden nicht erzwungen");
+  assert.ok(recovery.includes('UPDATE profile_recovery_keys SET used_at=?'),"Benutzte Karten werden nicht entwertet");
+  assert.ok(profiles.includes("recoveryCards")&&profiles.includes('recoveryScheme:"2-of-3"'));
+  assert.ok(helper.includes("PBKDF2")&&helper.includes("randomRecoveryCard"));
+  assert.ok(schema.includes("profileRecoveryKeys")&&migration.includes("profile_recovery_keys"));
+  assert.ok(backup.includes("SCHEMA_VERSION=15")&&backup.includes('"profile_recovery_keys"'));
+});

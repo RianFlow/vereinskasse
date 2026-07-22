@@ -11,6 +11,10 @@ export async function hashProfilePin(pin:string,salt:string){
   return hex(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(salt),iterations:100000},key,256));
 }
 export function randomSalt(){const bytes=crypto.getRandomValues(new Uint8Array(16));return [...bytes].map(value=>value.toString(16).padStart(2,"0")).join("")}
+const recoveryAlphabet="23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+export function randomRecoveryCard(slot:number){const bytes=crypto.getRandomValues(new Uint8Array(16)),secret=[...bytes].map(value=>recoveryAlphabet[value%recoveryAlphabet.length]).join("");return `${["A","B","C"][slot-1]}-${secret.match(/.{4}/g)!.join("-")}`}
+export function normalizeRecoveryCard(value:string){return value.toUpperCase().replace(/[^A-Z2-9]/g,"")}
+export function recoveryCardSlot(value:string){return ["A","B","C"].indexOf(normalizeRecoveryCard(value).slice(0,1))+1}
 export async function activeProfile(request:Request):Promise<ActiveProfile|null>{
   const token=request.headers.get("cookie")?.match(new RegExp(`(?:^|;\\s*)${cookieName}=([^;]+)`))?.[1];if(!token)return null;
   const row=await env.DB.prepare("SELECT p.id,p.name,p.short_name shortName,p.color,p.must_change_pin mustChangePin,s.expires_at expiresAt FROM profile_sessions s JOIN profiles p ON p.id=s.profile_id WHERE s.token=? AND p.active=1").bind(decodeURIComponent(token)).first<ActiveProfile&{expiresAt:string}>();

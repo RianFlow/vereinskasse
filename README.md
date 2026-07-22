@@ -21,6 +21,10 @@ Tabletfreundliches Kassensystem für den SV Barver Darts und weitere Sparten im 
 
 Die veröffentlichten Datenbankmigrationen dürfen niemals nachträglich geändert oder gelöscht werden. Neue Schemaänderungen erhalten immer eine neue Migrationsnummer.
 
+## Vergessene Profil-PIN
+
+Jedes Profil kann drei getrennte Notfallkarten verwenden. Zum Zurücksetzen einer vergessenen PIN sind zwei unterschiedliche Karten erforderlich. Nach erfolgreicher Wiederherstellung werden alle bisherigen Karten ungültig; anschließend erzeugt ein Vorstand im Adminbereich ein neues Dreierset. Codes und PINs werden ausschließlich als abgeleitete Prüfwerte gespeichert und sind nicht auslesbar.
+
 ## Entwicklung
 
 Voraussetzung ist Node.js 22 oder neuer.
