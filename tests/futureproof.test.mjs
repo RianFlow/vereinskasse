@@ -19,8 +19,8 @@ test("erstellt prüfbare und herunterladbare Vollsicherungen",async()=>{
   for(const feature of ["SHA-256","customMetadata","x-backup-sha256","FULL_BACKUP_CREATED","formatVersion","downloadUrl"])assert.ok(backup.includes(feature),`${feature} fehlt`);
   for(const feature of ["SystemStatus","Jetzt vollständig sichern","Sicherung herunterladen","Automatische Prüfungen"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(data.includes("configuration-before-change"));
-  assert.ok(data.includes("saleAllocations.profileId"));
-  assert.ok(data.includes("roundClaims.profileId"));
+  assert.ok(data.includes("profile.id"),"Profildaten werden nicht serverseitig begrenzt");
+  assert.ok(!data.includes("allocations:await db.select()"),"Ungenutzte historische Aufteilungen werden noch vollständig ausgeliefert");
 });
 
 test("erstellt eine einfache Liste aus Name und offenem Betrag",async()=>{
@@ -128,4 +128,27 @@ test("verteilt geheime Glücksmomente nur über den Adminbereich",async()=>{
   assert.ok(migration.includes("random_reward_campaigns")&&migration.includes("random_reward_slots"));
   assert.ok(backup.includes("SCHEMA_VERSION=16")&&backup.includes('"random_reward_campaigns"')&&backup.includes('"random_reward_slots"'));
   assert.ok(receipt.includes("rr.reward_amount")&&receipt.includes("rewardRow"),"Gewinn fehlt auf dem Beleg");
+});
+
+test("berechnet Preise, Pakete und Glücksrabatte serverseitig",async()=>{
+  const [data,page]=await Promise.all([read("app/api/data/route.ts"),read("app/page.tsx")]);
+  for(const feature of ["canonicalCart","member_price","discount_rules","included_items_json","Die Aufteilung stimmt nicht","expectedTotal"])assert.ok(data.includes(feature),`${feature} fehlt`);
+  assert.ok(data.includes("body.total*Number(candidate.rewardValue)/100"),"Prozentgewinn wird nicht korrekt durch 100 geteilt");
+  assert.ok(page.includes('priceMode:memberPricing?"member":"non_member"'),"Preisart wird nicht an den Server übergeben");
+});
+
+test("entfernt öffentliche Demo-Zugänge und richtet einmalig einen echten Admin ein",async()=>{
+  const [page,data,identify,membersRoute]=await Promise.all([read("app/page.tsx"),read("app/api/data/route.ts"),read("app/api/identify/route.ts"),read("app/api/members/route.ts")]);
+  assert.ok(!page.includes("Passende Demo-Kennung verwenden"));
+  assert.ok(!data.includes("const seedMembers"));
+  assert.ok(identify.includes("id NOT IN ('M-1042'"));
+  assert.ok(membersRoute.includes('b.action==="bootstrap"')&&membersRoute.includes("PRIMARY_ADMIN_CREATED"));
+});
+
+test("schützt Offline-Buchungen, Rundeneinlösung und Kassenabschluss",async()=>{
+  const [page,data,rounds,control]=await Promise.all([read("app/page.tsx"),read("app/api/data/route.ts"),read("app/api/rounds/route.ts"),read("app/api/control/route.ts")]);
+  assert.ok(page.includes("offlineQueuedAt")&&data.includes("rewardEligible"),"Offline-Verkäufe können noch unsichtbar Gewinne auslösen");
+  assert.ok(rounds.includes("env.DB.batch")&&rounds.includes("claimed_at=?"),"Rundeneinlösung ist nicht atomar geschützt");
+  assert.ok(control.includes("sale_id IS NULL")&&control.includes("accountCash"),"Bar bezahlte Zechen fehlen im Kassenabschluss");
+  assert.ok(page.includes("submittingRef.current"),"Doppeltipp-Schutz beim Verkauf fehlt");
 });

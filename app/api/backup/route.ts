@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { requireRole } from "../session";
+import { requireProfile } from "../profile-session";
 
 const SCHEMA_VERSION=16;
 const BACKUP_FORMAT_VERSION=2;
@@ -7,7 +8,7 @@ const tables=["profiles","profile_recovery_keys","members","guest_accounts","pro
 const hex=(buffer:ArrayBuffer)=>Array.from(new Uint8Array(buffer),byte=>byte.toString(16).padStart(2,"0")).join("");
 
 export async function GET(request:Request){
-  const admin=await requireRole(request,["Vorstand"]);if(!admin)return Response.json({error:"Keine Berechtigung"},{status:403});
+  const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);if(!admin||!profile)return Response.json({error:"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});
   const url=new URL(request.url),download=url.searchParams.get("download");
   if(download){
     if(!/^snapshots\/[0-9TZ.\-]+-[0-9a-f-]+\.json$/.test(download))return Response.json({error:"Ungültige Sicherung"},{status:400});
@@ -20,8 +21,8 @@ export async function GET(request:Request){
 }
 
 export async function POST(request:Request){
-  const admin=await requireRole(request,["Vorstand"]);if(!admin)return Response.json({error:"Keine Berechtigung"},{status:403});
-  const now=new Date().toISOString(),rowCounts:Record<string,number>={},snapshot:Record<string,unknown>={formatVersion:BACKUP_FORMAT_VERSION,schemaVersion:SCHEMA_VERSION,createdAt:now,createdBy:{id:admin.id,name:admin.name,role:admin.role}};
+  const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);if(!admin||!profile)return Response.json({error:"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});
+  const now=new Date().toISOString(),rowCounts:Record<string,number>={},snapshot:Record<string,unknown>={formatVersion:BACKUP_FORMAT_VERSION,schemaVersion:SCHEMA_VERSION,createdAt:now,createdBy:{id:admin.id,name:admin.name,role:admin.role},requestedFromProfile:profile.id};
   for(const table of tables){const rows=(await env.DB.prepare(`SELECT * FROM ${table}`).all()).results;snapshot[table]=rows;rowCounts[table]=rows.length}
   snapshot.rowCounts=rowCounts;
   const payload=JSON.stringify(snapshot),checksum=hex(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(payload))),key=`snapshots/${now.replaceAll(":","-")}-${crypto.randomUUID()}.json`;
