@@ -1,6 +1,6 @@
 {
-  "name": "site-creator-vinext-starter",
-  "version": "0.1.0",
+  "name": "vereinskasse-sv-barver",
+  "version": "1.0.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -9,8 +9,9 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/event-dialog.test.mjs tests/bundles.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "test": "npm run check:migrations && npm run build && node --test tests/rendered-html.test.mjs tests/event-dialog.test.mjs tests/bundles.test.mjs tests/futureproof.test.mjs",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work",
+    "check:migrations": "node scripts/check-migrations.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

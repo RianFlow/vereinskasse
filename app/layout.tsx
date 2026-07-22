@@ -22,6 +22,7 @@ import "./bundles.css";
 import "./profiles.css";
 import "./profiles-dialog.css";
 import "./brand.css";
+import "./system.css";
 
 export const metadata: Metadata = {
   title: "Vereinskasse · SV Barver Darts",
