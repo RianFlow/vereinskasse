@@ -30,3 +30,11 @@ test("erstellt eine einfache Liste aus Name und offenem Betrag",async()=>{
   assert.ok(monthly.includes("Offener Betrag"));
   assert.ok(style.includes(".open-list-rows"));
 });
+
+test("nimmt die letzte Buchung sicher und nachvollziehbar zurück",async()=>{
+  const [page,data,style]=await Promise.all([read("app/page.tsx"),read("app/api/data/route.ts"),read("app/undo.css")]);
+  for(const feature of ["Rückgängig","undoLastSale","vereinskasse-pending-","undoToken","Buchung zurückgenommen"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  for(const feature of ["export async function PATCH","Sofort rückgängig","SALE_UNDONE","Date.now()-created>30000","round_claims","reversals/"])assert.ok(data.includes(feature),`${feature} fehlt`);
+  assert.ok(data.includes("-Number(allocation.amount)"),"Gegenbuchung für offene Konten fehlt");
+  assert.ok(style.includes("animation:undo-window 10s"));
+});

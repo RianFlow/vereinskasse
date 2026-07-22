@@ -1,0 +1,11 @@
+.toast.undo-toast{width:min(520px,calc(100vw - 28px));display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;padding:14px 16px 18px;overflow:hidden;z-index:100}
+.undo-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.undo-copy strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.undo-copy small{font-size:13px;opacity:.8;font-weight:700}
+.undo-toast button{border:0;border-radius:10px;background:#fff;color:#173b32;padding:11px 14px;font-weight:900;white-space:nowrap}
+.undo-toast button:disabled{opacity:.65}
+.undo-progress{position:absolute;left:0;bottom:0;height:4px;width:100%;background:#7dd3ae;transform-origin:left;animation:undo-window 10s linear forwards}
+.app.dark .undo-toast button{background:#173b32;color:#f0faf5}
+.app.dark .undo-progress{background:#2e8065}
+@keyframes undo-window{to{transform:scaleX(0)}}
+@media(max-width:520px){.toast.undo-toast{grid-template-columns:1fr;gap:10px}.undo-toast button{width:100%}}
