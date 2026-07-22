@@ -50,3 +50,11 @@ test("stellt vergessene Profil-PINs im 2-aus-3-Verfahren wieder her",async()=>{
   assert.ok(schema.includes("profileRecoveryKeys")&&migration.includes("profile_recovery_keys"));
   assert.ok(backup.includes("SCHEMA_VERSION=15")&&backup.includes('"profile_recovery_keys"'));
 });
+
+test("teilt den Adminbereich in übersichtliche Tablet-Bereiche",async()=>{
+  const [page,style]=await Promise.all([read("app/page.tsx"),read("app/admin-sections.css")]);
+  for(const feature of ["admin-section-nav","adminSection","Übersicht","Artikel & Preise","Veranstaltungen","Abrechnung","Mitglieder","Sicherheit & Profile","SCHNELLZUGRIFF"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  for(const section of ['adminSection==="overview"','adminSection==="products"','adminSection==="events"','adminSection==="billing"','adminSection==="members"','adminSection==="security"'])assert.ok(page.includes(section),`${section} fehlt`);
+  assert.ok(style.includes("position:sticky"));
+  assert.ok(style.includes("overflow-x:auto"));
+});
