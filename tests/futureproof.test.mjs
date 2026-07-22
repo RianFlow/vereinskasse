@@ -89,3 +89,11 @@ test("verwendet tabletfreundliche Zahlenfelder mit großen Schritten und Ziffern
   assert.ok(style.includes("grid-template-columns:44px")&&style.includes("touch-action:manipulation"));
   assert.ok(!page.includes('type="number"'),"Kleine Browser-Zahlenfelder sind noch vorhanden");
 });
+
+test("zeigt Bestellung, Summe und häufige Bezahlarten wie eine direkte Kasse",async()=>{
+  const [page,style]=await Promise.all([read("app/page.tsx"),read("app/direct-checkout.css")]);
+  for(const feature of ["AKTUELLER BON","ZU ZAHLEN","DIREKT ANSCHREIBEN","Bar zahlen","Aufteilen","Tageskonto"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes('setOperator(activeMember)'),"Angemeldeter Kassendienst kann nicht direkt fortfahren");
+  assert.ok(!page.includes("Weitere Aktionen"),"Häufige Bezahlarten sind noch versteckt");
+  for(const feature of ["direct-payment-grid","pos-total","position:sticky","min-height:78px"])assert.ok(style.includes(feature),`${feature} fehlt`);
+});

@@ -28,6 +28,8 @@ import "./undo.css";
 import "./recovery.css";
 import "./admin-sections.css";
 import "./tablet-number.css";
+import "./direct-checkout.css";
+import "./checkout-future.css";
 
 export const metadata: Metadata = {
   title: "Vereinskasse · SV Barver Darts",
