@@ -58,3 +58,18 @@ test("teilt den Adminbereich in übersichtliche Tablet-Bereiche",async()=>{
   assert.ok(style.includes("position:sticky"));
   assert.ok(style.includes("overflow-x:auto"));
 });
+
+test("ist als Vollbild-Web-App auf Tablets installierbar",async()=>{
+  const [manifestText,layout,icon192,icon512]=await Promise.all([read("public/manifest.webmanifest"),read("app/layout.tsx"),readFile(new URL("../public/app-icon-192.png",import.meta.url)),readFile(new URL("../public/app-icon-512.png",import.meta.url))]);
+  const manifest=JSON.parse(manifestText);
+  assert.equal(manifest.name,"Vereinskasse · SV Barver Darts");
+  assert.equal(manifest.short_name,"Vereinskasse");
+  assert.equal(manifest.start_url,"/");
+  assert.equal(manifest.display,"standalone");
+  assert.equal(manifest.prefer_related_applications,false);
+  assert.ok(manifest.icons.some(icon=>icon.sizes==="192x192"&&icon.src==="/app-icon-192.png"));
+  assert.ok(manifest.icons.some(icon=>icon.sizes==="512x512"&&icon.src==="/app-icon-512.png"));
+  assert.deepEqual([icon192.readUInt32BE(16),icon192.readUInt32BE(20)],[192,192]);
+  assert.deepEqual([icon512.readUInt32BE(16),icon512.readUInt32BE(20)],[512,512]);
+  for(const feature of ["manifest.webmanifest","appleWebApp","apple-touch-icon.png","viewportFit"])assert.ok(layout.includes(feature),`${feature} fehlt`);
+});

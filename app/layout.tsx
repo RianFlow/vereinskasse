@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./identity.css";
 import "./allocation.css";
@@ -31,11 +31,32 @@ import "./admin-sections.css";
 export const metadata: Metadata = {
   title: "Vereinskasse · SV Barver Darts",
   description: "Die einfache, tabletfreundliche Kasse für den SV Barver Darts.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "Vereinskasse",
+  icons: {
+    icon: [
+      { url: "/app-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/app-icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Vereinskasse",
+    statusBarStyle: "black-translucent",
+  },
   openGraph: {
     title: "Vereinskasse · SV Barver Darts",
     description: "Vereinsabend, Veranstaltungen und Monatsabrechnungen für den SV Barver Darts.",
     images: ["/og.png"],
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#173b32",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
