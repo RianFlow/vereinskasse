@@ -2,11 +2,13 @@ import { env } from "cloudflare:workers";
 
 export type ActiveProfile={id:string;name:string;shortName:string;color:string;mustChangePin:boolean};
 const cookieName="vereinskasse_profile_session";
+export const legacyBootstrapPinHash="be2b52436b122cae1d2e8c01a57ac76d57dbe204c0a0d7cec8cd849ac9575532";
+export const compatibleBootstrapPinHash="6b66aa5e7bc6b477017b074f7ca5b694bfc0b287279f5011187b7d22b39537f1";
 
 const hex=(bytes:ArrayBuffer)=>[...new Uint8Array(bytes)].map(value=>value.toString(16).padStart(2,"0")).join("");
 export async function hashProfilePin(pin:string,salt:string){
   const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveBits"]);
-  return hex(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(salt),iterations:120000},key,256));
+  return hex(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(salt),iterations:100000},key,256));
 }
 export function randomSalt(){const bytes=crypto.getRandomValues(new Uint8Array(16));return [...bytes].map(value=>value.toString(16).padStart(2,"0")).join("")}
 export async function activeProfile(request:Request):Promise<ActiveProfile|null>{

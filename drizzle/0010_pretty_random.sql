@@ -30,7 +30,7 @@ ALTER TABLE `rounds` ADD `profile_id` text DEFAULT 'darts' NOT NULL;--> statemen
 ALTER TABLE `sales` ADD `profile_id` text DEFAULT 'darts' NOT NULL;--> statement-breakpoint
 ALTER TABLE `shifts` ADD `profile_id` text DEFAULT 'darts' NOT NULL;
 --> statement-breakpoint
-INSERT INTO `profiles` (`id`,`name`,`short_name`,`color`,`pin_salt`,`pin_hash`,`must_change_pin`,`failed_attempts`,`active`,`created_at`,`updated_at`) VALUES ('darts','SV Barver Darts','Darts','#1d5b4c','7a7660fbafa3e00107ef1609dc6b19c3','be2b52436b122cae1d2e8c01a57ac76d57dbe204c0a0d7cec8cd849ac9575532',1,0,1,'2026-07-21T00:00:00.000Z','2026-07-21T00:00:00.000Z');
+INSERT INTO `profiles` (`id`,`name`,`short_name`,`color`,`pin_salt`,`pin_hash`,`must_change_pin`,`failed_attempts`,`active`,`created_at`,`updated_at`) VALUES ('darts','SV Barver Darts','Darts','#1d5b4c','7a7660fbafa3e00107ef1609dc6b19c3','6b66aa5e7bc6b477017b074f7ca5b694bfc0b287279f5011187b7d22b39537f1',1,0,1,'2026-07-21T00:00:00.000Z','2026-07-21T00:00:00.000Z');
 --> statement-breakpoint
 CREATE INDEX `products_profile_idx` ON `products` (`profile_id`);
 --> statement-breakpoint
