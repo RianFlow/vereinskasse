@@ -22,3 +22,11 @@ test("erstellt prüfbare und herunterladbare Vollsicherungen",async()=>{
   assert.ok(data.includes("saleAllocations.profileId"));
   assert.ok(data.includes("roundClaims.profileId"));
 });
+
+test("erstellt eine einfache Liste aus Name und offenem Betrag",async()=>{
+  const [page,monthly,style]=await Promise.all([read("app/page.tsx"),read("app/api/monthly/route.ts"),read("app/openlist.css")]);
+  for(const feature of ["Einfache Zechenliste","Liste kopieren","Liste drucken","copyOpenList","openPeople"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(monthly.includes('url.searchParams.get("list")==="1"'));
+  assert.ok(monthly.includes("Offener Betrag"));
+  assert.ok(style.includes(".open-list-rows"));
+});
