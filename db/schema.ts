@@ -4,6 +4,7 @@ export const products = sqliteTable("products", {
   id: integer("id").primaryKey(), name: text("name").notNull(), price: real("price").notNull(),
   profileId: text("profile_id").notNull().default("darts"),
   memberPrice: real("member_price"),
+  includedItemsJson: text("included_items_json").notNull().default("[]"),
   icon: text("icon").notNull(), category: text("category").notNull(), color: text("color").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

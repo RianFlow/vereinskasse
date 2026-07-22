@@ -18,6 +18,7 @@ import "./guests-hierarchy.css";
 import "./monthly.css";
 import "./events.css";
 import "./event-dialog.css";
+import "./bundles.css";
 import "./profiles.css";
 import "./profiles-dialog.css";
 import "./brand.css";
