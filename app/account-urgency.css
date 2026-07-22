@@ -1,0 +1,54 @@
+.account-overview.has-guest-debt{
+  background:linear-gradient(120deg,#9d3f2d,#713024);
+  box-shadow:0 0 0 3px #ffb19a,0 16px 34px #46170f55;
+}
+.account-overview.has-overdue-debt{
+  background:linear-gradient(120deg,#8a5a16,#634311);
+  box-shadow:0 0 0 2px #e9bd65,0 14px 30px #3c270d55;
+}
+.account-overview.has-guest-debt .account-overview-icon,
+.account-overview.has-overdue-debt .account-overview-icon{font-size:28px;font-weight:950}
+.account-preview .urgent{font-weight:950;letter-spacing:.04em}
+.account-preview .urgent.guest{color:#ffe0d6}
+.account-preview .urgent.overdue{color:#ffe6a9}
+.open-account-list>button.guest,
+.accounts-panel>div.guest{
+  background:#fff0eb;
+  border:2px solid #e98265;
+  border-radius:10px;
+  padding:10px;
+}
+.open-account-list>button.overdue,
+.accounts-panel>div.overdue{
+  background:#fff7e4;
+  border:1px solid #e1b55a;
+  border-radius:10px;
+  padding:10px;
+}
+.open-account-list>button.guest .account-avatar{background:#b44630;color:#fff}
+.open-account-list>button.overdue .account-avatar{background:#9a681d;color:#fff}
+.open-total.guest,.account-payment-status.guest{background:#fff0eb;color:#9b3928}
+.open-total.overdue,.account-payment-status.overdue{background:#fff7df;color:#805413}
+.account-kind.guest{background:#b44630!important;color:#fff!important}
+.account-kind.overdue{background:#a77220!important;color:#fff!important}
+.account-kind.member{background:#dcebe5!important;color:#28483e!important}
+.accounts-panel>div>span{display:grid;gap:3px}
+.accounts-panel>div>span small{font-size:11px;font-weight:750;color:#5e665f}
+.account-payment-status{
+  border-radius:9px;
+  padding:10px 12px;
+  margin:-8px 0 14px;
+  font-size:12px;
+  font-weight:950;
+}
+.account-payment-status.member{background:#e8f3ee;color:#315b4d}
+html.dark .open-account-list>button.guest,
+html.dark .accounts-panel>div.guest{background:#4d241d;border-color:#e98265}
+html.dark .open-account-list>button.overdue,
+html.dark .accounts-panel>div.overdue{background:#443315;border-color:#b98531}
+html.dark .open-total.guest,html.dark .account-payment-status.guest{background:#4d241d;color:#ffb7a3}
+html.dark .open-total.overdue,html.dark .account-payment-status.overdue{background:#443315;color:#ffd886}
+@media(max-width:720px){
+  .account-preview .urgent{font-size:10px}
+  .accounts-panel>div.guest,.accounts-panel>div.overdue{padding:12px 9px}
+}

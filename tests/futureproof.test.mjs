@@ -105,3 +105,11 @@ test("nutzt standardmäßig Mitgliedspreise und bietet Nichtmitglied erst beim B
   assert.ok(page.includes("setCart({});setMemberPricing(true)"),"Preisart wird nach einer Buchung nicht zurückgesetzt");
   assert.ok(style.includes(".price-mode-switch")&&style.includes("active.non-member"));
 });
+
+test("priorisiert offene Nichtmitglieder und markiert Mitgliedskonten nach einem Monat",async()=>{
+  const [page,style,layout]=await Promise.all([read("app/page.tsx"),read("app/account-urgency.css"),read("app/layout.tsx")]);
+  for(const feature of ["AccountUrgency","accountOpenSince","Nichtmitglied · bitte zeitnah abrechnen","seit über 1 Monat offen","fällig bis","has-guest-debt","sortedAccounts"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes("30*24*60*60*1000"),"Monatsfrist fehlt");
+  for(const feature of [".account-overview.has-guest-debt",".open-account-list>button.guest",".accounts-panel>div.overdue",".account-payment-status"])assert.ok(style.includes(feature),`${feature} fehlt`);
+  assert.ok(layout.includes('import "./account-urgency.css"'));
+});
