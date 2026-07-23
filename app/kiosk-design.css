@@ -1,0 +1,274 @@
+.screen-title{display:none}
+
+.app.kiosk-design.dark{
+  --kiosk-orange:#ff9800;
+  --kiosk-bg:#201f21;
+  --kiosk-bar:#353236;
+  --kiosk-tile:#454247;
+  --kiosk-tile-hover:#504c52;
+  --kiosk-line:#565158;
+  --cream:var(--kiosk-bg);
+  --line:var(--kiosk-line);
+  background:var(--kiosk-bg);
+  color:#f7f6f7;
+}
+
+.app.kiosk-design.dark header{
+  position:relative;
+  height:64px;
+  padding:0 18px 0 22px;
+  background:var(--kiosk-bar);
+  border:0;
+  border-left:8px solid var(--kiosk-orange);
+  box-shadow:0 2px 10px #0006;
+}
+.app.kiosk-design.dark .brand{min-width:260px}
+.app.kiosk-design.dark .brand-logo,
+.app.kiosk-design.dark .profile-mark{
+  width:44px;
+  height:44px;
+  border-radius:2px;
+  background:#282629;
+}
+.app.kiosk-design.dark .brand-logo img{width:42px;height:42px}
+.app.kiosk-design.dark .brand strong{font-size:17px;text-transform:uppercase;letter-spacing:.02em}
+.app.kiosk-design.dark .brand small,
+.app.kiosk-design.dark .profile-switch{color:#c7c3c8}
+.app.kiosk-design.dark .screen-title{
+  position:absolute;
+  left:50%;
+  display:block;
+  transform:translateX(-50%);
+  font-weight:800;
+  color:#f4f2f4;
+}
+.app.kiosk-design.dark .header-actions{gap:8px}
+.app.kiosk-design.dark .status,
+.app.kiosk-design.dark .member-login,
+.app.kiosk-design.dark .member-session,
+.app.kiosk-design.dark .theme-toggle,
+.app.kiosk-design.dark .mode{
+  min-height:42px;
+  border:1px solid #5b565d;
+  border-radius:2px;
+  background:#454146;
+  color:#fff;
+}
+.app.kiosk-design.dark .status{background:#2e3c34;border-color:#46574d}
+.app.kiosk-design.dark .mode{background:var(--kiosk-orange);border-color:var(--kiosk-orange);color:#1d1812}
+
+.app.kiosk-design.dark .pos{
+  grid-template-columns:minmax(0,1fr) 430px;
+  min-height:calc(100vh - 64px);
+  background:var(--kiosk-bg);
+}
+.app.kiosk-design.dark .catalog,
+.app.kiosk-design.dark .admin{background:var(--kiosk-bg)}
+.app.kiosk-design.dark .catalog{padding:26px 28px}
+.app.kiosk-design.dark h1,
+.app.kiosk-design.dark h2,
+.app.kiosk-design.dark h3{font-family:Arial,Helvetica,sans-serif}
+.app.kiosk-design.dark .title-row h1{font-size:27px}
+.app.kiosk-design.dark .eyebrow{color:#aaa5ab}
+
+.app.kiosk-design.dark .operation-switch{
+  max-width:620px;
+  gap:2px;
+  padding:0;
+  border:1px solid var(--kiosk-line);
+  border-radius:2px;
+  background:#302e31;
+}
+.app.kiosk-design.dark .operation-switch button{border-radius:0;padding:13px 16px}
+.app.kiosk-design.dark .operation-switch button.active{
+  background:var(--kiosk-orange);
+  color:#211b13;
+  box-shadow:none;
+}
+
+.app.kiosk-design.dark .selected-customer,
+.app.kiosk-design.dark .selected-customer.empty-customer,
+.app.kiosk-design.dark .account-overview,
+.app.kiosk-design.dark .active-event-banner,
+.app.kiosk-design.dark .trust-list,
+.app.kiosk-design.dark .open-rounds{
+  border:1px solid var(--kiosk-line);
+  border-radius:2px;
+  background:#302e31;
+}
+.app.kiosk-design.dark .selected-customer{border-left:5px solid var(--kiosk-orange)}
+.app.kiosk-design.dark .selected-customer button,
+.app.kiosk-design.dark .account-overview>button{border-radius:2px}
+.app.kiosk-design.dark .quick-product-row button{
+  min-height:62px;
+  border:1px solid var(--kiosk-line);
+  border-radius:2px;
+  background:var(--kiosk-tile);
+}
+.app.kiosk-design.dark .filters{gap:2px}
+.app.kiosk-design.dark .filters button{
+  border:1px solid var(--kiosk-line);
+  border-radius:2px;
+  background:#363337;
+  color:#ddd9de;
+}
+.app.kiosk-design.dark .filters button.active{
+  background:var(--kiosk-orange);
+  border-color:var(--kiosk-orange);
+  color:#211b13;
+}
+.app.kiosk-design.dark .grid{
+  grid-template-columns:repeat(4,minmax(135px,1fr));
+  gap:12px;
+}
+.app.kiosk-design.dark .product{
+  min-height:168px;
+  border:1px solid var(--kiosk-line);
+  border-radius:2px;
+  background:var(--kiosk-tile);
+  box-shadow:0 3px 8px #0003;
+}
+.app.kiosk-design.dark .product:hover{background:var(--kiosk-tile-hover)}
+.app.kiosk-design.dark .product:before{
+  height:5px;
+  border-radius:0;
+  background:var(--tile);
+  opacity:1;
+}
+.app.kiosk-design.dark .product-icon{
+  width:58px;
+  height:58px;
+  border:1px solid #625e64;
+  border-radius:2px;
+  background:#39363a;
+}
+.app.kiosk-design.dark .product-name{text-transform:uppercase;font-size:15px}
+.app.kiosk-design.dark .price{color:#fff}
+.app.kiosk-design.dark .badge{background:var(--kiosk-orange);color:#211b13}
+
+.app.kiosk-design.dark .cart{
+  border-left:1px solid #575258;
+  background:#2d2b2e;
+}
+.app.kiosk-design.dark .cart-head{
+  min-height:78px;
+  background:#252426;
+  border-bottom:1px solid #575258;
+}
+.app.kiosk-design.dark .cart-items{background:#2d2b2e}
+.app.kiosk-design.dark .line{border-color:#4b474d}
+.app.kiosk-design.dark .mini,
+.app.kiosk-design.dark .stepper{border-radius:2px;background:#444146}
+.app.kiosk-design.dark .checkout{background:#262527;border-color:#575258}
+.app.kiosk-design.dark .price-mode-switch{border-radius:2px}
+.app.kiosk-design.dark .price-mode-switch button{border-radius:2px}
+.app.kiosk-design.dark .pos-total{
+  border-radius:2px;
+  background:#151416;
+  border-left:6px solid var(--kiosk-orange);
+}
+.app.kiosk-design.dark .pos-total strong{color:var(--kiosk-orange)}
+.app.kiosk-design.dark .direct-main,
+.app.kiosk-design.dark .direct-payment-grid .pay,
+.app.kiosk-design.dark .checkout-future{border-radius:2px}
+.app.kiosk-design.dark .account-direct{background:var(--kiosk-orange);color:#211b13}
+.app.kiosk-design.dark .direct-payment-grid .cash{background:#4b765f}
+.app.kiosk-design.dark .direct-payment-grid .split-pay{background:#b47725;color:#fff}
+.app.kiosk-design.dark .direct-payment-grid .guest-pay{background:#456579}
+
+.app.kiosk-design.dark .admin{
+  max-width:none;
+  margin:0;
+  padding:25px 32px 50px;
+}
+.app.kiosk-design.dark .admin-section-nav{
+  position:relative;
+  top:auto;
+  z-index:1;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(145px,172px));
+  justify-content:start;
+  gap:14px;
+  margin:0 0 28px;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  backdrop-filter:none;
+}
+.app.kiosk-design.dark .admin-section-nav button{
+  min-height:138px;
+  border:1px solid var(--kiosk-line);
+  border-radius:2px;
+  background:var(--kiosk-tile);
+  color:#fff;
+  flex-direction:column;
+  gap:12px;
+  box-shadow:0 4px 10px #0003;
+}
+.app.kiosk-design.dark .admin-section-nav button:hover{background:var(--kiosk-tile-hover)}
+.app.kiosk-design.dark .admin-section-nav button>span{
+  width:58px;
+  height:58px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  color:#fff;
+  font-size:36px;
+}
+.app.kiosk-design.dark .admin-section-nav button>strong{
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.035em;
+}
+.app.kiosk-design.dark .admin-section-nav button.active{
+  background:var(--kiosk-orange);
+  border-color:var(--kiosk-orange);
+  color:#201a12;
+  box-shadow:0 4px 12px #0004;
+}
+.app.kiosk-design.dark .admin-section-nav button.active>span{background:transparent;color:#201a12}
+.app.kiosk-design.dark .admin-title{
+  padding:18px 0;
+  border-top:1px solid #4b474d;
+  border-bottom:1px solid #4b474d;
+}
+.app.kiosk-design.dark .admin-title>div>p:last-child{color:#b8b3b9}
+.app.kiosk-design.dark .stats article,
+.app.kiosk-design.dark .panel{
+  border:1px solid var(--kiosk-line);
+  border-radius:2px;
+  background:#39363a;
+  box-shadow:0 3px 9px #0002;
+}
+.app.kiosk-design.dark .stats strong{color:var(--kiosk-orange)}
+.app.kiosk-design.dark .overview-actions button{
+  min-height:86px;
+  border-radius:2px;
+  background:var(--kiosk-tile);
+}
+.app.kiosk-design.dark .overview-actions button>span{border-radius:2px;background:var(--kiosk-orange);color:#201a12}
+
+@media(max-width:1100px){
+  .app.kiosk-design.dark .screen-title{display:none}
+  .app.kiosk-design.dark .grid{grid-template-columns:repeat(3,1fr)}
+  .app.kiosk-design.dark .status{display:none}
+}
+@media(max-width:800px){
+  .app.kiosk-design.dark header{height:64px;padding-left:12px}
+  .app.kiosk-design.dark .brand{min-width:0}
+  .app.kiosk-design.dark .brand>div{display:none}
+  .app.kiosk-design.dark .catalog{padding:20px 14px}
+  .app.kiosk-design.dark .pos{grid-template-columns:1fr}
+  .app.kiosk-design.dark .grid{grid-template-columns:repeat(2,1fr)}
+  .app.kiosk-design.dark .admin{padding:18px 14px 40px}
+  .app.kiosk-design.dark .admin-section-nav{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    overflow:visible;
+    margin:0 0 22px;
+    padding:0;
+  }
+  .app.kiosk-design.dark .admin-section-nav button{min-height:118px}
+}

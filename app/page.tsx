@@ -153,9 +153,10 @@ export default function Home() {
 
   if(profileLoading)return <main className="profile-loading"><span>⌛</span><strong>Vereinskasse wird vorbereitet</strong></main>;
   if(!activeProfile)return <ProfileGate profiles={profiles}/>;
-  return <MembersContext.Provider value={clubMembers}><main className={`app ${darkMode ? "dark" : "light"}`} style={{"--green":activeProfile.color} as React.CSSProperties}>
+  return <MembersContext.Provider value={clubMembers}><main className={`app kiosk-design ${darkMode ? "dark" : "light"}`} style={{"--green":activeProfile.color} as React.CSSProperties}>
     <header>
       <div className="brand">{activeProfile.id==="darts"?<span className="brand-logo"><Image src="/sv-barver-darts.png" alt="Logo SV Barver Darts" width={52} height={52} priority unoptimized/></span>:<span className="profile-mark" style={{background:activeProfile.color}}>{activeProfile.shortName.slice(0,2).toUpperCase()}</span>}<div><strong>Vereinskasse</strong><button className="profile-switch" onClick={async()=>{await fetch("/api/profile-session",{method:"DELETE"});location.reload()}}>{activeProfile.name} <span>wechseln</span></button></div></div>
+      <span className="screen-title">{view==="admin"?"Hauptmenü":operationMode==="club"?"Vereinsabend":"Veranstaltung"}</span>
       <div className="header-actions"><span className={`status ${storageState}`}><i /> {storageState === "online" ? "Zentral gespeichert" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span>{view==="kasse"&&(activeMember?<button className="member-session" onClick={()=>setMemberPrompt(true)}><span>{activeMember.initials}</span><div><small>Angemeldet</small><strong>{activeMember.name}</strong></div></button>:<button className="member-login" onClick={()=>setMemberPrompt(true)}>◉ Mitglied anmelden</button>)}<button className="theme-toggle" onClick={()=>setDarkMode(v=>!v)} aria-label={darkMode ? "Hellen Modus einschalten" : "Dunklen Modus einschalten"} title={darkMode ? "Heller Modus" : "Darkmode"}>{darkMode ? "☀" : "☾"}</button><button className="mode" onClick={() => {if(view==="admin")setView("kasse");else setAdminPrompt(true)}}>{view === "kasse" ? "⚙ Admin" : "← Zur Kasse"}</button></div>
     </header>
 

@@ -99,6 +99,13 @@ test("zeigt Bestellung, Summe und häufige Bezahlarten wie eine direkte Kasse",a
   assert.ok(page.includes("Betrag aufteilen")&&page.includes("club-payments"),"Betrag aufteilen fehlt beim Vereinsabend");
 });
 
+test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",async()=>{
+  const [page,layout,style]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/kiosk-design.css")]);
+  for(const feature of ["kiosk-design","screen-title","Hauptmenü"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(layout.includes('import "./kiosk-design.css"'));
+  for(const feature of ["--kiosk-orange:#ff9800","admin-section-nav","min-height:138px","product","pos-total"])assert.ok(style.includes(feature),`${feature} fehlt`);
+});
+
 test("nutzt standardmäßig Mitgliedspreise und bietet Nichtmitglied erst beim Bezahlen an",async()=>{
   const [page,style]=await Promise.all([read("app/page.tsx"),read("app/price-mode.css")]);
   assert.ok(page.includes("[memberPricing,setMemberPricing]=useState(true)"),"Mitgliedspreis ist nicht der Standard");
