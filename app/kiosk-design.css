@@ -94,6 +94,10 @@
   color:#211b13;
   box-shadow:none;
 }
+.app.kiosk-design.dark .operation-switch{max-width:460px;margin:10px 0 13px;padding:2px}
+.app.kiosk-design.dark .operation-switch button{min-height:44px;padding:7px 11px}
+.app.kiosk-design.dark .operation-switch strong{font-size:13px}
+.app.kiosk-design.dark .operation-switch small{font-size:10px}
 
 .app.kiosk-design.dark .selected-customer,
 .app.kiosk-design.dark .selected-customer.empty-customer,
@@ -160,7 +164,7 @@
 .guest-debt-strip{
   width:100%;
   min-height:42px;
-  margin:10px 0 14px;
+  margin:0 0 14px;
   padding:8px 12px;
   border:1px solid #e2a448;
   border-left:5px solid #e19016;
