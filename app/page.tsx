@@ -239,27 +239,126 @@ function MemberSessionDialog({current,onClose,onSelect}:{current:Member|null;onC
 
 function IdentityDialog({ method, onClose, onVerified }: { method: string; onClose: () => void; onVerified: (m: Member) => void }) {
   const adminLogin=method==="Adminbereich";
-  const [mode, setMode] = useState<"nfc" | "qr" | "manual">(adminLogin?"manual":"nfc");
+  const availableAdmins=useContext(MembersContext).filter(member=>member.role==="Vorstand"&&member.active!==false);
+  const [selectedAdminId,setSelectedAdminId]=useState<string|null>(null);
+  const selectedAdmin=availableAdmins.find(member=>member.id===selectedAdminId)||null;
+  const [mode,setMode]=useState<"nfc"|"qr"|"manual">(adminLogin?"manual":"nfc");
   const [showCardLogin,setShowCardLogin]=useState(!adminLogin);
-  const [code, setCode] = useState("");
-  const [message, setMessage] = useState(adminLogin?"Admin-Code eingeben":"Karte oder Chip an den Leser halten");
-  const verify = async(value: string) => {
-    if(value.trim().length<5)return;setMessage("Kennung wird geprüft …");try{const r=await fetch("/api/identify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code:value.trim()})});const d=await r.json();if(!r.ok)throw new Error(d.error);setMessage(`✓ ${d.member.name} erkannt`);setTimeout(()=>onVerified(d.member),350)}catch(e){setMessage(e instanceof Error?e.message:"Code nicht bekannt – bitte erneut versuchen")}
+  const [code,setCode]=useState("");
+  const [message,setMessage]=useState(adminLogin?"Zuerst deinen Namen auswählen":"Karte oder Chip an den Leser halten");
+
+  const verify=async(value:string)=>{
+    if(value.trim().length<5||adminLogin&&!selectedAdminId)return;
+    setMessage("Code wird geprüft …");
+    try{
+      const response=await fetch("/api/identify",{
+        method:"POST",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({code:value.trim(),...(adminLogin?{memberId:selectedAdminId}:{})})
+      });
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error);
+      setMessage("✓ "+data.member.name+" erkannt");
+      setTimeout(()=>onVerified(data.member),350);
+    }catch(reason){
+      setMessage(reason instanceof Error?reason.message:"Code nicht bekannt – bitte erneut versuchen");
+    }
   };
-  const startNfc = async () => {
-    try {
-      const Reader = (window as unknown as { NDEFReader?: new () => { scan: () => Promise<void>; onreading: (e: { serialNumber?: string }) => void } }).NDEFReader;
-      if (!Reader) { setMessage("Externer Leser bereit – Karte auflegen oder Kennung eingeben"); return; }
-      const reader = new Reader(); await reader.scan(); setMessage("NFC aktiv – Chip jetzt auflegen"); reader.onreading = e => verify(e.serialNumber || "");
-    } catch { setMessage("NFC konnte nicht gestartet werden. Kennung bitte eingeben."); }
+
+  const startNfc=async()=>{
+    try{
+      const Reader=(window as unknown as {NDEFReader?:new()=>{scan:()=>Promise<void>;onreading:(event:{serialNumber?:string})=>void}}).NDEFReader;
+      if(!Reader){setMessage("Externer Leser bereit – Karte auflegen oder Code eingeben");return}
+      const reader=new Reader();
+      await reader.scan();
+      setMessage("NFC aktiv – Chip jetzt auflegen");
+      reader.onreading=event=>verify(event.serialNumber||"");
+    }catch{
+      setMessage("NFC konnte nicht gestartet werden. Code bitte eingeben.");
+    }
   };
+
+  const selectAdmin=(member:Member)=>{
+    setSelectedAdminId(member.id);
+    setCode("");
+    setShowCardLogin(false);
+    setMode("manual");
+    setMessage("Admin-Code eingeben");
+  };
+
+  const changeAdmin=()=>{
+    setSelectedAdminId(null);
+    setCode("");
+    setShowCardLogin(false);
+    setMode("manual");
+    setMessage("Zuerst deinen Namen auswählen");
+  };
+
+  const scanner=(
+    <>
+      <div className="id-tabs">
+        <button className={mode==="nfc"?"active":""} onClick={()=>setMode("nfc")}>◉ NFC</button>
+        <button className={mode==="qr"?"active":""} onClick={()=>setMode("qr")}>▦ QR-Code</button>
+        <button className={mode==="manual"?"active":""} onClick={()=>setMode("manual")}>⌨ Code</button>
+      </div>
+      <div className="scanner">
+        <div className="scan-rings"><i/><i/><span>{mode==="nfc"?"◉":mode==="qr"?"▦":"⌨"}</span></div>
+        <strong>{message}</strong>
+        <small>{mode==="nfc"?"Tablet-NFC oder externer Kartenleser":mode==="qr"?"QR-Code scannen oder Code eingeben":adminLogin?"Admin-Code sicher eingeben":"Mitgliedscode sicher eingeben"}</small>
+        {mode==="nfc"&&<button className="scan-start" onClick={startNfc}>NFC-Leser starten</button>}
+        <div className="code-entry">
+          <input
+            autoFocus={mode==="manual"}
+            type={adminLogin?"password":"text"}
+            autoComplete={adminLogin?"current-password":"off"}
+            placeholder={adminLogin?"Admin-Code":"Karten- oder QR-Code"}
+            value={code}
+            onChange={event=>setCode(event.target.value)}
+            onKeyDown={event=>{if(event.key==="Enter")verify(code)}}
+          />
+          <button onClick={()=>verify(code)}>Prüfen</button>
+        </div>
+      </div>
+    </>
+  );
+
   return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="identity-dialog-title"><div className="identity-card">
-    <button className="modal-close" aria-label="Fenster schließen" onClick={onClose}>×</button><div className="identity-icon">🔐</div><p className="eyebrow">{adminLogin?"ADMINBEREICH":method==="Mitglied anmelden"?"MITGLIED ANMELDEN":"BUCHUNG FREIGEBEN"}</p><h2 id="identity-dialog-title">{adminLogin?"Admin anmelden":"Identität bestätigen"}</h2><p className="identity-sub">{adminLogin?"Gib deinen persönlichen Admin-Code ein. Die Profil-PIN brauchst du hier nicht erneut.":method==="Mitglied anmelden"?"Einmal mit Karte, NFC oder QR-Code anmelden. Danach sind Einkäufe direkt möglich.":`Vor der Zahlung mit ${method} muss ein berechtigtes Vereinsmitglied erkannt werden.`}</p>
-    {adminLogin&&!showCardLogin?<div className="admin-code-login"><label>Admin-Code<input autoFocus type="password" autoComplete="current-password" value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")verify(code)}} placeholder="Deinen Admin-Code eingeben"/></label><p className="admin-login-message" role="status">{message}</p><button className="confirm-allocation" disabled={code.trim().length<5} onClick={()=>verify(code)}>Adminbereich öffnen</button><button className="alternate-login" onClick={()=>{setShowCardLogin(true);setMode("nfc");setMessage("Karte oder Chip an den Leser halten")}}>Stattdessen NFC oder QR verwenden</button></div>:<><div className="id-tabs"><button className={mode === "nfc" ? "active" : ""} onClick={() => setMode("nfc")}>◉ NFC</button><button className={mode === "qr" ? "active" : ""} onClick={() => setMode("qr")}>▦ QR-Code</button><button className={mode === "manual" ? "active" : ""} onClick={() => setMode("manual")}>⌨ Code</button></div><div className="scanner"><div className="scan-rings"><i/><i/><span>{mode === "nfc" ? "◉" : mode==="qr"?"▦":"⌨"}</span></div><strong>{message}</strong><small>{mode === "nfc" ? "Tablet-NFC oder externer Kartenleser" : mode==="qr"?"QR-Code scannen oder Code eingeben":adminLogin?"Admin-Code sicher eingeben":"Mitgliedscode sicher eingeben"}</small>{mode === "nfc" && <button className="scan-start" onClick={startNfc}>NFC-Leser starten</button>}<div className="code-entry"><input autoFocus={mode==="manual"} type={adminLogin?"password":"text"} autoComplete={adminLogin?"current-password":"off"} placeholder={adminLogin?"Admin-Code":"Karten- oder QR-Code"} value={code} onChange={e => setCode(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")verify(code)}} /><button onClick={() => verify(code)}>Prüfen</button></div></div>{adminLogin&&<button className="alternate-login" onClick={()=>{setShowCardLogin(false);setMode("manual");setMessage("Admin-Code eingeben")}}>Zurück zur Code-Eingabe</button>}</>}
-    <div className="privacy-note">{adminLogin?"🔒 Nur Hauptadmins und weitere Vorstands-Zugänge können den Adminbereich öffnen.":"🛡️ Mitgliedsnummer, Zeitpunkt und Zahlart werden der Buchung zugeordnet."}</div>
+    <button className="modal-close" aria-label="Fenster schließen" onClick={onClose}>×</button>
+    <div className="identity-icon">🔐</div>
+    <p className="eyebrow">{adminLogin?"ADMINBEREICH":method==="Mitglied anmelden"?"MITGLIED ANMELDEN":"BUCHUNG FREIGEBEN"}</p>
+    <h2 id="identity-dialog-title">{adminLogin?(selectedAdmin?"Admin-Code eingeben":"Wer meldet sich an?"):"Identität bestätigen"}</h2>
+    <p className="identity-sub">{adminLogin?(selectedAdmin?"Ausgewählt: "+selectedAdmin.name+". Gib jetzt deinen persönlichen Admin-Code ein.":"Wähle zuerst deinen Namen aus. Danach erscheint die Eingabe für deinen persönlichen Admin-Code."):method==="Mitglied anmelden"?"Einmal mit Karte, NFC oder QR-Code anmelden. Danach sind Einkäufe direkt möglich.":"Vor der Zahlung mit "+method+" muss ein berechtigtes Vereinsmitglied erkannt werden."}</p>
+
+    {adminLogin&&!selectedAdmin&&<div className="admin-person-picker">
+      {availableAdmins.map(member=><button key={member.id} onClick={()=>selectAdmin(member)}>
+        <span>{member.initials}</span>
+        <div><strong>{member.name}</strong><small>{availableAdmins.length===1?"Hauptadmin":"Vorstand"}</small></div>
+        <b>Auswählen ›</b>
+      </button>)}
+      {!availableAdmins.length&&<p>Es wurde noch kein aktiver Admin-Zugang gefunden.</p>}
+    </div>}
+
+    {adminLogin&&selectedAdmin&&<>
+      <div className="selected-admin">
+        <span>{selectedAdmin.initials}</span>
+        <div><strong>{selectedAdmin.name}</strong><small>{availableAdmins.length===1?"Hauptadmin":"Vorstand"}</small></div>
+        <button onClick={changeAdmin}>Person wechseln</button>
+      </div>
+      {!showCardLogin?<div className="admin-code-login">
+        <label>Admin-Code<input autoFocus type="password" autoComplete="current-password" value={code} onChange={event=>setCode(event.target.value)} onKeyDown={event=>{if(event.key==="Enter")verify(code)}} placeholder="Deinen Admin-Code eingeben"/></label>
+        <p className="admin-login-message" role="status">{message}</p>
+        <button className="confirm-allocation" disabled={code.trim().length<5} onClick={()=>verify(code)}>Adminbereich öffnen</button>
+        <button className="alternate-login" onClick={()=>{setShowCardLogin(true);setMode("nfc");setMessage("Karte oder Chip an den Leser halten")}}>Stattdessen NFC oder QR verwenden</button>
+      </div>:<>
+        {scanner}
+        <button className="alternate-login" onClick={()=>{setShowCardLogin(false);setMode("manual");setMessage("Admin-Code eingeben")}}>Zurück zur Code-Eingabe</button>
+      </>}
+    </>}
+
+    {!adminLogin&&scanner}
+    <div className="privacy-note">{adminLogin?"🔒 Erst Name wählen, dann mit dem persönlichen Admin-Code anmelden.":"🛡️ Mitgliedsnummer, Zeitpunkt und Zahlart werden der Buchung zugeordnet."}</div>
   </div></div>;
 }
-
 function AllocationDialog({ total,maxUnits,initialMember,operator,onClose,onConfirm }: { total:number;maxUnits:number;initialMember:Member|null;operator:Member;onClose:()=>void;onConfirm:(a:Allocation[],r?:RoundSpec)=>void }) {
   const members=useContext(MembersContext).filter(m=>m.active!==false);
   const [mode,setMode]=useState<"single"|"equal"|"custom"|"round">("single");

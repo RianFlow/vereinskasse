@@ -146,11 +146,13 @@ test("entfernt öffentliche Demo-Zugänge und richtet einmalig einen echten Admi
 });
 
 test("erklärt den Hauptadmin-Zugang verständlich und startet mit dem Admin-Code",async()=>{
-  const [page,style]=await Promise.all([read("app/page.tsx"),read("app/identity.css")]);
-  for(const feature of ["Admin-Zugang einrichten","Profil-PIN","Admin-Code","Adminbereich öffnen","Stattdessen NFC oder QR verwenden"])assert.ok(page.includes(feature),`${feature} fehlt`);
-  assert.ok(page.includes('useState<"nfc" | "qr" | "manual">(adminLogin?"manual":"nfc")'));
+  const [page,style,identify]=await Promise.all([read("app/page.tsx"),read("app/identity.css"),read("app/api/identify/route.ts")]);
+  for(const feature of ["Admin-Zugang einrichten","Profil-PIN","Admin-Code","Wer meldet sich an?","Person wechseln","Adminbereich öffnen","Stattdessen NFC oder QR verwenden"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes('useState<"nfc"|"qr"|"manual">(adminLogin?"manual":"nfc")'));
+  assert.ok(page.includes("selectedAdminId")&&page.includes("availableAdmins"));
+  assert.ok(identify.includes("memberId")&&identify.includes("Admin-Code passt nicht zum ausgewählten Namen"));
   assert.ok(!page.includes("Geheime Karten-/QR-Kennung"));
-  assert.ok(style.includes(".admin-code-login")&&style.includes(".access-explainer"));
+  assert.ok(style.includes(".admin-code-login")&&style.includes(".access-explainer")&&style.includes(".admin-person-picker"));
 });
 
 test("schützt Offline-Buchungen, Rundeneinlösung und Kassenabschluss",async()=>{
