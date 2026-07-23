@@ -65,13 +65,16 @@ test("ist als Vollbild-Web-App auf Tablets installierbar",async()=>{
   assert.equal(manifest.name,"Vereinskasse · SV Barver Darts");
   assert.equal(manifest.short_name,"Vereinskasse");
   assert.equal(manifest.start_url,"/");
-  assert.equal(manifest.display,"standalone");
+  assert.equal(manifest.display,"fullscreen");
+  assert.deepEqual(manifest.display_override,["fullscreen","standalone","minimal-ui"]);
   assert.equal(manifest.prefer_related_applications,false);
   assert.ok(manifest.icons.some(icon=>icon.sizes==="192x192"&&icon.src==="/app-icon-192.png"));
   assert.ok(manifest.icons.some(icon=>icon.sizes==="512x512"&&icon.src==="/app-icon-512.png"));
   assert.deepEqual([icon192.readUInt32BE(16),icon192.readUInt32BE(20)],[192,192]);
   assert.deepEqual([icon512.readUInt32BE(16),icon512.readUInt32BE(20)],[512,512]);
   for(const feature of ["manifest.webmanifest","appleWebApp","apple-touch-icon.png","viewportFit"])assert.ok(layout.includes(feature),`${feature} fehlt`);
+  const page=await read("app/page.tsx");
+  for(const feature of ["requestFullscreen","beforeinstallprompt","wakeLock","KioskHelpDialog","Vereinskasse als App öffnen","IconMaximize"])assert.ok(page.includes(feature),`${feature} fehlt`);
 });
 
 test("startet nach jeder manuellen Buchung ohne den vorherigen Namen",async()=>{
@@ -100,10 +103,14 @@ test("zeigt Bestellung, Summe und häufige Bezahlarten wie eine direkte Kasse",a
 });
 
 test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",async()=>{
-  const [page,layout,style]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/kiosk-design.css")]);
+  const [page,layout,style,icons,packageFile]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/kiosk-design.css"),read("app/ProductIcon.tsx"),read("package.json")]);
   for(const feature of ["kiosk-design","screen-title","Hauptmenü"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(layout.includes('import "./kiosk-design.css"'));
   for(const feature of ["--kiosk-orange:#ff9800","admin-section-nav","min-height:138px","product","pos-total"])assert.ok(style.includes(feature),`${feature} fehlt`);
+  for(const feature of ["productIconOptions","IconBeer","IconTargetArrow","IconBallFootball","IconGlassCocktail"])assert.ok(icons.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes("product-icon-picker")&&page.includes("<ProductIcon"));
+  for(const feature of ["brand-label-input","Kategorie oder Label","product-label"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(packageFile.includes("@tabler/icons-react"));
 });
 
 test("nutzt standardmäßig Mitgliedspreise und bietet Nichtmitglied erst beim Bezahlen an",async()=>{
@@ -115,10 +122,14 @@ test("nutzt standardmäßig Mitgliedspreise und bietet Nichtmitglied erst beim B
 });
 
 test("priorisiert offene Nichtmitglieder und markiert Mitgliedskonten nach einem Monat",async()=>{
-  const [page,style,layout]=await Promise.all([read("app/page.tsx"),read("app/account-urgency.css"),read("app/layout.tsx")]);
-  for(const feature of ["AccountUrgency","accountOpenSince","Nichtmitglied · bitte zeitnah abrechnen","seit über 1 Monat offen","fällig bis","has-guest-debt","sortedAccounts"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  const [page,style,layout,kioskStyle]=await Promise.all([read("app/page.tsx"),read("app/account-urgency.css"),read("app/layout.tsx"),read("app/kiosk-design.css")]);
+  for(const feature of ["AccountUrgency","accountOpenSince","Nichtmitglied · bitte zeitnah abrechnen","seit über 1 Monat offen","fällig bis","sortedAccounts"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(page.includes("30*24*60*60*1000"),"Monatsfrist fehlt");
-  for(const feature of [".account-overview.has-guest-debt",".open-account-list>button.guest",".accounts-panel>div.overdue",".account-payment-status"])assert.ok(style.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes("guestOpenAccounts")&&page.includes("guest-debt-strip"),"Schmaler Gastrechnungsstreifen fehlt");
+  assert.ok(page.includes("data={guestOpenAccounts}"),"Der Hinweis öffnet nicht ausschließlich Gastkonten");
+  assert.ok(!page.includes("overdueMemberAccounts"),"Mitgliedskonten werden noch im Startseitenhinweis geführt");
+  for(const feature of [".open-account-list>button.guest",".accounts-panel>div.overdue",".account-payment-status"])assert.ok(style.includes(feature),`${feature} fehlt`);
+  assert.ok(kioskStyle.includes(".guest-debt-strip")&&kioskStyle.includes("min-height:42px"),"Der Hinweis ist nicht als schmaler Streifen gestaltet");
   assert.ok(layout.includes('import "./account-urgency.css"'));
 });
 
