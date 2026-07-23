@@ -106,7 +106,7 @@ test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",asy
   const [page,layout,style,icons,packageFile]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/kiosk-design.css"),read("app/ProductIcon.tsx"),read("package.json")]);
   for(const feature of ["kiosk-design","screen-title","Hauptmenü"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(layout.includes('import "./kiosk-design.css"'));
-  for(const feature of ["--kiosk-orange:#ff9800","admin-section-nav","min-height:138px","product","pos-total"])assert.ok(style.includes(feature),`${feature} fehlt`);
+  for(const feature of ["--kiosk-orange:#ff9800","admin-section-nav","min-height:138px","product","pos-total","@media(min-width:1200px)","grid-template-columns:minmax(0,1fr) 225px","grid-row:1/3"])assert.ok(style.includes(feature),`${feature} fehlt`);
   for(const feature of ["productIconOptions","IconBeer","IconTargetArrow","IconBallFootball","IconGlassCocktail"])assert.ok(icons.includes(feature),`${feature} fehlt`);
   assert.ok(page.includes("product-icon-picker")&&page.includes("<ProductIcon"));
   for(const feature of ["brand-label-input","Kategorie oder Label","product-label"])assert.ok(page.includes(feature),`${feature} fehlt`);
@@ -121,10 +121,11 @@ test("nutzt standardmäßig Mitgliedspreise und bietet Nichtmitglied erst beim B
   assert.ok(style.includes(".price-mode-switch")&&style.includes("active.non-member"));
 });
 
-test("priorisiert offene Nichtmitglieder und markiert Mitgliedskonten nach einem Monat",async()=>{
+test("rechnet Mitglieder zum Monatsende ab und markiert sie erst nach dem 10. als überfällig",async()=>{
   const [page,style,layout,kioskStyle]=await Promise.all([read("app/page.tsx"),read("app/account-urgency.css"),read("app/layout.tsx"),read("app/kiosk-design.css")]);
-  for(const feature of ["AccountUrgency","accountOpenSince","Nichtmitglied · bitte zeitnah abrechnen","seit über 1 Monat offen","fällig bis","sortedAccounts"])assert.ok(page.includes(feature),`${feature} fehlt`);
-  assert.ok(page.includes("30*24*60*60*1000"),"Monatsfrist fehlt");
+  for(const feature of ["AccountUrgency","accountOpenSince","memberDueDate","Nichtmitglied · bitte zeitnah abrechnen","Abrechnung zum Monatsende","zahlbar bis 10. des Folgemonats","sortedAccounts"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes("booking.getMonth()+1,10,23,59,59,999"),"Fälligkeit zum 10. des Folgemonats fehlt");
+  assert.ok(!page.includes("30*24*60*60*1000"),"Alte rollierende 30-Tage-Frist ist noch aktiv");
   assert.ok(page.includes("guestOpenAccounts")&&page.includes("guest-debt-strip"),"Schmaler Gastrechnungsstreifen fehlt");
   assert.ok(page.includes("data={guestOpenAccounts}"),"Der Hinweis öffnet nicht ausschließlich Gastkonten");
   assert.ok(!page.includes("overdueMemberAccounts"),"Mitgliedskonten werden noch im Startseitenhinweis geführt");
