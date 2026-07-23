@@ -145,6 +145,14 @@ test("entfernt öffentliche Demo-Zugänge und richtet einmalig einen echten Admi
   assert.ok(membersRoute.includes('b.action==="bootstrap"')&&membersRoute.includes("PRIMARY_ADMIN_CREATED"));
 });
 
+test("erklärt den Hauptadmin-Zugang verständlich und startet mit dem Admin-Code",async()=>{
+  const [page,style]=await Promise.all([read("app/page.tsx"),read("app/identity.css")]);
+  for(const feature of ["Admin-Zugang einrichten","Profil-PIN","Admin-Code","Adminbereich öffnen","Stattdessen NFC oder QR verwenden"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes('useState<"nfc" | "qr" | "manual">(adminLogin?"manual":"nfc")'));
+  assert.ok(!page.includes("Geheime Karten-/QR-Kennung"));
+  assert.ok(style.includes(".admin-code-login")&&style.includes(".access-explainer"));
+});
+
 test("schützt Offline-Buchungen, Rundeneinlösung und Kassenabschluss",async()=>{
   const [page,data,rounds,control]=await Promise.all([read("app/page.tsx"),read("app/api/data/route.ts"),read("app/api/rounds/route.ts"),read("app/api/control/route.ts")]);
   assert.ok(page.includes("offlineQueuedAt")&&data.includes("rewardEligible"),"Offline-Verkäufe können noch unsichtbar Gewinne auslösen");
