@@ -85,8 +85,9 @@ test("startet nach jeder manuellen Buchung ohne den vorherigen Namen",async()=>{
 });
 
 test("verwendet tabletfreundliche Zahlenfelder mit großen Schritten und Zifferntastatur",async()=>{
-  const [page,pricing,field,style]=await Promise.all([read("app/page.tsx"),read("app/PricingPanel.tsx"),read("app/TabletNumberField.tsx"),read("app/tablet-number.css")]);
-  for(const feature of ["Getränke oder Artikel","Maximum pro Mitglied","Preis ${p.name}","Gezählter Barbestand","Hälfte"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  const [page,manager,pricing,field,style]=await Promise.all([read("app/page.tsx"),read("app/ProductManager.tsx"),read("app/PricingPanel.tsx"),read("app/TabletNumberField.tsx"),read("app/tablet-number.css")]);
+  for(const feature of ["Getränke oder Artikel","Maximum pro Mitglied","Gezählter Barbestand","Hälfte"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(manager.includes("Preis ${selected.name}"),"Tabletfreundliches Preisfeld fehlt in der Artikelverwaltung");
   assert.ok(pricing.includes("TabletNumberField")&&pricing.includes("Mitgliedspreis")&&pricing.includes("Rabatt"));
   for(const feature of ["inputMode","verringern","erhöhen","allowEmpty","event.currentTarget.select"])assert.ok(field.includes(feature),`${feature} fehlt`);
   assert.ok(style.includes("grid-template-columns:44px")&&style.includes("touch-action:manipulation"));
@@ -115,13 +116,15 @@ test("legt Mitglieder schlank an und schützt nur Vorstand oder Admin",async()=>
 });
 
 test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",async()=>{
-  const [page,layout,style,icons,packageFile]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/kiosk-design.css"),read("app/ProductIcon.tsx"),read("package.json")]);
+  const [page,manager,layout,style,managerStyle,icons,packageFile]=await Promise.all([read("app/page.tsx"),read("app/ProductManager.tsx"),read("app/layout.tsx"),read("app/kiosk-design.css"),read("app/product-manager.css"),read("app/ProductIcon.tsx"),read("package.json")]);
   for(const feature of ["kiosk-design","screen-title","Hauptmenü"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(layout.includes('import "./kiosk-design.css"'));
   for(const feature of ["--kiosk-orange:#ff9800","admin-section-nav","min-height:138px","product","pos-total","@media(min-width:1200px)","grid-template-columns:minmax(0,1fr) 225px","grid-row:1/3"])assert.ok(style.includes(feature),`${feature} fehlt`);
   for(const feature of ["productIconOptions","IconBeer","IconTargetArrow","IconBallFootball","IconGlassCocktail"])assert.ok(icons.includes(feature),`${feature} fehlt`);
-  assert.ok(page.includes("product-icon-picker")&&page.includes("<ProductIcon"));
-  for(const feature of ["brand-label-input","Kategorie oder Label","product-label"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes("<ProductManager")&&manager.includes("product-icon-picker")&&manager.includes("<ProductIcon"));
+  for(const feature of ["brand-label-input","Marke / Kategorie"])assert.ok(manager.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes("product-label"),"Kategorien fehlen auf den Verkaufskacheln");
+  for(const feature of ["product-workspace","product-master","product-detail"])assert.ok(managerStyle.includes(feature),`${feature} fehlt im Artikelmanager`);
   assert.ok(packageFile.includes("@tabler/icons-react"));
 });
 

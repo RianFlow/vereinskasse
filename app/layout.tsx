@@ -35,6 +35,7 @@ import "./account-urgency.css";
 import "./random-rewards.css";
 import "./club-split.css";
 import "./kiosk-design.css";
+import "./product-manager.css";
 
 export const metadata: Metadata = {
   title: "Vereinskasse · SV Barver Darts",
