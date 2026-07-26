@@ -41,7 +41,7 @@ export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(membe
         if(!stopped&&stateRef.current.kind!=="unknown")setState({kind:"error",deviceCount:stateRef.current.deviceCount,message:reason instanceof Error?reason.message:"Lesefehler"});
       }finally{busy=false}
     };
-    poll();const timer=setInterval(poll,500);
+    poll();const timer=setInterval(poll,350);
     return()=>{stopped=true;clearInterval(timer)};
   },[]);
 
@@ -96,7 +96,7 @@ export function RfidAdminLogin({expectedMemberId,onVerified}:{expectedMemberId?:
         if(!stopped){setState("error");setMessage(reason instanceof Error?reason.message:"RFID-Anmeldung fehlgeschlagen")}
       }finally{busy=false}
     };
-    poll();const timer=setInterval(poll,1000);
+    poll();const timer=setInterval(poll,350);
     return()=>{stopped=true;clearInterval(timer)};
   },[expectedMemberId]);
   return <div className={`rfid-admin-login ${state}`} aria-live="polite">

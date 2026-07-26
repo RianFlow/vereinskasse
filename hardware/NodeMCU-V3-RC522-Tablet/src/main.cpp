@@ -11,6 +11,9 @@
 
 MFRC522 rfid(PIN_RC522_SS, PIN_RC522_RST);
 ESP8266WebServer server(80);
+BearSSL::WiFiClientSecure vereinskasseTls;
+HTTPClient vereinskasseHttps;
+BearSSL::X509List vereinskasseTrustAnchor(VEREINSKASSE_ROOT_CA);
 String apSsid, apPassword, webUser, webPassword;
 String lastPushState = "Noch keine Karte übertragen.";
 String lastPushedUid;
@@ -96,6 +99,14 @@ bool clockReady() {
   return time(nullptr) > 1700000000;
 }
 
+bool beginVereinskasseRequest(const String &url) {
+  vereinskasseTls.setTrustAnchors(&vereinskasseTrustAnchor);
+  vereinskasseTls.setTimeout(3500);
+  vereinskasseHttps.setTimeout(3500);
+  vereinskasseHttps.setReuse(true);
+  return vereinskasseHttps.begin(vereinskasseTls, url);
+}
+
 void beginClockSync() {
   if (timeSyncStarted || WiFi.status() != WL_CONNECTED) return;
   configTime(0, 0, "pool.ntp.org", "time.cloudflare.com", "time.google.com");
@@ -118,26 +129,19 @@ bool pushUidToVereinskasse(const String &uid, const String &type, int blocks) {
     return false;
   }
 
-  BearSSL::WiFiClientSecure tls;
-  BearSSL::X509List trustAnchor(VEREINSKASSE_ROOT_CA);
-  tls.setTrustAnchors(&trustAnchor);
-  tls.setTimeout(5000);
-
-  HTTPClient https;
-  https.setTimeout(5000);
-  if (!https.begin(tls, VEREINSKASSE_API_URL)) {
+  if (!beginVereinskasseRequest(VEREINSKASSE_API_URL)) {
     lastPushState = "HTTPS-Verbindung konnte nicht vorbereitet werden.";
     return false;
   }
 
-  https.addHeader("Content-Type", "application/json");
-  https.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  vereinskasseHttps.addHeader("Content-Type", "application/json");
+  vereinskasseHttps.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
   const String body = "{\"uid\":\"" + jsonEscape(uid) +
                       "\",\"type\":\"" + jsonEscape(type) +
                       "\",\"blocks\":" + String(blocks) + "}";
-  const int status = https.POST(body);
-  const String response = https.getString();
-  https.end();
+  const int status = vereinskasseHttps.POST(body);
+  const String response = vereinskasseHttps.getString();
+  vereinskasseHttps.end();
 
   if (status >= 200 && status < 300) {
     lastPushState = "Karte " + uid + " an die Vereinskasse übertragen.";
@@ -369,22 +373,16 @@ String commandApiUrl() {
 
 bool reportWriteResult() {
   if (!writeResultReady) return false;
-  BearSSL::WiFiClientSecure tls;
-  BearSSL::X509List trustAnchor(VEREINSKASSE_ROOT_CA);
-  tls.setTrustAnchors(&trustAnchor);
-  tls.setTimeout(5000);
-  HTTPClient https;
-  https.setTimeout(5000);
-  if (!https.begin(tls, commandApiUrl())) return false;
-  https.addHeader("Content-Type", "application/json");
-  https.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  if (!beginVereinskasseRequest(commandApiUrl())) return false;
+  vereinskasseHttps.addHeader("Content-Type", "application/json");
+  vereinskasseHttps.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
   const String body = "{\"id\":\"" + jsonEscape(writeCommandId) +
                       "\",\"success\":" + String(writeResultSuccess ? "true" : "false") +
                       ",\"uid\":\"" + jsonEscape(writeCommandUid) +
                       "\",\"hex\":\"" + jsonEscape(writeResultHex) +
                       "\",\"error\":\"" + jsonEscape(writeResultError) + "\"}";
-  const int status = https.POST(body);
-  https.end();
+  const int status = vereinskasseHttps.POST(body);
+  vereinskasseHttps.end();
   if (status < 200 || status >= 300) {
     lastPushState = "Schreibergebnis konnte nicht gemeldet werden (HTTP " + String(status) + ").";
     return false;
@@ -409,24 +407,18 @@ void pollWriteCommand() {
   if (now - lastCommandPollAt < RFID_COMMAND_POLL_INTERVAL_MS) return;
   lastCommandPollAt = now;
 
-  BearSSL::WiFiClientSecure tls;
-  BearSSL::X509List trustAnchor(VEREINSKASSE_ROOT_CA);
-  tls.setTrustAnchors(&trustAnchor);
-  tls.setTimeout(5000);
-  HTTPClient https;
-  https.setTimeout(5000);
-  if (!https.begin(tls, commandApiUrl())) return;
-  https.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
-  const int status = https.GET();
-  const String response = status == 200 ? https.getString() : "";
-  https.end();
+  if (!beginVereinskasseRequest(commandApiUrl())) return;
+  vereinskasseHttps.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  const int status = vereinskasseHttps.GET();
+  const String response = status == 200 ? vereinskasseHttps.getString() : "";
+  vereinskasseHttps.end();
   if (status == 204) return;
   if (status != 200) {
     if (status > 0) {
       lastPushState = "Schreibauftrag-Abfrage: HTTP " + String(status) + ".";
     } else {
       char tlsError[120] = {};
-      const int tlsCode = tls.getLastSSLError(tlsError, sizeof(tlsError));
+      const int tlsCode = vereinskasseTls.getLastSSLError(tlsError, sizeof(tlsError));
       lastPushState = "Schreibauftrag-Abfrage: " + String(HTTPClient::errorToString(status).c_str());
       if (tlsCode) lastPushState += " · TLS " + String(tlsCode) + ": " + String(tlsError);
     }

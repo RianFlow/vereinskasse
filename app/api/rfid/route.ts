@@ -3,7 +3,7 @@ import { requireProfile } from "../profile-session";
 import { issueSession, requireRole } from "../session";
 
 type RfidDevice={id:string;profileId:string;name:string};
-type RfidScan={id:string;uid:string;deviceId:string;deviceName:string;cardType:string|null;blocks:number|null;createdAt:string};
+type RfidScan={id:string;uid:string;deviceId:string;deviceName:string;cardType:string|null;blocks:number|null;createdAt:string;memberId:string|null;memberName:string|null;memberRole:string|null;memberInitials:string|null};
 type RfidMember={id:string;name:string;role:string;initials:string};
 
 const jsonHeaders={"cache-control":"no-store"};
@@ -24,7 +24,7 @@ export async function POST(request:Request){
     const uid=normalizeUid(body.uid),cardType=String(body.type||"").trim().slice(0,60)||null,blocks=Number(body.blocks);
     if(!uid)return Response.json({error:"Ungültige RFID-UID"},{status:400,headers:jsonHeaders});
     if(body.blocks!=null&&(!Number.isInteger(blocks)||blocks<1||blocks>512))return Response.json({error:"Ungültige Blockanzahl"},{status:400,headers:jsonHeaders});
-    const now=new Date(),nowIso=now.toISOString(),duplicateCutoff=new Date(now.getTime()-2500).toISOString();
+    const now=new Date(),nowIso=now.toISOString(),duplicateCutoff=new Date(now.getTime()-1500).toISOString();
     const duplicate=await env.DB.prepare("SELECT id FROM rfid_scans WHERE device_id=? AND uid=? AND created_at>=? ORDER BY created_at DESC LIMIT 1").bind(device.id,uid,duplicateCutoff).first<{id:string}>();
     await env.DB.prepare("UPDATE rfid_devices SET last_seen_at=? WHERE id=?").bind(nowIso,device.id).run();
     if(duplicate)return Response.json({accepted:true,id:duplicate.id,duplicate:true},{status:202,headers:jsonHeaders});
@@ -45,13 +45,15 @@ export async function GET(request:Request){
     if(expectedMemberId&&expectedMemberId.length>40)return Response.json({error:"Ungültiges Mitglied"},{status:400,headers:jsonHeaders});
     const nowDate=new Date(),now=nowDate.toISOString(),onlineCutoff=new Date(nowDate.getTime()-60_000).toISOString();
     const [scan,deviceCount]=await Promise.all([
-      env.DB.prepare("SELECT s.id,s.uid,s.device_id deviceId,d.name deviceName,s.card_type cardType,s.blocks,s.created_at createdAt FROM rfid_scans s JOIN rfid_devices d ON d.id=s.device_id WHERE s.profile_id=? AND s.consumed_at IS NULL AND s.expires_at>? ORDER BY s.created_at LIMIT 1").bind(profile.id,now).first<RfidScan>(),
+      env.DB.prepare("SELECT s.id,s.uid,s.device_id deviceId,d.name deviceName,s.card_type cardType,s.blocks,s.created_at createdAt,m.id memberId,m.name memberName,m.role memberRole,m.initials memberInitials FROM rfid_scans s JOIN rfid_devices d ON d.id=s.device_id LEFT JOIN rfid_cards c ON c.profile_id=s.profile_id AND c.uid=s.uid LEFT JOIN members m ON m.id=c.member_id AND m.active=1 WHERE s.profile_id=? AND s.consumed_at IS NULL AND s.expires_at>? ORDER BY s.created_at LIMIT 1").bind(profile.id,now).first<RfidScan>(),
       env.DB.prepare("SELECT COUNT(*) count FROM rfid_devices WHERE profile_id=? AND active=1 AND last_seen_at>=?").bind(profile.id,onlineCutoff).first<{count:number}>()
     ]);
     if(!scan)return Response.json({state:"waiting",deviceCount:Number(deviceCount?.count||0)},{headers:jsonHeaders});
     const consumed=await env.DB.prepare("UPDATE rfid_scans SET consumed_at=? WHERE id=? AND profile_id=? AND consumed_at IS NULL").bind(now,scan.id,profile.id).run();
     if(!consumed.meta.changes)return Response.json({state:"waiting",deviceCount:Number(deviceCount?.count||0)},{headers:jsonHeaders});
-    const member=await env.DB.prepare("SELECT m.id,m.name,m.role,m.initials FROM rfid_cards c JOIN members m ON m.id=c.member_id WHERE c.profile_id=? AND c.uid=? AND m.active=1").bind(profile.id,scan.uid).first<RfidMember>();
+    const member=scan.memberId&&scan.memberName&&scan.memberRole&&scan.memberInitials
+      ?{id:scan.memberId,name:scan.memberName,role:scan.memberRole,initials:scan.memberInitials}
+      :null;
     if(!member)return Response.json({state:"unknown",deviceCount:Number(deviceCount?.count||0),scan},{headers:jsonHeaders});
     if(purpose==="admin"){
       if(expectedMemberId&&member.id!==expectedMemberId)return Response.json({state:"mismatch",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:jsonHeaders});

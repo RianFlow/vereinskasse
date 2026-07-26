@@ -23,5 +23,7 @@ constexpr char CUSTOM_WEB_PASSWORD[] = "";
 
 constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 15000;
 constexpr unsigned long RFID_SCAN_INTERVAL_MS = 120;
-constexpr unsigned long RFID_REPEAT_GUARD_MS = 3000;
-constexpr unsigned long RFID_COMMAND_POLL_INTERVAL_MS = 1000;
+constexpr unsigned long RFID_REPEAT_GUARD_MS = 1500;
+// Karten-Schreibaufträge sind selten. Eine häufigere HTTPS-Abfrage würde den
+// wichtigeren UID-Scan unnötig blockieren.
+constexpr unsigned long RFID_COMMAND_POLL_INTERVAL_MS = 5000;
