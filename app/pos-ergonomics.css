@@ -1,0 +1,146 @@
+/* Kassenarbeitsplatz: häufige Aktionen sichtbar, seltene Aktionen nachgeordnet. */
+.product-browser-bar{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(210px,280px);
+  align-items:center;
+  gap:12px;
+  margin:14px 0;
+}
+.product-browser-bar .filters{
+  min-width:0;
+  margin:0;
+  overflow-x:auto;
+  overscroll-behavior-inline:contain;
+  scrollbar-width:none;
+}
+.product-browser-bar .filters::-webkit-scrollbar{display:none}
+.product-browser-bar .filters button{min-height:46px;white-space:nowrap}
+.product-search{
+  min-height:48px;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto auto;
+  align-items:center;
+  gap:8px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:0 11px;
+  background:#fff;
+  color:#6e7b75;
+}
+.product-search:focus-within{border-color:#ff9800;box-shadow:0 0 0 3px #ff980026}
+.product-search input{min-width:0;border:0;outline:0;background:transparent;color:inherit;font-size:15px}
+.product-search button{width:30px;height:30px;border:0;background:transparent;color:inherit;font-size:23px}
+.product-search small{min-width:24px;text-align:center;font-weight:900}
+.app.dark .product-search{background:#302e31;border-color:#565158;color:#f1eef2}
+
+.app.kiosk-design.dark .grid{
+  grid-template-columns:repeat(auto-fill,minmax(145px,1fr));
+  align-content:start;
+}
+.app.kiosk-design.dark .product{
+  min-height:152px;
+  padding:15px;
+  touch-action:manipulation;
+}
+.app.kiosk-design.dark .product-icon{width:52px;height:52px}
+.app.kiosk-design.dark .product-name{margin:12px 0 5px}
+.app.kiosk-design.dark .product:focus-visible{outline:3px solid #ffb340;outline-offset:2px}
+.no-products{
+  grid-column:1/-1;
+  min-height:240px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  color:#aaa5ab;
+  text-align:center;
+}
+.no-products strong{color:#fff;font-size:18px}
+.no-products button{margin-top:8px;border:1px solid #686269;background:#454247;color:#fff;padding:11px 15px;font-weight:800}
+
+.cart-head h2{display:flex;align-items:baseline;gap:8px}
+.cart-head h2 small{font:700 11px Arial,sans-serif;color:#a8b0ac}
+.cart-head .clear:disabled{opacity:.35;cursor:default}
+.cart-items{overscroll-behavior:contain}
+.line{grid-template-columns:44px minmax(90px,1fr) auto auto}
+.stepper button{
+  width:44px;
+  height:44px;
+  font-size:25px;
+  font-weight:700;
+  touch-action:manipulation;
+}
+.stepper span{min-width:25px;text-align:center}
+.checkout-section-label{
+  display:block;
+  margin:0 0 5px;
+  color:#8f9a95;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.more-payment-toggle{
+  width:100%;
+  min-height:48px;
+  margin-top:8px;
+  padding:0 13px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border:1px solid #575258;
+  border-radius:3px;
+  background:#343235;
+  color:#e6e2e7;
+  font-weight:800;
+}
+.more-payment-toggle svg{transition:transform .16s}
+.more-payment-toggle.open svg{transform:rotate(180deg)}
+.secondary-payments{padding-top:2px}
+
+/* Auf Tablets bleiben Artikel, Bon und Bezahlung in einem festen Arbeitsbereich. */
+@media(min-width:801px){
+  .app.kiosk-design.dark .pos{
+    height:calc(100dvh - 64px);
+    min-height:0;
+    overflow:hidden;
+  }
+  .app.kiosk-design.dark .catalog{
+    min-height:0;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+  }
+  .app.kiosk-design.dark .cart{
+    height:100%;
+    min-height:0;
+    overflow:hidden;
+  }
+  .app.kiosk-design.dark .cart-items{min-height:0;overflow-y:auto}
+  .app.kiosk-design.dark .checkout{flex:0 0 auto;max-height:58%;overflow-y:auto}
+  .app.kiosk-design.dark .selected-customer{
+    min-height:58px;
+    margin:10px 0;
+    padding:9px 12px;
+  }
+  .app.kiosk-design.dark .selected-customer>.avatar{width:40px;height:40px}
+}
+
+@media(min-width:1500px){
+  .app.kiosk-design.dark .checkout{max-height:none}
+}
+
+@media(max-width:1000px){
+  .product-browser-bar{grid-template-columns:1fr}
+  .product-search{grid-row:1}
+}
+
+@media(max-width:800px){
+  .product-browser-bar{position:sticky;top:0;z-index:4;margin:10px -14px 14px;padding:8px 14px;background:#201f21}
+  .app.kiosk-design.dark .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .app.kiosk-design.dark .product{min-height:145px}
+  .cart-items{max-height:45vh}
+  .line{grid-template-columns:40px minmax(80px,1fr) auto}
+  .line>b{grid-column:2;justify-self:start}
+  .line>.stepper{grid-column:3;grid-row:1/3}
+}
