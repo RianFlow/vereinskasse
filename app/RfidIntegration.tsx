@@ -41,7 +41,7 @@ export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(membe
         if(!stopped&&stateRef.current.kind!=="unknown")setState({kind:"error",deviceCount:stateRef.current.deviceCount,message:reason instanceof Error?reason.message:"Lesefehler"});
       }finally{busy=false}
     };
-    poll();const timer=setInterval(poll,1200);
+    poll();const timer=setInterval(poll,500);
     return()=>{stopped=true;clearInterval(timer)};
   },[]);
 
@@ -60,8 +60,49 @@ export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(membe
   return <><section className={`rfid-scan-status ${state.kind} ${state.kind==="waiting"&&!state.deviceCount?"not-configured":""}`} aria-live="polite">
     <span className="rfid-state-icon">{state.kind==="recognized"?<IconCheck size={23}/>:state.kind==="error"?<IconAlertCircle size={23}/>:<IconNfc size={23}/>}</span>
     <div><strong>{copy.title}</strong><small>{copy.detail}</small></div>
-    {state.kind==="unknown"&&<div className="rfid-unknown-actions"><button onClick={dismiss}>Verstanden</button></div>}
+    {(state.kind==="unknown"||state.kind==="recognized")&&<div className="rfid-unknown-actions"><button onClick={dismiss}>{state.kind==="recognized"?"Anderes Mitglied scannen":"Verstanden"}</button></div>}
   </section></>;
+}
+
+export function RfidAdminLogin({expectedMemberId,onVerified}:{expectedMemberId?:string;onVerified:(member:Member)=>void}){
+  const [state,setState]=useState<"checking"|"waiting"|"success"|"unknown"|"forbidden"|"mismatch"|"error">("checking");
+  const [message,setMessage]=useState("Verbindung zum RFID-Leser wird geprüft.");
+  const finished=useRef(false),holdUntil=useRef(0),onVerifiedRef=useRef(onVerified);
+  useEffect(()=>{onVerifiedRef.current=onVerified},[onVerified]);
+  useEffect(()=>{
+    let stopped=false,busy=false;
+    const poll=async()=>{
+      if(stopped||busy||finished.current||document.visibilityState!=="visible")return;
+      busy=true;
+      try{
+        const query=new URLSearchParams({purpose:"admin"});
+        if(expectedMemberId)query.set("memberId",expectedMemberId);
+        const response=await fetch(`/api/rfid?${query}`,{cache:"no-store"}),data=await response.json();
+        if(!response.ok)throw new Error(data.error||"RFID-Anmeldung ist momentan nicht erreichbar");
+        if(stopped)return;
+        if(data.state==="recognized"&&data.member){
+          finished.current=true;setState("success");setMessage(`✓ ${data.member.name} wurde sicher erkannt.`);
+          setTimeout(()=>{if(!stopped)onVerifiedRef.current(data.member)},350);
+        }else if(data.state==="unknown"){
+          holdUntil.current=Date.now()+3500;setState("unknown");setMessage("Diese Karte ist noch keinem Mitglied zugeordnet.");
+        }else if(data.state==="forbidden"){
+          holdUntil.current=Date.now()+3500;setState("forbidden");setMessage(`${data.member?.name||"Diese Person"} hat keinen Adminzugang.`);
+        }else if(data.state==="mismatch"){
+          holdUntil.current=Date.now()+3500;setState("mismatch");setMessage(`Die Karte gehört zu ${data.member?.name||"einer anderen Person"}.`);
+        }else if(Date.now()>=holdUntil.current){
+          const online=Number(data.deviceCount||0)>0;setState("waiting");setMessage(online?"Leser ist online. Admin-Chip jetzt auflegen.":"Kein RFID-Leser online. Strom und Vereins-WLAN prüfen.");
+        }
+      }catch(reason){
+        if(!stopped){setState("error");setMessage(reason instanceof Error?reason.message:"RFID-Anmeldung fehlgeschlagen")}
+      }finally{busy=false}
+    };
+    poll();const timer=setInterval(poll,1000);
+    return()=>{stopped=true;clearInterval(timer)};
+  },[expectedMemberId]);
+  return <div className={`rfid-admin-login ${state}`} aria-live="polite">
+    <span>{state==="success"?<IconCheck size={25}/>:state==="error"||state==="forbidden"||state==="mismatch"?<IconAlertCircle size={25}/>:<IconNfc size={25}/>}</span>
+    <div><strong>{state==="success"?"Admin-Chip erkannt":state==="checking"?"Leser wird geprüft":state==="waiting"?"Mit Chip anmelden":state==="unknown"?"Unbekannte Karte":state==="forbidden"?"Keine Adminberechtigung":state==="mismatch"?"Falsche Karte":"Lesefehler"}</strong><small>{message}</small></div>
+  </div>;
 }
 
 export function RfidMemberCardDialog({member,onClose,onSaved}:{member:Member;onClose:()=>void;onSaved:()=>void}){
@@ -108,7 +149,7 @@ export function RfidDevicePanel(){
   const endpoint=typeof location==="undefined"?"/api/rfid":`${location.origin}/api/rfid`;
   return <section className="panel rfid-device-panel"><div className="panel-head"><div><p className="eyebrow">EXTERNER KARTENLESER</p><h2>ESP8266 + MFRC522</h2></div><span><IconWifi size={20}/> UID-Push</span></div>
     <div className="rfid-architecture"><IconNfc size={28}/><div><strong>Empfohlene Verbindung</strong><small>ESP8266 und Tablet nutzen dasselbe Vereins-WLAN. Der Leser sendet nur die UID per HTTPS an die Vereinskasse – der Browser greift nicht auf 192.168.4.1 zu.</small></div></div>
-    <div className="rfid-security-note"><strong>Die Karte ist kein Geldspeicher und kein Admin-Schlüssel.</strong><small>Kontostände, Preise und Berechtigungen werden ausschließlich serverseitig geprüft. Eine UID wählt nur ein Mitglied für die Kasse aus.</small></div>
+    <div className="rfid-security-note"><strong>Die Karte speichert weder Geld noch Berechtigungen.</strong><small>Die UID erkennt nur die zugeordnete Person. Kontostände, Preise und ein möglicher Adminzugang werden bei jedem Scan ausschließlich in der Datenbank geprüft.</small></div>
     <div className="rfid-device-create"><label>Bezeichnung<input value={name} maxLength={60} onChange={event=>setName(event.target.value)} placeholder="z. B. Leser am Tresen"/></label><button disabled={busy||name.trim().length<3} onClick={create}>Leser verbinden</button></div>
     {token&&<div className="rfid-token-once"><div><strong>Gerätekennung – nur jetzt sichtbar</strong><small>In der ESP8266-Konfiguration als HTTP-Header <code>X-RFID-Token</code> hinterlegen.</small></div><div><code>{token}</code><button onClick={copyToken}>{copied?<IconCheck size={18}/>:<IconCopy size={18}/>} {copied?"Kopiert":"Kopieren"}</button></div><p>Ziel: <code>{endpoint}</code> · JSON: <code>{`{"uid":"12:34:56:78","type":"MIFARE 1KB","blocks":64}`}</code></p></div>}
     <div className="rfid-device-list">{devices.map(device=><article key={device.id} className={device.active?"":"inactive"}><span><IconNfc size={22}/></span><div><strong>{device.name}</strong><small>{device.lastSeenAt?`Zuletzt verbunden: ${new Date(device.lastSeenAt).toLocaleString("de-DE")}`:"Noch kein Scan empfangen"}</small></div><button onClick={()=>toggle(device)}>{device.active?"Deaktivieren":"Aktivieren"}</button></article>)}{!devices.length&&<p>Noch kein externer RFID-Leser eingerichtet.</p>}</div>

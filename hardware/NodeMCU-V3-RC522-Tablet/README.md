@@ -138,7 +138,9 @@ Nur eigene bzw. ausdrücklich autorisierte Karten beschreiben. Vorher Daten sich
 - MIFARE Classic Crypto1 gilt als kryptografisch gebrochen. Keine Geheimnisse,
   Zutrittsrechte oder Zahlungsdaten allein darauf absichern.
 - Die UID ist eine praktische Kennung, aber kein fälschungssicherer
-  Identitätsnachweis. Kritische Admin-Aktionen benötigen weiterhin Anmeldung/PIN.
+  Identitätsnachweis. Eine zugeordnete Vorstandskarte kann eine Admin-Sitzung
+  starten; die Rolle kommt ausschließlich aus der Datenbank und der Einstieg
+  wird protokolliert. Verlorene Karten müssen sofort getrennt werden.
 - Der Geräte-Token kann in der Vereinskasse deaktiviert und durch einen neu
   angelegten Leser ersetzt werden.
 

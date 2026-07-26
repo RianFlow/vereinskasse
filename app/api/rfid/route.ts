@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { requireProfile } from "../profile-session";
-import { requireRole } from "../session";
+import { issueSession, requireRole } from "../session";
 
 type RfidDevice={id:string;profileId:string;name:string};
 type RfidScan={id:string;uid:string;deviceId:string;deviceName:string;cardType:string|null;blocks:number|null;createdAt:string};
@@ -40,6 +40,9 @@ export async function GET(request:Request){
   try{
     const profile=await requireProfile(request);
     if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401,headers:jsonHeaders});
+    const url=new URL(request.url),purpose=url.searchParams.get("purpose"),expectedMemberId=url.searchParams.get("memberId");
+    if(purpose&&purpose!=="admin")return Response.json({error:"Unbekannter RFID-Zweck"},{status:400,headers:jsonHeaders});
+    if(expectedMemberId&&expectedMemberId.length>40)return Response.json({error:"Ungültiges Mitglied"},{status:400,headers:jsonHeaders});
     const nowDate=new Date(),now=nowDate.toISOString(),onlineCutoff=new Date(nowDate.getTime()-60_000).toISOString();
     const [scan,deviceCount]=await Promise.all([
       env.DB.prepare("SELECT s.id,s.uid,s.device_id deviceId,d.name deviceName,s.card_type cardType,s.blocks,s.created_at createdAt FROM rfid_scans s JOIN rfid_devices d ON d.id=s.device_id WHERE s.profile_id=? AND s.consumed_at IS NULL AND s.expires_at>? ORDER BY s.created_at LIMIT 1").bind(profile.id,now).first<RfidScan>(),
@@ -49,7 +52,15 @@ export async function GET(request:Request){
     const consumed=await env.DB.prepare("UPDATE rfid_scans SET consumed_at=? WHERE id=? AND profile_id=? AND consumed_at IS NULL").bind(now,scan.id,profile.id).run();
     if(!consumed.meta.changes)return Response.json({state:"waiting",deviceCount:Number(deviceCount?.count||0)},{headers:jsonHeaders});
     const member=await env.DB.prepare("SELECT m.id,m.name,m.role,m.initials FROM rfid_cards c JOIN members m ON m.id=c.member_id WHERE c.profile_id=? AND c.uid=? AND m.active=1").bind(profile.id,scan.uid).first<RfidMember>();
-    return Response.json({state:member?"recognized":"unknown",deviceCount:Number(deviceCount?.count||0),scan,member:member||null},{headers:jsonHeaders});
+    if(!member)return Response.json({state:"unknown",deviceCount:Number(deviceCount?.count||0),scan},{headers:jsonHeaders});
+    if(purpose==="admin"){
+      if(expectedMemberId&&member.id!==expectedMemberId)return Response.json({state:"mismatch",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:jsonHeaders});
+      if(member.role!=="Vorstand")return Response.json({state:"forbidden",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:jsonHeaders});
+      const session=await issueSession(member);
+      await env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_ADMIN_LOGIN","rfid_card",scan.uid,member.id,JSON.stringify({profileId:profile.id,deviceId:scan.deviceId}),session.createdAt).run();
+      return Response.json({state:"recognized",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:{...jsonHeaders,"set-cookie":session.cookie}});
+    }
+    return Response.json({state:"recognized",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:jsonHeaders});
   }catch{
     return Response.json({error:"RFID-Leser ist momentan nicht erreichbar"},{status:500,headers:jsonHeaders});
   }

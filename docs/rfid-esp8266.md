@@ -97,7 +97,11 @@ werden auch nach dem Beschreiben ausschließlich aus der Datenbank gelesen.
 ## Sicherheitsgrenze
 
 - Auf der RFID-Karte werden keine Preise, Geldbeträge oder Rechte gespeichert.
-- Eine UID wählt nur ein Mitglied für den nächsten Kassiervorgang aus.
-- Adminzugänge verwenden weiterhin den persönlichen Admin-Code.
-- Eine kopierte UID kann daher keine Adminrechte oder Kontostände verändern.
+- Eine UID wählt das zugeordnete Mitglied für den nächsten Kassiervorgang aus.
+- Zugeordnete Karten von Vorstandsmitgliedern können eine Admin-Sitzung starten.
+  Die Rolle wird dabei ausschließlich aus der Datenbank gelesen und der Einstieg
+  im Prüfprotokoll festgehalten; auf dem Chip selbst stehen keine Rechte.
+- MIFARE-UIDs können grundsätzlich kopiert werden. Verlorene Admin-Karten daher
+  sofort in der Geräteverwaltung trennen. Der persönliche Admin-Code bleibt als
+  unabhängiger Ersatzweg erhalten.
 - Jede neue oder geänderte UID-Zuordnung wird im Prüfprotokoll erfasst.

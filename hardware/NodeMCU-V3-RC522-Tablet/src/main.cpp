@@ -559,8 +559,10 @@ void setup() {
 void loop() {
   server.handleClient();
   maintainStationWifi();
+  // Kartenscans haben Vorrang vor der langsameren HTTPS-Abfrage nach
+  // Schreibaufträgen, damit ein Mitgliederwechsel sofort erkannt wird.
+  automaticUidScan();
   pollWriteCommand();
   processWriteCommand();
-  automaticUidScan();
   delay(2);
 }

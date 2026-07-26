@@ -6,7 +6,7 @@ import { TabletNumberField } from "./TabletNumberField";
 import { RandomRewardsPanel } from "./RandomRewardsPanel";
 import { ProductIcon } from "./ProductIcon";
 import { ProductManager } from "./ProductManager";
-import { RfidDevicePanel, RfidMemberCardDialog, RfidScanner } from "./RfidIntegration";
+import { RfidAdminLogin, RfidDevicePanel, RfidMemberCardDialog, RfidScanner } from "./RfidIntegration";
 import { IconArrowLeft,IconCalendarEvent,IconCashBanknote,IconGift,IconHome2,IconMaximize,IconMinimize,IconMoon,IconPackage,IconReceiptEuro,IconSettings,IconShieldLock,IconSun,IconTicket,IconUserCircle,IconUsers,IconUsersGroup } from "@tabler/icons-react";
 
 type IncludedItem={productId:number;quantity:number};
@@ -165,7 +165,7 @@ export default function Home() {
         {guestOpenAccounts.length>0&&<button className="guest-debt-strip" onClick={()=>setAccountsOpen(true)}><IconReceiptEuro size={19}/><strong>{guestOpenAccounts.length} offene {guestOpenAccounts.length===1?"Gastrechnung":"Gastrechnungen"}</strong><span>{money(guestOpenTotal)}</span><small>Anzeigen ›</small></button>}
         <div className="title-row"><div><p className="eyebrow">VERKAUF</p><h1>{operationMode==="club"?"Vereinsabend":"Veranstaltung"}</h1></div><span className="date">Heute · {operationMode==="club"?"Anschreiben":"Gäste & Direktverkauf"}</span></div>
         {operationMode==="club"&&<div className={`selected-customer ${billingMember?"":"empty-customer"}`}><span className="avatar">{billingMember?.initials||"€"}</span><div><strong>{billingMember?.name||"Direktverkauf ohne Auswahl"}</strong><small>{billingMember?"Alle Artikel werden auf diese Person gebucht":"Sofortige Barzahlung möglich · fürs Anschreiben Mitglied wählen"}</small></div>{billingMember&&<div className="balance"><small>Aktuell offen</small><b>{money(Number(control.accounts.find(a=>a.memberId===billingMember.id)?.balance||0))}</b></div>}<button onClick={()=>setMemberFinder(true)}>{billingMember?"Ändern":"Mitglied wählen"}</button></div>}
-        {operationMode==="club"&&<RfidScanner members={clubMembers} onSelect={chooseListMember}/>}
+        {operationMode==="club"&&!adminPrompt&&<RfidScanner members={clubMembers} onSelect={chooseListMember}/>}
         {operationMode==="event"&&<><div className={`active-event-banner ${activeEvent?"":"missing"}`}><span>{activeEvent?"✓":"!"}</span><div><small>{activeEvent?"VERBRAUCH WIRD ZUGEORDNET":"KEINE VERANSTALTUNG AKTIV"}</small><strong>{activeEvent?.name||"Veranstaltung zuerst starten"}</strong>{activeEvent&&<em>seit {new Date(activeEvent.startsAt).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</em>}</div>{!activeEvent&&<button onClick={()=>setAdminPrompt(true)}>Im Adminbereich starten</button>}</div><div className={`selected-customer ${selectedGuest?"":"empty-customer"}`}><span className="avatar">{selectedGuest?(selectedGuest.type==="club"?"V":"G"):"1"}</span><div><strong>{selectedGuest?guestDisplayName(selectedGuest):"Besucher oder Verein wählen"}</strong><small>{selectedGuest?`${selectedGuest.type==="club"?"Vereinskonto":selectedGuest.parentId?"Mitglied eines Besuchervereins":"Besucherkonto"} · Einkäufe werden getrennt gesammelt`:"Optional für Anschreiben · Barverkauf geht auch ohne Auswahl"}</small></div>{selectedGuest&&<div className="balance"><small>Aktuell offen</small><b>{money(Number(control.accounts.find(a=>a.memberId===selectedGuest.id)?.balance||0))}</b></div>}<button onClick={()=>setGuestFinder(true)}>{selectedGuest?"Ändern":"Anlegen / wählen"}</button></div></>}
         <nav className="filters">{categories.map(c => <button key={c} className={category === c ? "active" : ""} onClick={() => setCategory(c)}>{c}</button>)}{activeDiscount&&<span className="discount-chip">−{activeDiscount.percent}% {activeDiscount.name}</span>}</nav>
         {rounds.some(r=>r.active&&r.remaining>0)&&<div className="open-rounds"><div className="rounds-title"><strong>🎉 Offene Runden</strong><small>Pro Mitglied gilt das festgelegte Limit</small></div>{rounds.filter(r=>r.active&&r.remaining>0).map(r=><button key={r.id} onClick={()=>setClaimRound(r)}><span>🎁</span><div><strong>{r.label}</strong><small>von {r.sponsorName} · max. {r.maxPerMember} pro Person</small></div><b>{r.remaining}<small> übrig</small></b></button>)}</div>}
@@ -381,6 +381,7 @@ function IdentityDialog({ method, onClose, onVerified }: { method: string; onClo
       </button>)}
       {!availableAdmins.length&&<p>Es wurde noch kein aktiver Admin-Zugang gefunden.</p>}
     </div>}
+    {adminLogin&&!selectedAdmin&&<div className="admin-rfid-choice"><span>oder direkt</span><RfidAdminLogin onVerified={onVerified}/></div>}
 
     {adminLogin&&selectedAdmin&&<>
       <div className="selected-admin">
@@ -394,13 +395,13 @@ function IdentityDialog({ method, onClose, onVerified }: { method: string; onClo
         <button className="confirm-allocation" disabled={code.trim().length<5} onClick={()=>verify(code)}>Adminbereich öffnen</button>
         <button className="alternate-login" onClick={()=>{setShowCardLogin(true);setMode("nfc");setMessage("Karte oder Chip an den Leser halten")}}>Stattdessen NFC oder QR verwenden</button>
       </div>:<>
-        {scanner}
+        <RfidAdminLogin expectedMemberId={selectedAdmin.id} onVerified={onVerified}/>
         <button className="alternate-login" onClick={()=>{setShowCardLogin(false);setMode("manual");setMessage("Admin-Code eingeben")}}>Zurück zur Code-Eingabe</button>
       </>}
     </>}
 
     {!adminLogin&&scanner}
-    <div className="privacy-note">{adminLogin?"🔒 Erst Name wählen, dann mit dem persönlichen Admin-Code anmelden.":"🛡️ Mitgliedsnummer, Zeitpunkt und Zahlart werden der Buchung zugeordnet."}</div>
+    <div className="privacy-note">{adminLogin?"🔒 Admin-Code oder zugeordneter Chip. Die Berechtigung wird immer in der Datenbank geprüft.":"🛡️ Mitgliedsnummer, Zeitpunkt und Zahlart werden der Buchung zugeordnet."}</div>
   </div></div>;
 }
 function AllocationDialog({ total,maxUnits,initialMember,onClose,onConfirm }: { total:number;maxUnits:number;initialMember:Member|null;onClose:()=>void;onConfirm:(a:Allocation[],r?:RoundSpec)=>void }) {
