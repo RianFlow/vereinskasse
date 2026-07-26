@@ -96,10 +96,22 @@ test("verwendet tabletfreundliche Zahlenfelder mit großen Schritten und Ziffern
 test("zeigt Bestellung, Summe und häufige Bezahlarten wie eine direkte Kasse",async()=>{
   const [page,style]=await Promise.all([read("app/page.tsx"),read("app/direct-checkout.css")]);
   for(const feature of ["AKTUELLER BON","ZU ZAHLEN","DIREKT ANSCHREIBEN","Bar zahlen","Aufteilen","Tageskonto"])assert.ok(page.includes(feature),`${feature} fehlt`);
-  assert.ok(page.includes('setOperator(activeMember)'),"Angemeldeter Kassendienst kann nicht direkt fortfahren");
+  assert.ok(page.includes('setOperator(activeMember||billingMember||'),"Kassendienst kann nicht ohne zusätzliche Anmeldung fortfahren");
+  assert.ok(!page.includes("authorizeCheckout"),"Die alte Kassenberechtigung wird noch abgefragt");
   assert.ok(!page.includes("Weitere Aktionen"),"Häufige Bezahlarten sind noch versteckt");
   for(const feature of ["direct-payment-grid","pos-total","position:sticky","min-height:78px"])assert.ok(style.includes(feature),`${feature} fehlt`);
   assert.ok(page.includes("Betrag aufteilen")&&page.includes("club-payments"),"Betrag aufteilen fehlt beim Vereinsabend");
+});
+
+test("legt Mitglieder schlank an und schützt nur Vorstand oder Admin",async()=>{
+  const [page,route,data,style]=await Promise.all([read("app/page.tsx"),read("app/api/members/route.ts"),read("app/api/data/route.ts"),read("app/members.css")]);
+  for(const feature of ["MemberCreateDialog","Vorname","Nachname","Vorstand / Admin","Kein Passwort nötig","MemberAccessDialog","Sicheren Code vorschlagen","Später einrichten","Kassendienst darf jeder machen"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(!page.includes('prompt("Vor- und Nachname")'),"Mitglieder werden noch über unübersichtliche Eingabefenster angelegt");
+  for(const feature of ["firstName","lastName","NOLOGIN-","set_access","MEMBER_ACCESS_SET","hasAccess"])assert.ok(route.includes(feature),`${feature} fehlt in der Mitgliederverwaltung`);
+  assert.ok(data.includes('!m.code.startsWith("NOLOGIN-")'),"Zugangsstatus fehlt beim Laden");
+  assert.ok(data.includes('body.method==="Vertrauensliste"&&!trusted'),"Vertrauensbuchungen werden serverseitig nicht geprüft");
+  assert.ok(!data.includes('["Kassendienst","Vorstand"].includes(session.role)'),"Der Server beschränkt die normale Kasse noch auf alte Rollen");
+  for(const feature of [".member-name-fields",".member-row-actions",".cashier-for-everyone"])assert.ok(style.includes(feature),`${feature} fehlt im Mitgliederlayout`);
 });
 
 test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",async()=>{
