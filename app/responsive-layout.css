@@ -1,0 +1,151 @@
+/* Let the header controls own their space instead of colliding with a centered title. */
+.app.kiosk-design header{
+  min-width:0;
+}
+.app.kiosk-design .screen-title{
+  display:none!important;
+}
+.app.kiosk-design .brand{
+  flex:0 0 auto;
+}
+.app.kiosk-design .header-actions{
+  min-width:0;
+  margin-left:auto;
+}
+.app.kiosk-design .header-actions>*{
+  flex:0 0 auto;
+}
+.app.kiosk-design .status,
+.app.kiosk-design .member-login,
+.app.kiosk-design .member-session,
+.app.kiosk-design .kiosk-toggle,
+.app.kiosk-design .mode{
+  white-space:nowrap;
+}
+
+/* The checkout column needs enough room for prices and touch targets. */
+.app.kiosk-design .cart,
+.app.kiosk-design .cart-items,
+.app.kiosk-design .checkout{
+  min-width:0;
+}
+.app.kiosk-design .checkout{
+  overflow-x:hidden;
+}
+.app.kiosk-design .pos-total strong{
+  white-space:nowrap;
+}
+.app.kiosk-design .price-mode-switch button{
+  min-width:0;
+}
+.app.kiosk-design .price-mode-switch strong,
+.app.kiosk-design .price-mode-switch small{
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+/* Anonymous cash sales are clearer as one full-width action. */
+.app.kiosk-design .anonymous-checkout{
+  grid-template-columns:1fr;
+}
+.app.kiosk-design .anonymous-checkout>*{
+  grid-column:1;
+  min-width:0;
+}
+.app.kiosk-design .anonymous-checkout-note div,
+.app.kiosk-design .anonymous-cash strong,
+.app.kiosk-design .anonymous-cash small{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+/* Large cash displays: receipt and payment controls remain side by side. */
+@media(min-width:1500px){
+  .app.kiosk-design.dark .pos{
+    grid-template-columns:minmax(620px,1fr) minmax(760px,48vw);
+  }
+  .app.kiosk-design.dark .cart{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(300px,330px);
+    grid-template-rows:auto minmax(0,1fr);
+  }
+  .app.kiosk-design.dark .checkout{
+    padding:16px;
+  }
+}
+
+/* Regular tablets: keep the receipt above the payment area. */
+@media(min-width:801px) and (max-width:1499px){
+  .app.kiosk-design.dark .pos{
+    grid-template-columns:minmax(0,1fr) minmax(390px,430px);
+  }
+  .app.kiosk-design.dark .cart{
+    display:flex;
+    flex-direction:column;
+  }
+  .app.kiosk-design.dark .cart-head,
+  .app.kiosk-design.dark .cart-items,
+  .app.kiosk-design.dark .checkout{
+    width:100%;
+  }
+  .app.kiosk-design.dark .checkout{
+    border-left:0;
+    border-top:1px solid #575258;
+    padding:16px 18px;
+  }
+}
+
+/* Reduce header detail before controls can overlap. */
+@media(max-width:1700px){
+  .app.kiosk-design .status{
+    display:none;
+  }
+}
+@media(max-width:1450px){
+  .app.kiosk-design .kiosk-toggle span,
+  .app.kiosk-design .header-operation-mode>span{
+    display:none;
+  }
+  .app.kiosk-design .header-operation-mode{
+    padding:4px 6px;
+  }
+}
+@media(max-width:1100px){
+  .app.kiosk-design .member-login{
+    width:44px;
+    padding:0;
+    font-size:0;
+  }
+  .app.kiosk-design .member-login svg{
+    width:22px;
+    height:22px;
+  }
+  .app.kiosk-design .brand{
+    min-width:220px;
+  }
+}
+@media(max-width:800px){
+  .app.kiosk-design .brand{
+    min-width:0;
+  }
+  .app.kiosk-design .header-actions{
+    gap:5px;
+  }
+  .app.kiosk-design .mode{
+    padding:9px 11px;
+  }
+}
+@media(max-width:560px){
+  .app.kiosk-design .header-operation-mode{
+    position:static;
+    transform:none;
+    box-shadow:none;
+  }
+  .app.kiosk-design .header-operation-mode select{
+    max-width:105px;
+  }
+  .app.kiosk-design .theme-toggle{
+    display:none;
+  }
+}

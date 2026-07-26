@@ -116,7 +116,7 @@ test("legt Mitglieder schlank an und schützt nur Vorstand oder Admin",async()=>
 });
 
 test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",async()=>{
-  const [page,manager,layout,style,managerStyle,icons,packageFile]=await Promise.all([read("app/page.tsx"),read("app/ProductManager.tsx"),read("app/layout.tsx"),read("app/kiosk-design.css"),read("app/product-manager.css"),read("app/ProductIcon.tsx"),read("package.json")]);
+  const [page,manager,layout,style,managerStyle,responsive,icons,packageFile]=await Promise.all([read("app/page.tsx"),read("app/ProductManager.tsx"),read("app/layout.tsx"),read("app/kiosk-design.css"),read("app/product-manager.css"),read("app/responsive-layout.css"),read("app/ProductIcon.tsx"),read("package.json")]);
   for(const feature of ["kiosk-design","screen-title","Hauptmenü"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(layout.includes('import "./kiosk-design.css"'));
   for(const feature of ["--kiosk-orange:#ff9800","admin-section-nav","min-height:138px","product","pos-total","@media(min-width:1200px)","grid-template-columns:minmax(0,1fr) 225px","grid-row:1/3"])assert.ok(style.includes(feature),`${feature} fehlt`);
@@ -125,6 +125,8 @@ test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",asy
   for(const feature of ["brand-label-input","Marke / Kategorie"])assert.ok(manager.includes(feature),`${feature} fehlt`);
   assert.ok(page.includes("product-label"),"Kategorien fehlen auf den Verkaufskacheln");
   for(const feature of ["product-workspace","product-master","product-detail"])assert.ok(managerStyle.includes(feature),`${feature} fehlt im Artikelmanager`);
+  assert.ok(layout.includes('import "./responsive-layout.css"'));
+  for(const feature of ["grid-template-columns:minmax(0,1fr) minmax(300px,330px)",".anonymous-checkout",".screen-title","overflow-x:hidden","@media(max-width:1700px)"])assert.ok(responsive.includes(feature),`${feature} fehlt im responsiven Kassenlayout`);
   assert.ok(packageFile.includes("@tabler/icons-react"));
 });
 
