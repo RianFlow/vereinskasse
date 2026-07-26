@@ -40,10 +40,10 @@ export async function GET(request:Request){
   try{
     const profile=await requireProfile(request);
     if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401,headers:jsonHeaders});
-    const now=new Date().toISOString();
+    const nowDate=new Date(),now=nowDate.toISOString(),onlineCutoff=new Date(nowDate.getTime()-60_000).toISOString();
     const [scan,deviceCount]=await Promise.all([
       env.DB.prepare("SELECT s.id,s.uid,s.device_id deviceId,d.name deviceName,s.card_type cardType,s.blocks,s.created_at createdAt FROM rfid_scans s JOIN rfid_devices d ON d.id=s.device_id WHERE s.profile_id=? AND s.consumed_at IS NULL AND s.expires_at>? ORDER BY s.created_at LIMIT 1").bind(profile.id,now).first<RfidScan>(),
-      env.DB.prepare("SELECT COUNT(*) count FROM rfid_devices WHERE profile_id=? AND active=1").bind(profile.id).first<{count:number}>()
+      env.DB.prepare("SELECT COUNT(*) count FROM rfid_devices WHERE profile_id=? AND active=1 AND last_seen_at>=?").bind(profile.id,onlineCutoff).first<{count:number}>()
     ]);
     if(!scan)return Response.json({state:"waiting",deviceCount:Number(deviceCount?.count||0)},{headers:jsonHeaders});
     const consumed=await env.DB.prepare("UPDATE rfid_scans SET consumed_at=? WHERE id=? AND profile_id=? AND consumed_at IS NULL").bind(now,scan.id,profile.id).run();

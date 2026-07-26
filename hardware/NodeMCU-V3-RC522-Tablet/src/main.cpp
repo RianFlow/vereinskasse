@@ -18,7 +18,10 @@ unsigned long lastWifiAttempt = 0;
 unsigned long lastScanAt = 0;
 unsigned long lastPushAt = 0;
 unsigned long lastCommandPollAt = 0;
+unsigned long lastCommandErrorLogAt = 0;
 bool timeSyncStarted = false;
+bool stationWasConnected = false;
+bool clockWasReady = false;
 bool writeCommandActive = false;
 bool writeResultReady = false;
 bool writeResultSuccess = false;
@@ -173,11 +176,25 @@ void handleStatus() {
 void maintainStationWifi() {
   if (!stationConfigured()) return;
   if (WiFi.status() == WL_CONNECTED) {
+    if (!stationWasConnected) {
+      stationWasConnected = true;
+      Serial.printf("Vereins-WLAN verbunden, IP: %s\n", WiFi.localIP().toString().c_str());
+    }
     beginClockSync();
+    if (clockReady() && !clockWasReady) {
+      clockWasReady = true;
+      lastPushState = "Vereins-WLAN und sichere Uhrzeit bereit.";
+      Serial.println(lastPushState);
+    }
     return;
   }
 
   const unsigned long now = millis();
+  if (stationWasConnected) {
+    stationWasConnected = false;
+    clockWasReady = false;
+    Serial.println("Vereins-WLAN getrennt.");
+  }
   if (lastWifiAttempt && now - lastWifiAttempt < WIFI_RECONNECT_INTERVAL_MS) return;
   lastWifiAttempt = now;
   timeSyncStarted = false;
@@ -405,7 +422,18 @@ void pollWriteCommand() {
   https.end();
   if (status == 204) return;
   if (status != 200) {
-    if (status > 0) lastPushState = "Schreibauftrag-Abfrage: HTTP " + String(status) + ".";
+    if (status > 0) {
+      lastPushState = "Schreibauftrag-Abfrage: HTTP " + String(status) + ".";
+    } else {
+      char tlsError[120] = {};
+      const int tlsCode = tls.getLastSSLError(tlsError, sizeof(tlsError));
+      lastPushState = "Schreibauftrag-Abfrage: " + String(HTTPClient::errorToString(status).c_str());
+      if (tlsCode) lastPushState += " · TLS " + String(tlsCode) + ": " + String(tlsError);
+    }
+    if (millis() - lastCommandErrorLogAt >= 15000) {
+      lastCommandErrorLogAt = millis();
+      Serial.println(lastPushState);
+    }
     return;
   }
 
