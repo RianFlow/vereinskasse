@@ -48,20 +48,20 @@ export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(membe
   const dismiss=()=>{holdUntil.current=0;setState({kind:"waiting",deviceCount:state.deviceCount})};
 
   const copy=state.kind==="recognized"
-    ?{title:"Karte erkannt",detail:`${state.member.name} wurde für diese Bestellung ausgewählt.`}
+    ?{title:`${state.member.name.split(" ")[0]} erkannt`,detail:`${state.member.name} ist ausgewählt. Anderes Mitglied scannen: nächste Karte auflegen.`}
     :state.kind==="unknown"
       ?{title:"Unbekannte Karte",detail:`UID ${state.scan.uid} kann im Adminbereich beim Mitglied zugeordnet werden.`}
       :state.kind==="error"
-        ?{title:"Lesefehler",detail:state.message}
+        ?{title:"RFID-Fehler",detail:state.message}
         :state.deviceCount
-          ?{title:"Karte auflegen",detail:`${state.deviceCount===1?"RFID-Leser bereit":`${state.deviceCount} RFID-Leser bereit`} · die UID genügt.`}
-          :{title:"RFID-Leser nicht eingerichtet",detail:"Ein Leser kann im Adminbereich unter Sicherheit verbunden werden."};
+          ?{title:"RFID bereit",detail:`${state.deviceCount===1?"RFID-Leser bereit":`${state.deviceCount} RFID-Leser bereit`} · Karte auflegen.`}
+          :{title:"RFID offline",detail:"Leser, Strom und Vereins-WLAN prüfen."};
 
-  return <><section className={`rfid-scan-status ${state.kind} ${state.kind==="waiting"&&!state.deviceCount?"not-configured":""}`} aria-live="polite">
-    <span className="rfid-state-icon">{state.kind==="recognized"?<IconCheck size={23}/>:state.kind==="error"?<IconAlertCircle size={23}/>:<IconNfc size={23}/>}</span>
-    <div><strong>{copy.title}</strong><small>{copy.detail}</small></div>
-    {(state.kind==="unknown"||state.kind==="recognized")&&<div className="rfid-unknown-actions"><button onClick={dismiss}>{state.kind==="recognized"?"Anderes Mitglied scannen":"Verstanden"}</button></div>}
-  </section></>;
+  const light=state.kind==="recognized"||state.kind==="waiting"&&state.deviceCount?"green":state.kind==="unknown"?"yellow":"red";
+  return <button type="button" className={`rfid-header-status ${state.kind} ${light}`} onClick={dismiss} aria-live="polite" aria-label={`${copy.title}. ${copy.detail}`} title={copy.detail}>
+    <span className="rfid-traffic-light" aria-hidden="true"><i/><i/><i/></span>
+    <span><strong>{copy.title}</strong><small>{copy.detail}</small></span>
+  </button>;
 }
 
 export function RfidAdminLogin({expectedMemberId,onVerified}:{expectedMemberId?:string;onVerified:(member:Member)=>void}){
