@@ -9,7 +9,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run check:migrations && npm run typecheck && npm run build && node --test tests/rendered-html.test.mjs tests/event-dialog.test.mjs tests/bundles.test.mjs tests/futureproof.test.mjs",
+    "test": "npm run check:migrations && npm run typecheck && npm run build && node --test tests/rendered-html.test.mjs tests/event-dialog.test.mjs tests/bundles.test.mjs tests/futureproof.test.mjs tests/allocation.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work",
     "check:migrations": "node scripts/check-migrations.mjs",
