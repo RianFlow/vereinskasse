@@ -137,6 +137,13 @@ test("nutzt standardmäßig Mitgliedspreise und bietet Nichtmitglied erst beim B
   assert.ok(page.includes("setCart({});setMemberPricing(true)"),"Preisart wird nach einer Buchung nicht zurückgesetzt");
   assert.ok(style.includes(".price-mode-switch")&&style.includes("active.non-member"));
 });
+test("entfernt den aktuellen Kunden für einen spontanen Gastverkauf",async()=>{
+  const [page,flow,identity]=await Promise.all([read("app/page.tsx"),read("app/simple-flow.css"),read("app/identity.css")]);
+  for(const feature of ["clearBillingMember","× Kunde entfernen",'setActiveMember(null)','setListMember(null)','setMemberPricing(false)','sessionStorage.removeItem("vereinskasse-active-member")'])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(page.includes('fetch("/api/identify",{method:"DELETE"}'),"Eine aktive Mitgliederanmeldung wird beim Entfernen nicht beendet");
+  assert.ok(flow.includes(".customer-actions")&&flow.includes(".clear-customer"),"Der Entfernen-Knopf fehlt bei der Kundenauswahl");
+  assert.ok(identity.includes(".checkout-person-actions")&&identity.includes(".clear-customer"),"Der Entfernen-Knopf fehlt im Bezahlbereich");
+});
 
 test("rechnet Mitglieder zum Monatsende ab und markiert sie erst nach dem 10. als überfällig",async()=>{
   const [page,style,layout,kioskStyle]=await Promise.all([read("app/page.tsx"),read("app/account-urgency.css"),read("app/layout.tsx"),read("app/kiosk-design.css")]);
