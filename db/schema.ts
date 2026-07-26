@@ -1,4 +1,4 @@
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const products = sqliteTable("products", {
   id: integer("id").primaryKey(), name: text("name").notNull(), price: real("price").notNull(),
@@ -19,6 +19,23 @@ export const members = sqliteTable("members", {
   id: text("id").primaryKey(), name: text("name").notNull(), role: text("role").notNull(),
   code: text("code").notNull().unique(), initials: text("initials").notNull(), active: integer("active", { mode: "boolean" }).notNull().default(true),
 });
+
+export const rfidDevices=sqliteTable("rfid_devices",{
+  id:text("id").primaryKey(),profileId:text("profile_id").notNull(),name:text("name").notNull(),
+  tokenHash:text("token_hash").notNull(),active:integer("active",{mode:"boolean"}).notNull().default(true),
+  lastSeenAt:text("last_seen_at"),createdBy:text("created_by").notNull(),createdAt:text("created_at").notNull(),
+},table=>[uniqueIndex("rfid_devices_token_hash_unique").on(table.tokenHash),index("rfid_devices_profile_active_idx").on(table.profileId,table.active)]);
+
+export const rfidCards=sqliteTable("rfid_cards",{
+  id:text("id").primaryKey(),profileId:text("profile_id").notNull(),uid:text("uid").notNull(),
+  memberId:text("member_id").notNull(),createdAt:text("created_at").notNull(),updatedAt:text("updated_at").notNull(),
+},table=>[uniqueIndex("rfid_cards_profile_uid_unique").on(table.profileId,table.uid),index("rfid_cards_profile_member_idx").on(table.profileId,table.memberId)]);
+
+export const rfidScans=sqliteTable("rfid_scans",{
+  id:text("id").primaryKey(),profileId:text("profile_id").notNull(),deviceId:text("device_id").notNull(),
+  uid:text("uid").notNull(),cardType:text("card_type"),blocks:integer("blocks"),createdAt:text("created_at").notNull(),
+  expiresAt:text("expires_at").notNull(),consumedAt:text("consumed_at"),
+},table=>[index("rfid_scans_profile_pending_idx").on(table.profileId,table.consumedAt,table.createdAt),index("rfid_scans_device_uid_idx").on(table.deviceId,table.uid,table.createdAt)]);
 
 export const events = sqliteTable("events", {
   id: text("id").primaryKey(), name: text("name").notNull(),
