@@ -1,5 +1,10 @@
 # ESP8266-RFID-Leser anbinden
 
+Die passend angepasste und mit PlatformIO geprüfte Firmware liegt im Repository
+unter [`hardware/NodeMCU-V3-RC522-Tablet`](../hardware/NodeMCU-V3-RC522-Tablet).
+Sie behält den lokalen Wartungszugang bei und sendet neue UIDs selbstständig per
+HTTPS an die nachfolgend beschriebene Route.
+
 ## Gewählte Architektur
 
 Der Browser ruft den Leser **nicht** über `http://192.168.4.1` auf. Stattdessen:
