@@ -6,11 +6,13 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
 #include <MFRC522.h>
+#include <Adafruit_NeoPixel.h>
 #include "config.h"
 #include "web_ui.h"
 
 MFRC522 rfid(PIN_RC522_SS, PIN_RC522_RST);
 ESP8266WebServer server(80);
+Adafruit_NeoPixel statusPixels(STATUS_LED_COUNT, PIN_STATUS_LED, NEO_GRB + NEO_KHZ800);
 BearSSL::WiFiClientSecure vereinskasseTls;
 HTTPClient vereinskasseHttps;
 BearSSL::X509List vereinskasseTrustAnchor(VEREINSKASSE_ROOT_CA);
@@ -30,6 +32,60 @@ bool writeResultReady = false;
 bool writeResultSuccess = false;
 String writeCommandId, writeCommandUid, writeCommandHex, writeResultHex, writeResultError;
 int writeCommandBlock = 0;
+
+enum class StatusLedMode {
+  Starting,
+  Connecting,
+  Ready,
+  Scanning,
+  Success,
+  Error,
+  WriteWaiting,
+  Writing
+};
+
+StatusLedMode statusLedMode = StatusLedMode::Starting;
+unsigned long statusLedUntil = 0;
+unsigned long statusLedLastFrame = 0;
+
+bool clockReady();
+
+void setStatusLed(StatusLedMode mode, unsigned long durationMs = 0) {
+  statusLedMode = mode;
+  statusLedUntil = durationMs ? millis() + durationMs : 0;
+  statusLedLastFrame = 0;
+}
+
+void fillStatusPixels(uint8_t red, uint8_t green, uint8_t blue) {
+  const uint32_t color = statusPixels.Color(red, green, blue);
+  for (uint16_t i = 0; i < STATUS_LED_COUNT; ++i) statusPixels.setPixelColor(i, color);
+  statusPixels.show();
+}
+
+void renderStatusLed() {
+  const unsigned long now = millis();
+  if (statusLedUntil && (long)(now - statusLedUntil) >= 0) {
+    statusLedUntil = 0;
+    if (writeCommandActive) statusLedMode = StatusLedMode::WriteWaiting;
+    else if (WiFi.status() == WL_CONNECTED && clockReady()) statusLedMode = StatusLedMode::Ready;
+    else statusLedMode = StatusLedMode::Connecting;
+  }
+  if (statusLedLastFrame && now - statusLedLastFrame < 45) return;
+  statusLedLastFrame = now;
+
+  const uint8_t pulse = 18 + (uint8_t)((now / 12) % 34);
+  const bool flash = (now / 180) % 2 == 0;
+  switch (statusLedMode) {
+    case StatusLedMode::Starting: fillStatusPixels(pulse, pulse / 2, 0); break;
+    case StatusLedMode::Connecting: fillStatusPixels(0, 0, pulse); break;
+    case StatusLedMode::Ready: fillStatusPixels(0, 18, 24); break;
+    case StatusLedMode::Scanning: fillStatusPixels(28, 0, 34); break;
+    case StatusLedMode::Success: fillStatusPixels(0, 60, 8); break;
+    case StatusLedMode::Error: fillStatusPixels(flash ? 70 : 4, 0, 0); break;
+    case StatusLedMode::WriteWaiting: fillStatusPixels(pulse, 0, pulse); break;
+    case StatusLedMode::Writing: fillStatusPixels(42, 0, 55); break;
+  }
+}
 
 bool stationConfigured() {
   return strlen(CLUB_WIFI_SSID) > 0;
@@ -145,6 +201,7 @@ bool pushUidToVereinskasse(const String &uid, const String &type, int blocks) {
 
   if (status >= 200 && status < 300) {
     lastPushState = "Karte " + uid + " an die Vereinskasse übertragen.";
+    setStatusLed(StatusLedMode::Success, 900);
     Serial.println(lastPushState);
     return true;
   }
@@ -156,6 +213,7 @@ bool pushUidToVereinskasse(const String &uid, const String &type, int blocks) {
   } else {
     lastPushState = "Kassenserver antwortet mit HTTP " + String(status) + ".";
   }
+  setStatusLed(StatusLedMode::Error, 1800);
   Serial.println(lastPushState);
   if (response.length()) {
     Serial.println(response.substring(0, 180));
@@ -188,6 +246,7 @@ void maintainStationWifi() {
     if (clockReady() && !clockWasReady) {
       clockWasReady = true;
       lastPushState = "Vereins-WLAN und sichere Uhrzeit bereit.";
+      setStatusLed(StatusLedMode::Ready);
       Serial.println(lastPushState);
     }
     return;
@@ -197,12 +256,14 @@ void maintainStationWifi() {
   if (stationWasConnected) {
     stationWasConnected = false;
     clockWasReady = false;
+    setStatusLed(StatusLedMode::Connecting);
     Serial.println("Vereins-WLAN getrennt.");
   }
   if (lastWifiAttempt && now - lastWifiAttempt < WIFI_RECONNECT_INTERVAL_MS) return;
   lastWifiAttempt = now;
   timeSyncStarted = false;
   lastPushState = "Verbinde mit Vereins-WLAN.";
+  setStatusLed(StatusLedMode::Connecting);
   Serial.printf("Verbinde mit Vereins-WLAN \"%s\" ...\n", CLUB_WIFI_SSID);
   WiFi.begin(CLUB_WIFI_SSID, CLUB_WIFI_PASSWORD);
 }
@@ -224,6 +285,7 @@ void automaticUidScan() {
   lastPushedUid = uid;
   lastPushAt = now;
   lastPushState = "Karte " + uid + " erkannt, Übertragung läuft.";
+  setStatusLed(StatusLedMode::Scanning);
   pushUidToVereinskasse(uid, type, blocks);
 }
 
@@ -385,11 +447,14 @@ bool reportWriteResult() {
   vereinskasseHttps.end();
   if (status < 200 || status >= 300) {
     lastPushState = "Schreibergebnis konnte nicht gemeldet werden (HTTP " + String(status) + ").";
+    setStatusLed(StatusLedMode::Error, 1800);
     return false;
   }
   lastPushState = writeResultSuccess
       ? "RFID-Chip " + writeCommandUid + " beschrieben und geprüft."
       : "RFID-Schreibfehler: " + writeResultError;
+  setStatusLed(writeResultSuccess ? StatusLedMode::Success : StatusLedMode::Error,
+               writeResultSuccess ? 1200 : 2200);
   Serial.println(lastPushState);
   writeCommandActive = false;
   writeResultReady = false;
@@ -422,6 +487,7 @@ void pollWriteCommand() {
       lastPushState = "Schreibauftrag-Abfrage: " + String(HTTPClient::errorToString(status).c_str());
       if (tlsCode) lastPushState += " · TLS " + String(tlsCode) + ": " + String(tlsError);
     }
+    setStatusLed(StatusLedMode::Error, 1400);
     if (millis() - lastCommandErrorLogAt >= 15000) {
       lastCommandErrorLogAt = millis();
       Serial.println(lastPushState);
@@ -449,6 +515,7 @@ void pollWriteCommand() {
   writeResultHex = "";
   writeResultError = "";
   lastPushState = "Schreibauftrag bereit: Karte " + uid + " auflegen.";
+  setStatusLed(StatusLedMode::WriteWaiting);
   Serial.println(lastPushState);
 }
 
@@ -459,9 +526,11 @@ void processWriteCommand() {
   if (scannedUid != writeCommandUid) {
     finishCard();
     lastPushState = "Falsche Karte " + scannedUid + " – erwartet wird " + writeCommandUid + ".";
+    setStatusLed(StatusLedMode::Error, 1400);
     return;
   }
 
+  setStatusLed(StatusLedMode::Writing);
   const int blocks = classicBlocks(rfid.PICC_GetType(rfid.uid.sak));
   byte payload[16],check[18];byte checkLen=sizeof(check);
   String error;
@@ -503,6 +572,12 @@ String macSuffix() {
 void setup() {
   Serial.begin(115200);
   delay(300);
+  statusPixels.begin();
+  statusPixels.setBrightness(STATUS_LED_BRIGHTNESS);
+  statusPixels.clear();
+  statusPixels.show();
+  setStatusLed(StatusLedMode::Starting);
+  renderStatusLed();
   SPI.begin();
   rfid.PCD_Init();
   delay(4);
@@ -556,5 +631,6 @@ void loop() {
   automaticUidScan();
   pollWriteCommand();
   processWriteCommand();
+  renderStatusLed();
   delay(2);
 }

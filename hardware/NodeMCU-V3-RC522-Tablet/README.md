@@ -14,6 +14,10 @@ Kassendatenbank. Die beschreibbaren Kartendaten werden dafür nicht vertraut.
 |---:|---|---|
 | 1 | NodeMCU V3 | ESP8266/ESP-12E oder ESP-12F, 3,3-V-Logik |
 | 1 | MFRC522/RC522-Modul | SPI, **nur mit 3,3 V versorgen** |
+| 1 | WS2812B-Streifen/-Modul | 5 V, drei Anschlüsse `5V`, `DIN`, `GND` |
+| 1 | 74AHCT125 oder 74HCT245 | zuverlässige Pegelanpassung von 3,3 V auf 5 V |
+| 1 | Widerstand | 330–470 Ω in der Datenleitung vor `DIN` |
+| 1 | Elektrolytkondensator | 500–1000 µF, mindestens 6,3 V |
 | 7 | Dupont-Kabel | Buchse–Buchse, möglichst kurz (<20 cm) |
 | 1 | USB-Datenkabel | passend zum DevKit |
 | 1 | 5-V-USB-Netzteil/Powerbank | mindestens 500 mA |
@@ -36,6 +40,37 @@ Vor dem Verdrahten USB/Strom abziehen.
 | MISO | D6 (GPIO 12) | SPI-Daten zum ESP8266 |
 | RST | D1 (GPIO 5) | Reset |
 | IRQ | nicht verbinden | nicht benötigt |
+
+### WS2812B-Statusanzeige
+
+Für einen stabilen Dauerbetrieb wird die Datenleitung über einen
+**74AHCT125/74HCT245-Pegelwandler** geführt:
+
+| Verbindung | Ziel |
+|---|---|
+| NodeMCU D0 (GPIO 16) | 74AHCT125 Eingang `1A` |
+| 74AHCT125 `1OE` | GND |
+| 74AHCT125 `1Y` | über 330–470 Ω an WS2812B `DIN` |
+| 74AHCT125 `VCC` | 5 V |
+| WS2812B `5V` | ausreichend starkes 5-V-Netzteil |
+| WS2812B `GND` | Netzteil-GND **und** NodeMCU-GND |
+| 500–1000-µF-Kondensator | direkt zwischen `5V` und `GND` am Streifenanfang |
+
+Die Pfeilrichtung auf dem Streifen muss vom Anschluss weg zeigen; verwendet
+wird der Eingang `DIN`, nicht `DOUT`. In `include/config.h` ist die Anzahl
+zunächst auf acht LEDs begrenzt und kann an das tatsächlich verwendete Stück
+angepasst werden. Ein langer Streifen darf nicht aus dem 3,3-V-Anschluss des
+NodeMCU versorgt werden.
+
+Statusfarben:
+
+- orange pulsierend: Gerät startet
+- blau pulsierend: Vereins-WLAN oder sichere Uhrzeit noch nicht bereit
+- gedämpft türkis: Leser bereit
+- violett: Chip erkannt bzw. Schreibvorgang läuft
+- violett pulsierend: erwarteten Chip zum Beschreiben auflegen
+- grün: Scan übertragen oder Schreiben erfolgreich
+- rot blinkend: WLAN-, Server-, Karten- oder Schreibfehler
 
 ```text
 Tablet ))) WLAN ))) NodeMCU ── SPI ── MFRC522 ))) Karte

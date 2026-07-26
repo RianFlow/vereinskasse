@@ -6,6 +6,12 @@ constexpr int PIN_RC522_SS = 4;    // D2
 constexpr int PIN_RC522_RST = 5;   // D1
 // Hardware-SPI ist beim ESP8266 fest: SCK D5, MISO D6, MOSI D7.
 
+// WS2812B-Statusstreifen. D0 ist frei und beeinflusst den Bootvorgang nicht.
+// Nur so viele LEDs eintragen, wie am Leser tatsächlich leuchten sollen.
+constexpr int PIN_STATUS_LED = 16;       // D0
+constexpr uint16_t STATUS_LED_COUNT = 8;
+constexpr uint8_t STATUS_LED_BRIGHTNESS = 38;
+
 // Leer lassen: geräteabhängige Werte werden aus der Chip-ID erzeugt.
 // Eigene Werte: AP mindestens 8, Web-Passwort möglichst mindestens 12 Zeichen.
 constexpr char CUSTOM_AP_SSID[] = "";
