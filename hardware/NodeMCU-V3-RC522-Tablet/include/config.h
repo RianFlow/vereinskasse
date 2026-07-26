@@ -9,7 +9,7 @@ constexpr int PIN_RC522_RST = 5;   // D1
 // WS2812B-Statusstreifen. D0 ist frei und beeinflusst den Bootvorgang nicht.
 // Nur so viele LEDs eintragen, wie am Leser tatsächlich leuchten sollen.
 constexpr int PIN_STATUS_LED = 16;       // D0
-constexpr uint16_t STATUS_LED_COUNT = 8;
+constexpr uint16_t STATUS_LED_COUNT = 5;
 constexpr uint8_t STATUS_LED_BRIGHTNESS = 38;
 
 // Leer lassen: geräteabhängige Werte werden aus der Chip-ID erzeugt.

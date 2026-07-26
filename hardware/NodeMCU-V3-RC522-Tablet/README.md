@@ -57,10 +57,9 @@ Für einen stabilen Dauerbetrieb wird die Datenleitung über einen
 | 500–1000-µF-Kondensator | direkt zwischen `5V` und `GND` am Streifenanfang |
 
 Die Pfeilrichtung auf dem Streifen muss vom Anschluss weg zeigen; verwendet
-wird der Eingang `DIN`, nicht `DOUT`. In `include/config.h` ist die Anzahl
-zunächst auf acht LEDs begrenzt und kann an das tatsächlich verwendete Stück
-angepasst werden. Ein langer Streifen darf nicht aus dem 3,3-V-Anschluss des
-NodeMCU versorgt werden.
+wird der Eingang `DIN`, nicht `DOUT`. In `include/config.h` ist die Anzeige auf
+die fünf LEDs am Leser eingestellt. Ein langer Streifen darf nicht aus dem
+3,3-V-Anschluss des NodeMCU versorgt werden.
 
 Statusfarben:
 
