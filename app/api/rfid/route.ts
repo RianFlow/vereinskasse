@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { requireProfile } from "../profile-session";
-import { sessionUser } from "../session";
+import { requireRole } from "../session";
 
 type RfidDevice={id:string;profileId:string;name:string};
 type RfidScan={id:string;uid:string;deviceId:string;deviceName:string;cardType:string|null;blocks:number|null;createdAt:string};
@@ -57,23 +57,39 @@ export async function GET(request:Request){
 
 export async function PUT(request:Request){
   try{
-    const profile=await requireProfile(request);
-    if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401,headers:jsonHeaders});
-    const body=await request.json() as {scanId?:string;memberId?:string};
+    const [profile,admin]=await Promise.all([requireProfile(request),requireRole(request,["Vorstand"])]);
+    if(!profile||!admin)return Response.json({error:"Nur Vorstand / Admin darf RFID-Karten zuordnen"},{status:403,headers:jsonHeaders});
+    const body=await request.json() as {scanId?:string;memberId?:string;writeText?:unknown;writeBlock?:unknown};
     if(!body.scanId||body.scanId.length>100||!body.memberId||body.memberId.length>100)return Response.json({error:"Scan und Mitglied sind erforderlich"},{status:400,headers:jsonHeaders});
-    const [scan,member,operator]=await Promise.all([
-      env.DB.prepare("SELECT id,uid,device_id deviceId FROM rfid_scans WHERE id=? AND profile_id=?").bind(body.scanId,profile.id).first<{id:string;uid:string;deviceId:string}>(),
-      env.DB.prepare("SELECT id,name,role,initials FROM members WHERE id=? AND active=1").bind(body.memberId).first<RfidMember>(),
-      sessionUser(request)
+    const [scan,member]=await Promise.all([
+      env.DB.prepare("SELECT id,uid,device_id deviceId,blocks FROM rfid_scans WHERE id=? AND profile_id=?").bind(body.scanId,profile.id).first<{id:string;uid:string;deviceId:string;blocks:number|null}>(),
+      env.DB.prepare("SELECT id,name,role,initials FROM members WHERE id=? AND active=1").bind(body.memberId).first<RfidMember>()
     ]);
     if(!scan)return Response.json({error:"Der Kartenscan ist abgelaufen. Karte bitte erneut auflegen."},{status:404,headers:jsonHeaders});
     if(!member)return Response.json({error:"Mitglied nicht gefunden"},{status:404,headers:jsonHeaders});
-    const now=new Date().toISOString(),id=crypto.randomUUID(),operatorId=operator?.id||`PROFILE-${profile.id}`;
-    await env.DB.batch([
+    const wantsWrite=body.writeText!=null&&String(body.writeText).length>0;
+    const writeBlock=Number(body.writeBlock??4);
+    const isTrailer=(block:number)=>block<128?block%4===3:block%16===15;
+    const textBytes=wantsWrite?new TextEncoder().encode(String(body.writeText)):new Uint8Array();
+    if(wantsWrite&&textBytes.length>16)return Response.json({error:"Die Kartenbeschriftung darf höchstens 16 UTF-8-Byte lang sein"},{status:400,headers:jsonHeaders});
+    if(wantsWrite&&(!Number.isInteger(writeBlock)||writeBlock<1||writeBlock>255||isTrailer(writeBlock)))return Response.json({error:"Dieser Kartenblock darf nicht beschrieben werden"},{status:400,headers:jsonHeaders});
+    if(wantsWrite&&scan.blocks&&writeBlock>=scan.blocks)return Response.json({error:"Der Block liegt außerhalb dieser Karte"},{status:400,headers:jsonHeaders});
+    const nowDate=new Date(),now=nowDate.toISOString(),id=crypto.randomUUID(),commandId=wantsWrite?crypto.randomUUID():null;
+    const statements=[
       env.DB.prepare("INSERT INTO rfid_cards (id,profile_id,uid,member_id,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(profile_id,uid) DO UPDATE SET member_id=excluded.member_id,updated_at=excluded.updated_at").bind(id,profile.id,scan.uid,member.id,now,now),
-      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_CARD_ASSIGNED","rfid_card",scan.uid,operatorId,JSON.stringify({profileId:profile.id,memberId:member.id,deviceId:scan.deviceId}),now)
-    ]);
-    return Response.json({ok:true,member},{headers:jsonHeaders});
+      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_CARD_ASSIGNED","rfid_card",scan.uid,admin.id,JSON.stringify({profileId:profile.id,memberId:member.id,deviceId:scan.deviceId}),now)
+    ];
+    if(wantsWrite&&commandId){
+      const payload=new Uint8Array(16);payload.set(textBytes);
+      const payloadHex=[...payload].map(byte=>byte.toString(16).padStart(2,"0")).join("").toUpperCase();
+      const expiresAt=new Date(nowDate.getTime()+120_000).toISOString();
+      statements.push(
+        env.DB.prepare("INSERT INTO rfid_write_commands (id,profile_id,device_id,uid,block,payload_hex,status,error,created_by,created_at,expires_at,claimed_at,completed_at) VALUES (?,?,?,?,?,?,'pending',NULL,?,?,?,NULL,NULL)").bind(commandId,profile.id,scan.deviceId,scan.uid,writeBlock,payloadHex,admin.id,now,expiresAt),
+        env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_WRITE_REQUESTED","rfid_write_command",commandId,admin.id,JSON.stringify({profileId:profile.id,memberId:member.id,uid:scan.uid,deviceId:scan.deviceId,block:writeBlock}),now)
+      );
+    }
+    await env.DB.batch(statements);
+    return Response.json({ok:true,member,uid:scan.uid,command:commandId?{id:commandId,status:"pending"}:null},{headers:jsonHeaders});
   }catch{
     return Response.json({error:"RFID-Karte konnte nicht zugeordnet werden"},{status:500,headers:jsonHeaders});
   }

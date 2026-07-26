@@ -2,9 +2,9 @@ import { env } from "cloudflare:workers";
 import { requireRole } from "../session";
 import { requireProfile } from "../profile-session";
 
-const SCHEMA_VERSION=17;
+const SCHEMA_VERSION=18;
 const BACKUP_FORMAT_VERSION=2;
-const tables=["profiles","profile_recovery_keys","members","rfid_devices","rfid_cards","rfid_scans","guest_accounts","products","discount_rules","events","sales","sale_items","sale_allocations","payments","account_transactions","rounds","round_claims","random_reward_campaigns","random_reward_slots","shifts","reversals","audit_logs"] as const;
+const tables=["profiles","profile_recovery_keys","members","rfid_devices","rfid_cards","rfid_scans","rfid_write_commands","guest_accounts","products","discount_rules","events","sales","sale_items","sale_allocations","payments","account_transactions","rounds","round_claims","random_reward_campaigns","random_reward_slots","shifts","reversals","audit_logs"] as const;
 const hex=(buffer:ArrayBuffer)=>Array.from(new Uint8Array(buffer),byte=>byte.toString(16).padStart(2,"0")).join("");
 
 export async function GET(request:Request){

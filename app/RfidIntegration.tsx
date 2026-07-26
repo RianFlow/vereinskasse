@@ -13,7 +13,6 @@ type ScannerState=
 
 export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(member:Member)=>void}){
   const [state,setState]=useState<ScannerState>({kind:"waiting",deviceCount:0});
-  const [assigning,setAssigning]=useState(false);
   const stateRef=useRef(state),onSelectRef=useRef(onSelect),holdUntil=useRef(0);
   useEffect(()=>{stateRef.current=state},[state]);
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
@@ -46,21 +45,12 @@ export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(membe
     return()=>{stopped=true;clearInterval(timer)};
   },[]);
 
-  const assign=async(member:Member)=>{
-    if(state.kind!=="unknown")return;
-    const response=await fetch("/api/rfid",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({scanId:state.scan.id,memberId:member.id})});
-    const data=await response.json();
-    if(!response.ok)throw new Error(data.error||"Karte konnte nicht zugeordnet werden");
-    holdUntil.current=Date.now()+3500;
-    setState({kind:"recognized",deviceCount:state.deviceCount,scan:state.scan,member:data.member});
-    setAssigning(false);onSelect(data.member);
-  };
-  const dismiss=()=>{holdUntil.current=0;setAssigning(false);setState({kind:"waiting",deviceCount:state.deviceCount})};
+  const dismiss=()=>{holdUntil.current=0;setState({kind:"waiting",deviceCount:state.deviceCount})};
 
   const copy=state.kind==="recognized"
     ?{title:"Karte erkannt",detail:`${state.member.name} wurde für diese Bestellung ausgewählt.`}
     :state.kind==="unknown"
-      ?{title:"Unbekannte Karte",detail:`UID ${state.scan.uid} ist noch keinem Mitglied zugeordnet.`}
+      ?{title:"Unbekannte Karte",detail:`UID ${state.scan.uid} kann im Adminbereich beim Mitglied zugeordnet werden.`}
       :state.kind==="error"
         ?{title:"Lesefehler",detail:state.message}
         :state.deviceCount
@@ -70,23 +60,37 @@ export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(membe
   return <><section className={`rfid-scan-status ${state.kind} ${state.kind==="waiting"&&!state.deviceCount?"not-configured":""}`} aria-live="polite">
     <span className="rfid-state-icon">{state.kind==="recognized"?<IconCheck size={23}/>:state.kind==="error"?<IconAlertCircle size={23}/>:<IconNfc size={23}/>}</span>
     <div><strong>{copy.title}</strong><small>{copy.detail}</small></div>
-    {state.kind==="unknown"&&<div className="rfid-unknown-actions"><button onClick={()=>setAssigning(true)}>Mitglied zuordnen</button><button onClick={dismiss}>Später</button></div>}
-  </section>
-  {assigning&&state.kind==="unknown"&&<RfidAssignmentDialog uid={state.scan.uid} members={members} onClose={()=>setAssigning(false)} onAssign={assign}/>}</>;
+    {state.kind==="unknown"&&<div className="rfid-unknown-actions"><button onClick={dismiss}>Verstanden</button></div>}
+  </section></>;
 }
 
-function RfidAssignmentDialog({uid,members,onClose,onAssign}:{uid:string;members:Member[];onClose:()=>void;onAssign:(member:Member)=>Promise<void>}){
-  const [query,setQuery]=useState(""),[busyId,setBusyId]=useState<string|null>(null),[error,setError]=useState("");
-  const normalized=query.trim().toLocaleLowerCase("de-DE");
-  const filtered=members.filter(member=>member.active!==false&&(!normalized||`${member.name} ${member.id}`.toLocaleLowerCase("de-DE").includes(normalized))).sort((a,b)=>a.name.localeCompare(b.name,"de"));
-  const assign=async(member:Member)=>{setBusyId(member.id);setError("");try{await onAssign(member)}catch(reason){setError(reason instanceof Error?reason.message:"Zuordnung fehlgeschlagen");setBusyId(null)}};
-  return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rfid-assignment-title"><div className="identity-card rfid-assignment-card">
+export function RfidMemberCardDialog({member,onClose,onSaved}:{member:Member;onClose:()=>void;onSaved:()=>void}){
+  const [scan,setScan]=useState<Scan|null>(null),[phase,setPhase]=useState<"scan"|"ready"|"saving"|"write"|"success"|"error">("scan");
+  const [writeChip,setWriteChip]=useState(false),[block,setBlock]=useState(4),[text,setText]=useState(member.id.slice(0,16)),[message,setMessage]=useState("Karte auf den Leser legen.");
+  const textBytes=new TextEncoder().encode(text).length;
+  useEffect(()=>{
+    if(phase!=="scan")return;
+    let stopped=false,busy=false;
+    const poll=async()=>{if(stopped||busy)return;busy=true;try{const response=await fetch("/api/rfid",{cache:"no-store"}),data=await response.json();if(!response.ok)throw new Error(data.error);if(data.scan&&!stopped){setScan(data.scan);setPhase("ready");setMessage(`Karte ${data.scan.uid} erkannt.`)}}catch(reason){if(!stopped)setMessage(reason instanceof Error?reason.message:"Lesefehler")}finally{busy=false}};
+    poll();const timer=setInterval(poll,1000);return()=>{stopped=true;clearInterval(timer)};
+  },[phase]);
+  const watch=async(id:string)=>{
+    setPhase("write");setMessage("Zuordnung gespeichert. Karte kurz abnehmen und erneut auflegen.");
+    const started=Date.now();const timer=setInterval(async()=>{try{const response=await fetch(`/api/rfid/commands?id=${encodeURIComponent(id)}`,{cache:"no-store"}),data=await response.json();if(!response.ok)throw new Error(data.error);const status=data.command?.status;if(status==="succeeded"){clearInterval(timer);setPhase("success");setMessage("Karte wurde zugeordnet, beschrieben und erfolgreich geprüft.");onSaved()}else if(status==="failed"||status==="expired"){clearInterval(timer);setPhase("error");setMessage(data.command?.error||"Der Chip konnte nicht beschrieben werden.")}else if(Date.now()-started>130000){clearInterval(timer);setPhase("error");setMessage("Zeitfenster abgelaufen. Bitte erneut versuchen.")}}catch(reason){clearInterval(timer);setPhase("error");setMessage(reason instanceof Error?reason.message:"Status konnte nicht geprüft werden")}},1000);
+  };
+  const save=async()=>{
+    if(!scan||textBytes>16)return;setPhase("saving");setMessage("Zuordnung wird gespeichert …");
+    try{const response=await fetch("/api/rfid",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({scanId:scan.id,memberId:member.id,...(writeChip?{writeText:text,writeBlock:block}:{})})}),data=await response.json();if(!response.ok)throw new Error(data.error);if(data.command?.id)watch(data.command.id);else{setPhase("success");setMessage("Karte wurde dem Mitglied zugeordnet.");onSaved()}}catch(reason){setPhase("error");setMessage(reason instanceof Error?reason.message:"Zuordnung fehlgeschlagen")}};
+  const reset=()=>{setScan(null);setPhase("scan");setMessage("Karte auf den Leser legen.")};
+  return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rfid-member-card-title"><div className="identity-card rfid-provision-card">
     <button className="modal-close" aria-label="Fenster schließen" onClick={onClose}>×</button>
-    <div className="identity-icon"><IconNfc size={28}/></div><p className="eyebrow">UNBEKANNTE KARTE</p>
-    <h2 id="rfid-assignment-title">Mitglied zuordnen</h2><p className="identity-sub">Die UID <strong>{uid}</strong> wird nur als Kartenkennung gespeichert. Preise, Zechen und Berechtigungen bleiben in der Vereinskasse.</p>
-    <label className="member-search"><span>⌕</span><input autoFocus value={query} onChange={event=>setQuery(event.target.value)} placeholder="Name oder Mitgliedsnummer"/><small>{filtered.length} Treffer</small></label>
-    <div className="rfid-member-results">{filtered.map(member=><button key={member.id} disabled={busyId!==null} onClick={()=>assign(member)}><span>{member.initials}</span><div><strong>{member.name}</strong><small>{member.id}</small></div><b>{busyId===member.id?"Wird gespeichert …":"Zuordnen ›"}</b></button>)}</div>
-    {error&&<p className="profile-error" role="alert">{error}</p>}
+    <div className="identity-icon"><IconNfc size={28}/></div><p className="eyebrow">RFID-KARTE</p><h2 id="rfid-member-card-title">{member.name}</h2>
+    <div className={`rfid-provision-state ${phase}`}><span>{phase==="success"?"✓":phase==="error"?"!":"◉"}</span><div><strong>{phase==="scan"?"Karte auflegen":phase==="ready"?"Karte erkannt":phase==="write"?"Chip erneut auflegen":phase==="success"?"Fertig":phase==="error"?"Nicht abgeschlossen":"Bitte warten"}</strong><small>{message}</small></div></div>
+    {scan&&phase==="ready"&&<><div className="rfid-scan-card"><span>UID</span><code>{scan.uid}</code><small>{scan.deviceName} · {scan.cardType||"RFID-Karte"}</small></div>
+      <label className="rfid-write-toggle"><input type="checkbox" checked={writeChip} onChange={event=>setWriteChip(event.target.checked)}/><span><strong>Chip zusätzlich beschriften</strong><small>Optionaler lesbarer Hinweis. Geld, Kontostand und Rechte bleiben in der Datenbank.</small></span></label>
+      {writeChip&&<div className="rfid-write-fields"><label>Freier Datenblock<select value={block} onChange={event=>setBlock(Number(event.target.value))}>{[4,5,6,8,9,10].filter(value=>!scan.blocks||value<scan.blocks).map(value=><option key={value} value={value}>Block {value}</option>)}</select></label><label>Text auf dem Chip<input value={text} onChange={event=>setText(event.target.value)} maxLength={16}/><small className={textBytes>16?"invalid":""}>{textBytes}/16 Byte</small></label></div>}
+      <button className="confirm-allocation" disabled={textBytes>16} onClick={save}>{writeChip?"Zuordnen und Chip beschreiben":"Karte zuordnen"}</button></>}
+    {(phase==="error"||phase==="success")&&<div className="rfid-provision-actions">{phase==="error"&&<button onClick={reset}>Erneut versuchen</button>}<button onClick={onClose}>Schließen</button></div>}
   </div></div>;
 }
 

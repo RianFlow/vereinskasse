@@ -37,6 +37,13 @@ export const rfidScans=sqliteTable("rfid_scans",{
   expiresAt:text("expires_at").notNull(),consumedAt:text("consumed_at"),
 },table=>[index("rfid_scans_profile_pending_idx").on(table.profileId,table.consumedAt,table.createdAt),index("rfid_scans_device_uid_idx").on(table.deviceId,table.uid,table.createdAt)]);
 
+export const rfidWriteCommands=sqliteTable("rfid_write_commands",{
+  id:text("id").primaryKey(),profileId:text("profile_id").notNull(),deviceId:text("device_id").notNull(),
+  uid:text("uid").notNull(),block:integer("block").notNull(),payloadHex:text("payload_hex").notNull(),
+  status:text("status").notNull().default("pending"),error:text("error"),createdBy:text("created_by").notNull(),
+  createdAt:text("created_at").notNull(),expiresAt:text("expires_at").notNull(),claimedAt:text("claimed_at"),completedAt:text("completed_at"),
+},table=>[index("rfid_write_commands_device_status_idx").on(table.deviceId,table.status,table.createdAt),index("rfid_write_commands_profile_created_idx").on(table.profileId,table.createdAt)]);
+
 export const events = sqliteTable("events", {
   id: text("id").primaryKey(), name: text("name").notNull(),
   profileId: text("profile_id").notNull().default("darts"),

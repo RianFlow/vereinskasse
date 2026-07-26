@@ -64,16 +64,35 @@ Der ESP8266 muss das TLS-Zertifikat der Vereinskassen-Domain prüfen.
 Root-CA wird in der Firmware als Trust Anchor hinterlegt und bei einem
 Zertifikatswechsel aktualisiert.
 
-Solange die Testseite nur für ein persönliches OpenAI-Konto freigegeben ist,
-erreicht ein eigenständiger ESP8266 sie nicht. Für den Gerätebetrieb wird
-später entweder:
-
-- der Vereinszugang der Kasse bereitgestellt und die Geräte-API durch ihre
-  eigene Gerätekennung geschützt, oder
-- ein getrenntes öffentliches RFID-Gateway vorgeschaltet.
+Die Vereinskasse ist für den Gerätebetrieb öffentlich erreichbar. Die
+Geräte-API bleibt unabhängig davon durch ihre eigene, lange Gerätekennung
+geschützt. Wird die Seite später wieder privat gestellt, benötigt der Leser
+einen lokalen Vermittlungsserver.
 
 Die Vereinskasse selbst akzeptiert einen Scan nur mit einer aktiven,
 serverseitig gehashten Gerätekennung.
+
+## Karte einem Mitglied zuordnen und beschriften
+
+Im Adminbereich unter **Mitglieder** kann bei einer Person **RFID-Karte**
+gewählt werden:
+
+1. Karte auflegen; der Leser sendet ihre UID.
+2. UID dem ausgewählten Mitglied zuordnen.
+3. Optional einen freien Datenblock und einen Text bis 16 UTF-8-Byte wählen.
+4. Karte kurz abnehmen und erneut auflegen.
+5. Der ESP8266 schreibt den Block, liest ihn zurück und meldet das geprüfte
+   Ergebnis an die Kasse.
+
+Schreibaufträge werden nur für einen angemeldeten Vorstand erzeugt, sind an
+den konkreten Leser und die konkrete UID gebunden und laufen nach zwei Minuten
+ab. Block 0 und Sektor-Trailer bleiben gesperrt. Die Firmware verwendet für
+diese Komfortbeschriftung den MIFARE-Standard-Key A `FFFFFFFFFFFF`.
+
+Der Leser fragt Aufträge über `GET /api/rfid/commands` ab und meldet das
+Ergebnis per `POST /api/rfid/commands`. Beide Aufrufe benötigen
+`X-RFID-Token`. Geldbeträge, Kontostände, Preisgruppen und Berechtigungen
+werden auch nach dem Beschreiben ausschließlich aus der Datenbank gelesen.
 
 ## Sicherheitsgrenze
 

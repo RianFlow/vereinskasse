@@ -17,7 +17,13 @@ String lastPushedUid;
 unsigned long lastWifiAttempt = 0;
 unsigned long lastScanAt = 0;
 unsigned long lastPushAt = 0;
+unsigned long lastCommandPollAt = 0;
 bool timeSyncStarted = false;
+bool writeCommandActive = false;
+bool writeResultReady = false;
+bool writeResultSuccess = false;
+String writeCommandId, writeCommandUid, writeCommandHex, writeResultHex, writeResultError;
+int writeCommandBlock = 0;
 
 bool stationConfigured() {
   return strlen(CLUB_WIFI_SSID) > 0;
@@ -182,7 +188,7 @@ void maintainStationWifi() {
 
 void automaticUidScan() {
   const unsigned long now = millis();
-  if (!pushConfigured() || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
+  if (writeCommandActive || !pushConfigured() || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
   lastScanAt = now;
   if (WiFi.status() != WL_CONNECTED || !clockReady()) return;
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
@@ -323,6 +329,151 @@ void handleWrite() {
   finishCard(); json(200, body);
 }
 
+String jsonStringField(const String &body, const String &name) {
+  const String marker = "\"" + name + "\":\"";
+  int start = body.indexOf(marker);
+  if (start < 0) return "";
+  start += marker.length();
+  const int end = body.indexOf('"', start);
+  return end < 0 ? "" : body.substring(start, end);
+}
+
+int jsonIntField(const String &body, const String &name) {
+  const String marker = "\"" + name + "\":";
+  int start = body.indexOf(marker);
+  if (start < 0) return -1;
+  start += marker.length();
+  return body.substring(start).toInt();
+}
+
+String commandApiUrl() {
+  return String(VEREINSKASSE_API_URL) + "/commands";
+}
+
+bool reportWriteResult() {
+  if (!writeResultReady) return false;
+  BearSSL::WiFiClientSecure tls;
+  BearSSL::X509List trustAnchor(VEREINSKASSE_ROOT_CA);
+  tls.setTrustAnchors(&trustAnchor);
+  tls.setTimeout(5000);
+  HTTPClient https;
+  https.setTimeout(5000);
+  if (!https.begin(tls, commandApiUrl())) return false;
+  https.addHeader("Content-Type", "application/json");
+  https.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  const String body = "{\"id\":\"" + jsonEscape(writeCommandId) +
+                      "\",\"success\":" + String(writeResultSuccess ? "true" : "false") +
+                      ",\"uid\":\"" + jsonEscape(writeCommandUid) +
+                      "\",\"hex\":\"" + jsonEscape(writeResultHex) +
+                      "\",\"error\":\"" + jsonEscape(writeResultError) + "\"}";
+  const int status = https.POST(body);
+  https.end();
+  if (status < 200 || status >= 300) {
+    lastPushState = "Schreibergebnis konnte nicht gemeldet werden (HTTP " + String(status) + ").";
+    return false;
+  }
+  lastPushState = writeResultSuccess
+      ? "RFID-Chip " + writeCommandUid + " beschrieben und geprüft."
+      : "RFID-Schreibfehler: " + writeResultError;
+  Serial.println(lastPushState);
+  writeCommandActive = false;
+  writeResultReady = false;
+  writeCommandId = "";
+  return true;
+}
+
+void pollWriteCommand() {
+  if (!pushConfigured() || WiFi.status() != WL_CONNECTED || !clockReady()) return;
+  if (writeCommandActive) {
+    if (writeResultReady) reportWriteResult();
+    return;
+  }
+  const unsigned long now = millis();
+  if (now - lastCommandPollAt < RFID_COMMAND_POLL_INTERVAL_MS) return;
+  lastCommandPollAt = now;
+
+  BearSSL::WiFiClientSecure tls;
+  BearSSL::X509List trustAnchor(VEREINSKASSE_ROOT_CA);
+  tls.setTrustAnchors(&trustAnchor);
+  tls.setTimeout(5000);
+  HTTPClient https;
+  https.setTimeout(5000);
+  if (!https.begin(tls, commandApiUrl())) return;
+  https.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  const int status = https.GET();
+  const String response = status == 200 ? https.getString() : "";
+  https.end();
+  if (status == 204) return;
+  if (status != 200) {
+    if (status > 0) lastPushState = "Schreibauftrag-Abfrage: HTTP " + String(status) + ".";
+    return;
+  }
+
+  const String id = jsonStringField(response, "id");
+  const String uid = jsonStringField(response, "uid");
+  const String payload = jsonStringField(response, "hex");
+  const int block = jsonIntField(response, "block");
+  byte parsed[16];
+  if (!id.length() || !uid.length() || block < 1 || isTrailer(block) ||
+      !parseHex(payload, parsed, 16)) {
+    lastPushState = "Ungültiger RFID-Schreibauftrag empfangen.";
+    return;
+  }
+  writeCommandId = id;
+  writeCommandUid = uid;
+  writeCommandHex = payload;
+  writeCommandBlock = block;
+  writeCommandActive = true;
+  writeResultReady = false;
+  writeResultSuccess = false;
+  writeResultHex = "";
+  writeResultError = "";
+  lastPushState = "Schreibauftrag bereit: Karte " + uid + " auflegen.";
+  Serial.println(lastPushState);
+}
+
+void processWriteCommand() {
+  if (!writeCommandActive || writeResultReady) return;
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+  const String scannedUid = uidHex();
+  if (scannedUid != writeCommandUid) {
+    finishCard();
+    lastPushState = "Falsche Karte " + scannedUid + " – erwartet wird " + writeCommandUid + ".";
+    return;
+  }
+
+  const int blocks = classicBlocks(rfid.PICC_GetType(rfid.uid.sak));
+  byte payload[16],check[18];byte checkLen=sizeof(check);
+  String error;
+  MFRC522::MIFARE_Key key;
+  for (byte i=0;i<6;++i) key.keyByte[i]=0xFF;
+  if (!blocks || writeCommandBlock >= blocks || writeCommandBlock == 0 || isTrailer(writeCommandBlock)) {
+    error = "Block ist auf dieser Karte nicht beschreibbar.";
+  } else if (!parseHex(writeCommandHex, payload, 16)) {
+    error = "Schreibdaten sind ungültig.";
+  } else if (!authenticateBlock(writeCommandBlock,key,MFRC522::PICC_CMD_MF_AUTH_KEY_A,error)) {
+    // authenticateBlock setzt die genaue Fehlermeldung.
+  } else {
+    auto status=rfid.MIFARE_Write(writeCommandBlock,payload,16);
+    if(status!=MFRC522::STATUS_OK) error="Schreiben fehlgeschlagen: "+String(rfid.GetStatusCodeName(status));
+    else {
+      status=rfid.MIFARE_Read(writeCommandBlock,check,&checkLen);
+      if(status!=MFRC522::STATUS_OK||memcmp(payload,check,16)!=0)error="Rücklesen konnte die Daten nicht bestätigen.";
+      else {
+        writeResultSuccess=true;
+        writeResultHex=bytesHex(check,16);
+      }
+    }
+  }
+  finishCard();
+  if (!writeResultSuccess) {
+    writeResultError=error.length()?error:"Unbekannter Schreibfehler.";
+    writeResultHex="";
+  } else writeResultError="";
+  writeResultReady=true;
+  reportWriteResult();
+}
+
 String macSuffix() {
   char buf[7];
   snprintf(buf, sizeof(buf), "%06X", ESP.getChipId() & 0xFFFFFF);
@@ -380,6 +531,8 @@ void setup() {
 void loop() {
   server.handleClient();
   maintainStationWifi();
+  pollWriteCommand();
+  processWriteCommand();
   automaticUidScan();
   delay(2);
 }

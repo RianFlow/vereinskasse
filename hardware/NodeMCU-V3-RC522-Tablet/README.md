@@ -85,8 +85,21 @@ Beim Start arbeitet das Gerät im kombinierten Modus:
 - Verbindung zum Vereins-WLAN für NTP-Zeit und HTTPS-Übertragung
 - automatische Wiederverbindung nach WLAN-Ausfällen
 - kurze Wiederholungssperre gegen versehentliche Doppelscans
+- sichere Schreibaufträge aus dem Adminbereich mit UID-Prüfung und Rücklesen
 
 Der lokale Status ist nach Anmeldung unter `http://192.168.4.1` sichtbar.
+
+### Beschreiben aus der Vereinskassen-App
+
+Im Adminbereich beim Mitglied **RFID-Karte** wählen. Nach dem ersten Scan kann
+die UID nur zugeordnet oder zusätzlich ein freier Datenblock beschriftet
+werden. Für einen Schreibauftrag die Karte kurz abnehmen und erneut auflegen.
+Die Firmware akzeptiert nur den Auftrag für die erwartete UID, sperrt Block 0
+und Sektor-Trailer und meldet erst nach erfolgreichem Rücklesen „Fertig“.
+
+Die App schreibt lediglich eine optionale Kurzbezeichnung bis 16 Byte. Diese
+Beschriftung ist kein Berechtigungsnachweis; alle verbindlichen Daten bleiben
+in der Vereinskassen-Datenbank.
 
 ### Arduino IDE
 
