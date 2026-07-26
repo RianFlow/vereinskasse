@@ -11,6 +11,27 @@ type ScannerState=
   |{kind:"unknown";deviceCount:number;scan:Scan}
   |{kind:"error";deviceCount:number;message:string};
 
+let rfidAudioContext:AudioContext|null=null;
+async function playRfidRecognitionTone(){
+  try{
+    rfidAudioContext??=new AudioContext();
+    if(rfidAudioContext.state==="suspended")await rfidAudioContext.resume();
+    const now=rfidAudioContext.currentTime,oscillator=rfidAudioContext.createOscillator(),gain=rfidAudioContext.createGain();
+    oscillator.type="sine";
+    oscillator.frequency.setValueAtTime(880,now);
+    oscillator.frequency.setValueAtTime(1175,now+0.085);
+    gain.gain.setValueAtTime(0.0001,now);
+    gain.gain.exponentialRampToValueAtTime(0.075,now+0.012);
+    gain.gain.setValueAtTime(0.075,now+0.13);
+    gain.gain.exponentialRampToValueAtTime(0.0001,now+0.2);
+    oscillator.connect(gain);gain.connect(rfidAudioContext.destination);
+    oscillator.start(now);oscillator.stop(now+0.21);
+    navigator.vibrate?.(35);
+  }catch{
+    // Manche Browser geben Ton erst nach der ersten Berührung frei.
+  }
+}
+
 export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(member:Member)=>void}){
   const [state,setState]=useState<ScannerState>({kind:"waiting",deviceCount:0});
   const stateRef=useRef(state),onSelectRef=useRef(onSelect),holdUntil=useRef(0);
@@ -30,7 +51,7 @@ export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(membe
         if(data.state==="recognized"&&data.member&&data.scan){
           holdUntil.current=Date.now()+3500;
           const next={kind:"recognized",deviceCount:Number(data.deviceCount||0),scan:data.scan,member:data.member} as const;
-          setState(next);onSelectRef.current(data.member);
+          setState(next);void playRfidRecognitionTone();onSelectRef.current(data.member);
         }else if(data.state==="unknown"&&data.scan){
           holdUntil.current=Number.POSITIVE_INFINITY;
           setState({kind:"unknown",deviceCount:Number(data.deviceCount||0),scan:data.scan});
@@ -81,7 +102,7 @@ export function RfidAdminLogin({expectedMemberId,onVerified}:{expectedMemberId?:
         if(!response.ok)throw new Error(data.error||"RFID-Anmeldung ist momentan nicht erreichbar");
         if(stopped)return;
         if(data.state==="recognized"&&data.member){
-          finished.current=true;setState("success");setMessage(`✓ ${data.member.name} wurde sicher erkannt.`);
+          finished.current=true;setState("success");setMessage(`✓ ${data.member.name} wurde sicher erkannt.`);void playRfidRecognitionTone();
           setTimeout(()=>{if(!stopped)onVerifiedRef.current(data.member)},350);
         }else if(data.state==="unknown"){
           holdUntil.current=Date.now()+3500;setState("unknown");setMessage("Diese Karte ist noch keinem Mitglied zugeordnet.");
@@ -112,7 +133,7 @@ export function RfidMemberCardDialog({member,onClose,onSaved}:{member:Member;onC
   useEffect(()=>{
     if(phase!=="scan")return;
     let stopped=false,busy=false;
-    const poll=async()=>{if(stopped||busy)return;busy=true;try{const response=await fetch("/api/rfid",{cache:"no-store"}),data=await response.json();if(!response.ok)throw new Error(data.error);if(data.scan&&!stopped){setScan(data.scan);setPhase("ready");setMessage(`Karte ${data.scan.uid} erkannt.`)}else if(!stopped)setMessage(Number(data.deviceCount||0)>0?"Leser ist online. Karte jetzt auflegen.":"Kein RFID-Leser online. Strom, Vereins-WLAN und Firmware prüfen.")}catch(reason){if(!stopped)setMessage(reason instanceof Error?reason.message:"Lesefehler")}finally{busy=false}};
+    const poll=async()=>{if(stopped||busy)return;busy=true;try{const response=await fetch("/api/rfid",{cache:"no-store"}),data=await response.json();if(!response.ok)throw new Error(data.error);if(data.scan&&!stopped){setScan(data.scan);setPhase("ready");setMessage(`Karte ${data.scan.uid} erkannt.`);void playRfidRecognitionTone()}else if(!stopped)setMessage(Number(data.deviceCount||0)>0?"Leser ist online. Karte jetzt auflegen.":"Kein RFID-Leser online. Strom, Vereins-WLAN und Firmware prüfen.")}catch(reason){if(!stopped)setMessage(reason instanceof Error?reason.message:"Lesefehler")}finally{busy=false}};
     poll();const timer=setInterval(poll,1000);return()=>{stopped=true;clearInterval(timer)};
   },[phase]);
   const watch=async(id:string)=>{
