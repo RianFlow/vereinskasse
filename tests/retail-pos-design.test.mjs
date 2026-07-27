@@ -12,4 +12,6 @@ test("nutzt einen ruhigen hellen Tablet-Kassenarbeitsplatz mit festem Bon",async
     assert.ok(styles.includes(fragment),`Wichtiger Tablet-Kassenbaustein fehlt: ${fragment}`);
   }
   assert.ok(styles.includes(".app.kiosk-design.light .pos-total"),"Der reduzierte Kassenmodus zeigt die wichtigste Summe nicht deutlich");
+  assert.ok(page.includes("checkout-customer-compact")&&page.includes("Wird zur Monatsabrechnung hinzugefügt."),"Die Kundenzuordnung fehlt im rechten Kassenbereich");
+  assert.ok(styles.includes(".catalog>.selected-customer{display:none}")&&styles.includes(".checkout-customer-head"),"Die große Kundenerklärung belegt weiterhin den Artikelbereich");
 });
