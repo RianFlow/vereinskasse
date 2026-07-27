@@ -44,3 +44,9 @@ constexpr unsigned long RFID_REPEAT_GUARD_MS = 1500;
 // wichtigeren UID-Scan unnötig blockieren.
 constexpr unsigned long RFID_COMMAND_POLL_INTERVAL_MS = 5000;
 constexpr unsigned long STATUS_DISPLAY_SCREENSAVER_MS = 12000;
+// Rückfallsicherung: Ein erkannter Scan bleibt im RAM, bis der Server ihn
+// bestätigt. Die Abstände wachsen, damit ein Ausfall den Server nicht flutet.
+constexpr unsigned long UID_RETRY_INITIAL_MS = 1000;
+constexpr unsigned long UID_RETRY_MAX_MS = 30000;
+constexpr unsigned long RFID_HEALTHCHECK_INTERVAL_MS = 30000;
+constexpr unsigned long SELF_RECOVERY_RESTART_MS = 5UL * 60UL * 1000UL;

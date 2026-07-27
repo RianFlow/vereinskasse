@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconAlertCircle, IconCheck, IconCopy, IconNfc, IconRefresh, IconWifi } from "@tabler/icons-react";
 
 type Member={id:string;name:string;role:string;initials:string;active?:boolean};
+type LoginProfile={id:string;name:string;shortName:string;color:string;mustChangePin?:boolean};
 type Scan={id:string;uid:string;deviceId:string;deviceName:string;cardType?:string|null;blocks?:number|null;createdAt:string};
 type ScannerState=
   |{kind:"waiting";deviceCount:number}
@@ -151,6 +152,41 @@ export function RfidShiftLogin({onVerified}:{onVerified:(member:Member)=>void}){
     poll();const timer=setInterval(poll,350);return()=>{stopped=true;clearInterval(timer)};
   },[]);
   return <div className={`rfid-admin-login shift ${state}`} aria-live="polite"><span>{state==="success"?<IconCheck size={25}/>:state==="error"?<IconAlertCircle size={25}/>:<IconNfc size={25}/>}</span><div><strong>{state==="success"?"Mitglied erkannt":state==="checking"?"Leser wird geprüft":state==="waiting"?"Chip auflegen":state==="unknown"?"Unbekannte Karte":"Lesefehler"}</strong><small>{message}</small></div></div>;
+}
+
+export function RfidProfileLogin({profile,onVerified}:{profile:LoginProfile;onVerified:(member:Member)=>void}){
+  const [message,setMessage]=useState("Verbindung zum RFID-Leser wird geprüft.");
+  const [state,setState]=useState<"checking"|"waiting"|"success"|"unknown"|"pin_required"|"error">("checking");
+  const finished=useRef(false),holdUntil=useRef(0),onVerifiedRef=useRef(onVerified);
+  useEffect(()=>{onVerifiedRef.current=onVerified},[onVerified]);
+  useEffect(()=>{
+    finished.current=false;holdUntil.current=0;
+    let stopped=false,busy=false;
+    const poll=async()=>{
+      if(stopped||busy||finished.current||document.visibilityState!=="visible")return;
+      busy=true;
+      try{
+        const query=new URLSearchParams({profileId:profile.id});
+        const response=await fetch(`/api/rfid/login?${query}`,{cache:"no-store"}),data=await response.json();
+        if(!response.ok)throw new Error(data.error||"RFID-Anmeldung ist momentan nicht erreichbar");
+        if(stopped)return;
+        if(data.state==="recognized"&&data.member){
+          finished.current=true;setState("success");setMessage(`✓ ${data.member.name} erkannt. ${profile.shortName} wird geöffnet.`);void playRfidRecognitionTone();
+          setTimeout(()=>{if(!stopped)onVerifiedRef.current(data.member)},300);
+        }else if(data.state==="unknown"){
+          holdUntil.current=Date.now()+3500;setState("unknown");setMessage("Diese Karte ist diesem Profil noch nicht zugeordnet.");
+        }else if(data.state==="pin_required"){
+          holdUntil.current=Date.now()+3500;setState("pin_required");setMessage("Bei der Ersteinrichtung muss zuerst die neue Profil-PIN festgelegt werden.");
+        }else if(Date.now()>=holdUntil.current){
+          const online=Number(data.deviceCount||0)>0;setState("waiting");setMessage(online?"Leser verbunden · Mitgliedschip jetzt auflegen.":"Leser offline · Profil-PIN als Rückfall verwenden.");
+        }
+      }catch(reason){
+        if(!stopped){setState("error");setMessage(`${reason instanceof Error?reason.message:"Lesefehler"} · PIN funktioniert weiterhin.`)}
+      }finally{busy=false}
+    };
+    poll();const timer=setInterval(poll,350);return()=>{stopped=true;clearInterval(timer)};
+  },[profile.id,profile.shortName]);
+  return <div className={`rfid-admin-login profile-login ${state}`} aria-live="polite"><span>{state==="success"?<IconCheck size={25}/>:state==="error"||state==="pin_required"?<IconAlertCircle size={25}/>:<IconNfc size={25}/>}</span><div><strong>{state==="success"?"Chip erkannt":state==="checking"?"Leser wird geprüft":state==="waiting"?"Mit Chip öffnen":state==="unknown"?"Unbekannte Karte":state==="pin_required"?"PIN zuerst festlegen":"Leser nicht erreichbar"}</strong><small>{message}</small></div></div>;
 }
 
 export function RfidMemberCardDialog({member,onClose,onSaved}:{member:Member;onClose:()=>void;onSaved:()=>void}){

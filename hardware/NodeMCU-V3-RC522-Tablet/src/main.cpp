@@ -24,6 +24,14 @@ BearSSL::X509List vereinskasseTrustAnchor(VEREINSKASSE_ROOT_CA);
 String apSsid, apPassword, webUser, webPassword;
 String lastPushState = "Noch keine Karte übertragen.";
 String lastPushedUid;
+String pendingUid, pendingType;
+int pendingBlocks = 0;
+bool pendingUidReady = false;
+unsigned long nextPendingRetryAt = 0;
+unsigned long pendingRetryDelayMs = UID_RETRY_INITIAL_MS;
+unsigned long wifiDisconnectedSince = 0;
+unsigned long serverFailureSince = 0;
+unsigned long lastRfidHealthCheckAt = 0;
 unsigned long lastWifiAttempt = 0;
 unsigned long lastScanAt = 0;
 unsigned long lastPushAt = 0;
@@ -358,6 +366,7 @@ bool pushUidToVereinskasse(const String &uid, const String &type, int blocks) {
   vereinskasseHttps.end();
 
   if (status >= 200 && status < 300) {
+    serverFailureSince = 0;
     lastPushState = "Karte " + uid + " an die Vereinskasse übertragen.";
     setStatusLed(StatusLedMode::Success, 900);
     const String memberName = jsonStringField(response, "memberName");
@@ -379,6 +388,7 @@ bool pushUidToVereinskasse(const String &uid, const String &type, int blocks) {
     lastPushState = "Kassenserver antwortet mit HTTP " + String(status) + ".";
   }
   setStatusLed(StatusLedMode::Error, 1800);
+  if (!serverFailureSince) serverFailureSince = millis();
   Serial.println(lastPushState);
   if (response.length()) {
     Serial.println(response.substring(0, 180));
@@ -395,6 +405,7 @@ void handleStatus() {
                 (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("")) +
                 "\",\"pushConfigured\":" + String(pushConfigured() ? "true" : "false") +
                 ",\"clockReady\":" + String(clockReady() ? "true" : "false") +
+                ",\"pendingScan\":" + String(pendingUidReady ? "true" : "false") +
                 ",\"lastUid\":\"" + jsonEscape(lastPushedUid) +
                 "\",\"message\":\"" + jsonEscape(lastPushState) + "\"}";
   json(200, body);
@@ -403,6 +414,7 @@ void handleStatus() {
 void maintainStationWifi() {
   if (!stationConfigured()) return;
   if (WiFi.status() == WL_CONNECTED) {
+    wifiDisconnectedSince = 0;
     if (!stationWasConnected) {
       stationWasConnected = true;
       Serial.printf("Vereins-WLAN verbunden, IP: %s\n", WiFi.localIP().toString().c_str());
@@ -418,6 +430,7 @@ void maintainStationWifi() {
   }
 
   const unsigned long now = millis();
+  if (!wifiDisconnectedSince) wifiDisconnectedSince = now;
   if (stationWasConnected) {
     stationWasConnected = false;
     clockWasReady = false;
@@ -433,11 +446,25 @@ void maintainStationWifi() {
   WiFi.begin(CLUB_WIFI_SSID, CLUB_WIFI_PASSWORD);
 }
 
+void retryPendingUid() {
+  if (!pendingUidReady || millis() < nextPendingRetryAt) return;
+  if (pushUidToVereinskasse(pendingUid, pendingType, pendingBlocks)) {
+    pendingUidReady = false;
+    pendingUid = "";
+    pendingType = "";
+    pendingBlocks = 0;
+    pendingRetryDelayMs = UID_RETRY_INITIAL_MS;
+    return;
+  }
+  nextPendingRetryAt = millis() + pendingRetryDelayMs;
+  pendingRetryDelayMs = min(pendingRetryDelayMs * 2UL, UID_RETRY_MAX_MS);
+  showStatusDisplay("Gespeichert", "Verbindung wird repariert");
+}
+
 void automaticUidScan() {
   const unsigned long now = millis();
-  if (writeCommandActive || !pushConfigured() || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
+  if (writeCommandActive || pendingUidReady || !pushConfigured() || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
   lastScanAt = now;
-  if (WiFi.status() != WL_CONNECTED || !clockReady()) return;
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
 
   const String uid = uidHex();
@@ -449,9 +476,43 @@ void automaticUidScan() {
   if (uid == lastPushedUid && now - lastPushAt < RFID_REPEAT_GUARD_MS) return;
   lastPushedUid = uid;
   lastPushAt = now;
-  lastPushState = "Karte " + uid + " erkannt, Übertragung läuft.";
+  pendingUid = uid;
+  pendingType = type;
+  pendingBlocks = blocks;
+  pendingUidReady = true;
+  nextPendingRetryAt = now;
+  pendingRetryDelayMs = UID_RETRY_INITIAL_MS;
+  lastPushState = "Karte " + uid + " erkannt und bis zur Bestätigung gespeichert.";
   setStatusLed(StatusLedMode::Scanning);
-  pushUidToVereinskasse(uid, type, blocks);
+  retryPendingUid();
+}
+
+void maintainRfidReader() {
+  const unsigned long now = millis();
+  if (writeCommandActive || now - lastRfidHealthCheckAt < RFID_HEALTHCHECK_INTERVAL_MS) return;
+  lastRfidHealthCheckAt = now;
+  const byte version = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+  if (version != 0x00 && version != 0xFF) return;
+  Serial.println("RC522 antwortet nicht. Leser wird neu initialisiert.");
+  setStatusLed(StatusLedMode::Connecting);
+  rfid.PCD_Reset();
+  rfid.PCD_Init();
+}
+
+void selfRecoverIfStalled() {
+  const unsigned long now = millis();
+  const bool wifiStalled = stationConfigured() && wifiDisconnectedSince &&
+      now - wifiDisconnectedSince >= SELF_RECOVERY_RESTART_MS;
+  const bool serverStalled = pendingUidReady && serverFailureSince &&
+      now - serverFailureSince >= SELF_RECOVERY_RESTART_MS;
+  if (!wifiStalled && !serverStalled) return;
+  lastPushState = wifiStalled ? "WLAN dauerhaft getrennt. Sicherer Neustart." :
+                               "Server dauerhaft nicht erreichbar. Sicherer Neustart.";
+  showStatusDisplay("Neustart", "Scan danach neu auflegen");
+  setStatusLed(StatusLedMode::Error);
+  Serial.println(lastPushState);
+  delay(250);
+  ESP.restart();
 }
 
 bool isTrailer(int block) {
@@ -783,6 +844,7 @@ String macSuffix() {
 void setup() {
   Serial.begin(115200);
   delay(300);
+  ESP.wdtEnable(8000);
   statusPixels.begin();
   statusPixels.setBrightness(STATUS_LED_BRIGHTNESS);
   statusPixels.clear();
@@ -804,6 +866,8 @@ void setup() {
   // ESP8266 als Station mit dem Vereins-WLAN und sendet Scans per HTTPS.
   WiFi.mode(WIFI_AP_STA);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
   if (!WiFi.softAP(apSsid.c_str(), apPassword.c_str(), 6, false, 2)) {
     Serial.println("FEHLER: WLAN-AP konnte nicht gestartet werden.");
   }
@@ -836,13 +900,17 @@ void setup() {
 }
 
 void loop() {
+  ESP.wdtFeed();
   server.handleClient();
   maintainStationWifi();
   // Kartenscans haben Vorrang vor der langsameren HTTPS-Abfrage nach
   // Schreibaufträgen, damit ein Mitgliederwechsel sofort erkannt wird.
   automaticUidScan();
+  retryPendingUid();
+  maintainRfidReader();
   pollWriteCommand();
   processWriteCommand();
+  selfRecoverIfStalled();
   renderStatusLed();
   delay(2);
 }
