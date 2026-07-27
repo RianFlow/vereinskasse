@@ -16,7 +16,7 @@ export async function GET(request:Request){
 export async function POST(request:Request){
   try{
     const body=await request.json() as {action:string;openingCash?:number;countedCash?:number;saleId?:string;reason?:string;memberId?:string;memberName?:string;amount?:number;paymentMethod?:string;tendered?:number};
-    const roles=body.action==="open"?["Mitglied","Kassendienst","Vorstand"]:["Kassendienst","Vorstand"];
+    const roles=body.action==="open"||body.action==="payment"?["Mitglied","Kassendienst","Vorstand"]:["Kassendienst","Vorstand"];
     const [operator,profile]=await Promise.all([requireRole(request,roles),requireProfile(request)]);if(!operator||!profile)return Response.json({error:body.action==="open"?"Bitte Mitgliedschip auflegen":"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});const now=new Date().toISOString();
     if(body.action==="open"){
       if(await env.DB.prepare("SELECT id FROM shifts WHERE profile_id=? AND status='open'").bind(profile.id).first())return Response.json({error:"Für dieses Profil ist bereits eine Kasse geöffnet"},{status:409});

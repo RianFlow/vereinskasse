@@ -11,5 +11,5 @@ test("nutzt einen ruhigen hellen Tablet-Kassenarbeitsplatz mit festem Bon",async
   for(const fragment of [".app.kiosk-design.light .pos",".app.kiosk-design.light .cart",".app.kiosk-design.light .checkout",".app.kiosk-design.light .pos-total","grid-template-columns:minmax(0,1fr) 238px","@media(max-width:800px)"]){
     assert.ok(styles.includes(fragment),`Wichtiger Tablet-Kassenbaustein fehlt: ${fragment}`);
   }
-  assert.ok(styles.includes(".app.kiosk-design.light .system-live-strip"),"Die Ausfallsicherheit ist im reduzierten Design nicht sichtbar");
+  assert.ok(styles.includes(".app.kiosk-design.light .pos-total"),"Der reduzierte Kassenmodus zeigt die wichtigste Summe nicht deutlich");
 });

@@ -20,11 +20,13 @@ test("schreibt Monatsabschlüsse unveränderlich mit Nummer und Prüfsumme fest"
   assert.ok(page.includes("Monat festschreiben")&&page.includes("Spätere Korrekturen erscheinen im Folgemonat"));
 });
 
-test("zeigt Server, Warteschlange, Vollsicherung und RFID direkt in der Kasse",async()=>{
-  const [page,status,style]=await Promise.all([read("app/page.tsx"),read("app/api/status/route.ts"),read("app/safety.css")]);
-  for(const feature of ["Server online","Buchungen warten","Letzte vollständige Sicherung","RFID verbunden"])assert.ok(page.includes(feature),`${feature} fehlt`);
+test("zeigt in der Kasse nur Störungen und verwaltet Systemdetails im Adminbereich",async()=>{
+  const [page,status,style]=await Promise.all([read("app/page.tsx"),read("app/api/status/route.ts"),read("app/openaccounts.css")]),checkout=page.split("function Admin(")[0],admin=page.split("function Admin(")[1];
+  assert.ok(checkout.includes("cash-connection-warning")&&checkout.includes("automatisch nachgereicht"),"Die Kasse warnt nicht bei einer echten Verbindungsstörung");
+  for(const feature of ["latestBackupAt","Letzte vollständige Sicherung","RFID verbunden"])assert.ok(!checkout.includes(feature),`${feature} gehört nicht auf den Kassenbildschirm`);
+  assert.ok(admin.includes("SystemStatus")&&admin.includes("Sicherung"),"Sicherung und Systemzustand fehlen im Adminbereich");
   for(const feature of ["latestBackupAt","rfidLastSeenAt","restoreStatus"])assert.ok(status.includes(feature),`${feature} fehlt`);
-  assert.ok(style.includes(".system-live-strip"));
+  assert.ok(style.includes(".cash-connection-warning"));
 });
 
 test("beendet Mitgliedschaften nur mit ausgeglichenem Konto und sperrt Zugänge",async()=>{
@@ -36,8 +38,15 @@ test("beendet Mitgliedschaften nur mit ausgeglichenem Konto und sperrt Zugänge"
 
 test("jedes aktive Mitglied kann die Kasse direkt per RFID-Chip eröffnen",async()=>{
   const [page,rfid,control]=await Promise.all([read("app/page.tsx"),read("app/RfidIntegration.tsx"),read("app/api/control/route.ts")]);
-  for(const copy of ["Kasse noch geschlossen","Mitgliedschip auflegen","RfidShiftLogin","Kasse jetzt eröffnen"])assert.ok(page.includes(copy),`${copy} fehlt`);
+  for(const copy of ["Kasse noch geschlossen","Mitgliedschip auflegen","RfidShiftLogin","Ohne Anfangsbestand öffnen","Anfangsbestand / Wechselgeld (optional)"])assert.ok(page.includes(copy),`${copy} fehlt`);
   assert.ok(rfid.includes('purpose=shift')&&rfid.includes("Mitglied erkannt"));
-  assert.ok(control.includes('body.action==="open"?["Mitglied","Kassendienst","Vorstand"]'));
+  assert.ok(control.includes('body.action==="open"||body.action==="payment"'));
   assert.ok(control.includes("SHIFT_OPENED"));
+});
+
+test("rechnet Gastrechnungen direkt in der normalen Kasse ab",async()=>{
+  const [page,control]=await Promise.all([read("app/page.tsx"),read("app/api/control/route.ts")]);
+  for(const copy of ["GuestAccountsCheckoutDialog","DIREKT IN DER KASSE","Offene Gastrechnungen","Sofort fällig · bar kassieren","Buchungsdetails ansehen"])assert.ok(page.includes(copy),`${copy} fehlt`);
+  assert.ok(page.includes('action:"payment"')&&page.includes("Gastrechnung bezahlt"));
+  assert.ok(control.includes('body.action==="payment"')&&control.includes("ACCOUNT_PAYMENT"));
 });
