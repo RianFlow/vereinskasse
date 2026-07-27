@@ -1,18 +1,23 @@
 #include <Arduino.h>
 #include <time.h>
 #include <SPI.h>
+#include <Wire.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
 #include <MFRC522.h>
 #include <Adafruit_NeoPixel.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include "config.h"
 #include "web_ui.h"
 
 MFRC522 rfid(PIN_RC522_SS, PIN_RC522_RST);
 ESP8266WebServer server(80);
 Adafruit_NeoPixel statusPixels(STATUS_LED_COUNT, PIN_STATUS_LED, NEO_GRB + NEO_KHZ800);
+Adafruit_SSD1306 statusDisplay(
+    STATUS_DISPLAY_WIDTH, STATUS_DISPLAY_HEIGHT, &Wire, -1);
 BearSSL::WiFiClientSecure vereinskasseTls;
 HTTPClient vereinskasseHttps;
 BearSSL::X509List vereinskasseTrustAnchor(VEREINSKASSE_ROOT_CA);
@@ -32,6 +37,15 @@ bool writeResultReady = false;
 bool writeResultSuccess = false;
 String writeCommandId, writeCommandUid, writeCommandHex, writeResultHex, writeResultError;
 int writeCommandBlock = 0;
+bool statusDisplayReady = false;
+String statusDisplayTitle;
+String statusDisplayDetail;
+String lastDisplayRevision;
+String displayOrderCustomer;
+int displayOrderItemCount = 0;
+int displayOrderTotalCents = 0;
+bool displayOrderActive = false;
+unsigned long displayReadySince = 0;
 
 enum class StatusLedMode {
   Starting,
@@ -49,11 +63,145 @@ unsigned long statusLedUntil = 0;
 unsigned long statusLedLastFrame = 0;
 
 bool clockReady();
+String jsonStringField(const String &body, const String &name);
+
+String displaySafeText(String text) {
+  text.replace("Ä", "Ae");
+  text.replace("Ö", "Oe");
+  text.replace("Ü", "Ue");
+  text.replace("ä", "ae");
+  text.replace("ö", "oe");
+  text.replace("ü", "ue");
+  text.replace("ß", "ss");
+  return text;
+}
+
+void showStatusDisplay(const String &title, const String &detail) {
+  if (!statusDisplayReady) return;
+  const String safeTitle = displaySafeText(title);
+  const String safeDetail = displaySafeText(detail);
+  if (safeTitle == statusDisplayTitle && safeDetail == statusDisplayDetail) return;
+  statusDisplayTitle = safeTitle;
+  statusDisplayDetail = safeDetail;
+
+  statusDisplay.clearDisplay();
+  statusDisplay.setTextColor(SSD1306_WHITE);
+  statusDisplay.setTextWrap(true);
+  statusDisplay.setTextSize(1);
+  statusDisplay.setCursor(0, 0);
+  statusDisplay.println("VEREINSKASSE");
+  statusDisplay.drawLine(0, 11, STATUS_DISPLAY_WIDTH - 1, 11, SSD1306_WHITE);
+  statusDisplay.setTextSize(2);
+  statusDisplay.setCursor(0, 18);
+  statusDisplay.println(safeTitle.substring(0, 10));
+  statusDisplay.setTextSize(1);
+  statusDisplay.setCursor(0, 45);
+  statusDisplay.println(safeDetail.substring(0, 42));
+  statusDisplay.display();
+}
+
+String displayMoney(int cents) {
+  const int euros = cents / 100;
+  const int remainder = abs(cents % 100);
+  return String(euros) + "," + (remainder < 10 ? "0" : "") + String(remainder) + " EUR";
+}
+
+void showOrderDisplay() {
+  if (!statusDisplayReady || !displayOrderActive) return;
+  const String customer = displaySafeText(
+      displayOrderCustomer.length() ? displayOrderCustomer : "Bestellung");
+  const String cacheKey = customer + ":" + String(displayOrderItemCount) + ":" +
+                          String(displayOrderTotalCents);
+  if (statusDisplayTitle == "__order__" && statusDisplayDetail == cacheKey) return;
+  statusDisplayTitle = "__order__";
+  statusDisplayDetail = cacheKey;
+  statusDisplay.clearDisplay();
+  statusDisplay.setTextColor(SSD1306_WHITE);
+  statusDisplay.setTextWrap(false);
+  statusDisplay.setTextSize(1);
+  statusDisplay.setCursor(0, 0);
+  statusDisplay.println(customer.substring(0, 20));
+  statusDisplay.drawLine(0, 11, STATUS_DISPLAY_WIDTH - 1, 11, SSD1306_WHITE);
+  statusDisplay.setCursor(0, 17);
+  statusDisplay.print(displayOrderItemCount);
+  statusDisplay.print(" Artikel");
+  statusDisplay.setTextSize(2);
+  statusDisplay.setCursor(0, 36);
+  statusDisplay.println(displayMoney(displayOrderTotalCents));
+  statusDisplay.display();
+}
+
+void showClubLogo() {
+  if (!statusDisplayReady || displayOrderActive || statusDisplayTitle == "__logo__") return;
+  statusDisplayTitle = "__logo__";
+  statusDisplayDetail = "";
+  statusDisplay.clearDisplay();
+  statusDisplay.setTextColor(SSD1306_WHITE);
+
+  // Vereinfachte monochrome Fassung des SV-Barver-Wappens mit zwei Darts.
+  statusDisplay.drawLine(37, 8, 64, 2, SSD1306_WHITE);
+  statusDisplay.drawLine(64, 2, 91, 8, SSD1306_WHITE);
+  statusDisplay.drawLine(37, 8, 40, 41, SSD1306_WHITE);
+  statusDisplay.drawLine(91, 8, 88, 41, SSD1306_WHITE);
+  statusDisplay.drawLine(40, 41, 64, 59, SSD1306_WHITE);
+  statusDisplay.drawLine(88, 41, 64, 59, SSD1306_WHITE);
+  statusDisplay.drawLine(16, 10, 49, 52, SSD1306_WHITE);
+  statusDisplay.drawLine(112, 10, 79, 52, SSD1306_WHITE);
+  statusDisplay.fillTriangle(12, 5, 22, 9, 16, 15, SSD1306_WHITE);
+  statusDisplay.fillTriangle(116, 5, 106, 9, 112, 15, SSD1306_WHITE);
+  statusDisplay.setTextSize(2);
+  statusDisplay.setCursor(51, 12);
+  statusDisplay.print("SV");
+  statusDisplay.setTextSize(1);
+  statusDisplay.setCursor(48, 31);
+  statusDisplay.print("BARVER");
+  statusDisplay.setCursor(52, 42);
+  statusDisplay.print("DARTS");
+  statusDisplay.display();
+}
+
+void setupStatusDisplay() {
+  if (!ENABLE_I2C_STATUS_DISPLAY) return;
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+  Wire.setClock(400000);
+  Wire.beginTransmission(STATUS_DISPLAY_ADDRESS);
+  if (Wire.endTransmission() != 0) {
+    Serial.printf("I2C-Display: nicht unter 0x%02X gefunden; Leser laeuft ohne Display.\n",
+                  STATUS_DISPLAY_ADDRESS);
+    return;
+  }
+  statusDisplayReady = statusDisplay.begin(
+      SSD1306_SWITCHCAPVCC, STATUS_DISPLAY_ADDRESS, true, false);
+  if (!statusDisplayReady) {
+    Serial.println("I2C-Display: Initialisierung fehlgeschlagen.");
+    return;
+  }
+  statusDisplay.clearDisplay();
+  statusDisplay.display();
+  showStatusDisplay("Start", "Leser startet");
+  Serial.printf("I2C-Display: bereit auf D3/D4, Adresse 0x%02X.\n",
+                STATUS_DISPLAY_ADDRESS);
+}
 
 void setStatusLed(StatusLedMode mode, unsigned long durationMs = 0) {
+  const StatusLedMode previousMode = statusLedMode;
   statusLedMode = mode;
   statusLedUntil = durationMs ? millis() + durationMs : 0;
   statusLedLastFrame = 0;
+  switch (mode) {
+    case StatusLedMode::Starting: showStatusDisplay("Start", "Leser startet"); break;
+    case StatusLedMode::Connecting: showStatusDisplay("WLAN", "Verbindung wird aufgebaut"); break;
+    case StatusLedMode::Ready:
+      if (previousMode != StatusLedMode::Ready) displayReadySince = millis();
+      if (displayOrderActive) showOrderDisplay();
+      else showStatusDisplay("RFID bereit", "Karte auflegen");
+      break;
+    case StatusLedMode::Scanning: showStatusDisplay("Karte da", "Wird geprueft"); break;
+    case StatusLedMode::Success: showStatusDisplay("Erkannt", "Scan erfolgreich"); break;
+    case StatusLedMode::Error: showStatusDisplay("Fehler", "Status in der App pruefen"); break;
+    case StatusLedMode::WriteWaiting: showStatusDisplay("Schreiben", "Karte erneut auflegen"); break;
+    case StatusLedMode::Writing: showStatusDisplay("Schreiben", "Karte liegen lassen"); break;
+  }
 }
 
 void fillStatusPixels(uint8_t red, uint8_t green, uint8_t blue) {
@@ -66,12 +214,16 @@ void renderStatusLed() {
   const unsigned long now = millis();
   if (statusLedUntil && (long)(now - statusLedUntil) >= 0) {
     statusLedUntil = 0;
-    if (writeCommandActive) statusLedMode = StatusLedMode::WriteWaiting;
-    else if (WiFi.status() == WL_CONNECTED && clockReady()) statusLedMode = StatusLedMode::Ready;
-    else statusLedMode = StatusLedMode::Connecting;
+    if (writeCommandActive) setStatusLed(StatusLedMode::WriteWaiting);
+    else if (WiFi.status() == WL_CONNECTED && clockReady()) setStatusLed(StatusLedMode::Ready);
+    else setStatusLed(StatusLedMode::Connecting);
   }
   if (statusLedLastFrame && now - statusLedLastFrame < 45) return;
   statusLedLastFrame = now;
+  if (statusLedMode == StatusLedMode::Ready && !displayOrderActive &&
+      displayReadySince && now - displayReadySince >= STATUS_DISPLAY_SCREENSAVER_MS) {
+    showClubLogo();
+  }
 
   const uint8_t pulse = 18 + (uint8_t)((now / 12) % 34);
   const bool flash = (now / 180) % 2 == 0;
@@ -202,6 +354,13 @@ bool pushUidToVereinskasse(const String &uid, const String &type, int blocks) {
   if (status >= 200 && status < 300) {
     lastPushState = "Karte " + uid + " an die Vereinskasse übertragen.";
     setStatusLed(StatusLedMode::Success, 900);
+    const String memberName = jsonStringField(response, "memberName");
+    const String scanState = jsonStringField(response, "state");
+    if (memberName.length()) {
+      showStatusDisplay("Erkannt", memberName);
+    } else if (scanState == "unknown") {
+      showStatusDisplay("Unbekannt", "In der App zuordnen");
+    }
     Serial.println(lastPushState);
     return true;
   }
@@ -477,6 +636,7 @@ void performRemoteRestart(const String &commandId) {
   }
   lastPushState = "Sicherer Fernneustart wird ausgeführt.";
   setStatusLed(StatusLedMode::Starting);
+  showStatusDisplay("Neustart", "Bitte kurz warten");
   renderStatusLed();
   Serial.println(lastPushState);
   delay(350);
@@ -495,6 +655,8 @@ void pollWriteCommand() {
 
   if (!beginVereinskasseRequest(commandApiUrl())) return;
   vereinskasseHttps.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  if (lastDisplayRevision.length())
+    vereinskasseHttps.addHeader("X-Display-Revision", lastDisplayRevision);
   const int status = vereinskasseHttps.GET();
   const String response = status == 200 ? vereinskasseHttps.getString() : "";
   vereinskasseHttps.end();
@@ -518,6 +680,22 @@ void pollWriteCommand() {
 
   const String id = jsonStringField(response, "id");
   const String action = jsonStringField(response, "action");
+  if (action == "display") {
+    lastDisplayRevision = jsonStringField(response, "revision");
+    displayOrderActive = jsonStringField(response, "state") == "cart";
+    displayOrderCustomer = jsonStringField(response, "customerName");
+    displayOrderItemCount = max(0, jsonIntField(response, "itemCount"));
+    displayOrderTotalCents = max(0, jsonIntField(response, "totalCents"));
+    if (!displayOrderActive || displayOrderItemCount == 0) {
+      displayOrderActive = false;
+      displayReadySince = millis();
+      if (statusLedMode == StatusLedMode::Ready)
+        showStatusDisplay("RFID bereit", "Karte auflegen");
+    } else if (statusLedMode == StatusLedMode::Ready) {
+      showOrderDisplay();
+    }
+    return;
+  }
   if (id.length() && action == "restart") {
     performRemoteRestart(id);
     return;
@@ -602,6 +780,7 @@ void setup() {
   statusPixels.setBrightness(STATUS_LED_BRIGHTNESS);
   statusPixels.clear();
   statusPixels.show();
+  setupStatusDisplay();
   setStatusLed(StatusLedMode::Starting);
   renderStatusLed();
   SPI.begin();

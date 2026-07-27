@@ -44,6 +44,13 @@ export const rfidWriteCommands=sqliteTable("rfid_write_commands",{
   createdAt:text("created_at").notNull(),expiresAt:text("expires_at").notNull(),claimedAt:text("claimed_at"),completedAt:text("completed_at"),
 },table=>[index("rfid_write_commands_device_status_idx").on(table.deviceId,table.status,table.createdAt),index("rfid_write_commands_profile_created_idx").on(table.profileId,table.createdAt)]);
 
+export const rfidDisplayStates=sqliteTable("rfid_display_states",{
+  profileId:text("profile_id").primaryKey(),state:text("state").notNull().default("idle"),
+  customerName:text("customer_name"),itemCount:integer("item_count").notNull().default(0),
+  totalCents:integer("total_cents").notNull().default(0),revision:text("revision").notNull(),
+  updatedAt:text("updated_at").notNull(),
+});
+
 export const events = sqliteTable("events", {
   id: text("id").primaryKey(), name: text("name").notNull(),
   profileId: text("profile_id").notNull().default("darts"),

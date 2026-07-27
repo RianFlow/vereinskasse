@@ -138,6 +138,20 @@ export default function Home() {
   const saveDiscounts = (next:Discount[])=>{setDiscounts(next);if(discountSaveTimer.current)clearTimeout(discountSaveTimer.current);discountSaveTimer.current=setTimeout(()=>persistConfiguration({discounts:next}),500)};
   const selectMember=(member:Member|null)=>{setActiveMember(member);setMemberPrompt(false);if(member)sessionStorage.setItem("vereinskasse-active-member",member.id);else sessionStorage.removeItem("vereinskasse-active-member")};
   const billingMember=listMember||activeMember;
+  useEffect(()=>{
+    if(!activeProfile)return;
+    let heartbeat:ReturnType<typeof setInterval>|undefined;
+    const syncDisplay=()=>{
+      fetch("/api/rfid/display",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({
+        state:itemCount?"cart":"idle",
+        customerName:billingMember?.name||selectedGuest?.name||"",
+        itemCount,
+        totalCents:Math.round(total*100)
+      })}).catch(()=>{});
+    };
+    const timer=setTimeout(()=>{syncDisplay();if(itemCount)heartbeat=setInterval(syncDisplay,30_000)},300);
+    return()=>{clearTimeout(timer);if(heartbeat)clearInterval(heartbeat)};
+  },[activeProfile,itemCount,total,billingMember?.name,selectedGuest?.name]);
   const openEntries=control.accountEntries||[],guestOpenAccounts=control.accounts.filter(account=>accountUrgency(account,openEntries)==="guest"),guestOpenTotal=guestOpenAccounts.reduce((sum,account)=>sum+Number(account.balance),0);
   const currentLines=()=>{const sold=products.filter(p=>cart[p.id]).map(p=>({productId:p.id,productName:p.name,quantity:cart[p.id],unitPrice:unitPrice(p),total:Math.round(unitPrice(p)*cart[p.id]*100)/100,countsForConsumption:!p.isOffer||!(p.includedItems||[]).length}));const included=products.filter(parent=>cart[parent.id]).flatMap(parent=>(parent.includedItems||[]).flatMap(item=>{const component=products.find(product=>product.id===item.productId);return component?[{productId:component.id,productName:component.name,quantity:item.quantity*cart[parent.id],unitPrice:0,total:0,countsForConsumption:true}]:[]}));return [...sold,...included]};
   const consumptionItemCount=()=>currentLines().filter(line=>line.countsForConsumption).reduce((sum,line)=>sum+line.quantity,0);

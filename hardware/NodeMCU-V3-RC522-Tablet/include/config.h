@@ -12,6 +12,16 @@ constexpr int PIN_STATUS_LED = 16;       // D0
 constexpr uint16_t STATUS_LED_COUNT = 5;
 constexpr uint8_t STATUS_LED_BRIGHTNESS = 38;
 
+// Optionales I2C-Statusdisplay: SSD1306, 128 x 64 Pixel.
+// D1/D2 werden bereits vom RC522 verwendet, daher liegt der separate I2C-Bus
+// auf D3/D4. Beide Pins muessen beim Einschalten HIGH bleiben (Boot-Pins).
+constexpr bool ENABLE_I2C_STATUS_DISPLAY = true;
+constexpr int PIN_I2C_SDA = 0;           // D3 / GPIO 0
+constexpr int PIN_I2C_SCL = 2;           // D4 / GPIO 2
+constexpr uint8_t STATUS_DISPLAY_ADDRESS = 0x3C;
+constexpr uint16_t STATUS_DISPLAY_WIDTH = 128;
+constexpr uint16_t STATUS_DISPLAY_HEIGHT = 64;
+
 // Leer lassen: geräteabhängige Werte werden aus der Chip-ID erzeugt.
 // Eigene Werte: AP mindestens 8, Web-Passwort möglichst mindestens 12 Zeichen.
 constexpr char CUSTOM_AP_SSID[] = "";
@@ -33,3 +43,4 @@ constexpr unsigned long RFID_REPEAT_GUARD_MS = 1500;
 // Karten-Schreibaufträge sind selten. Eine häufigere HTTPS-Abfrage würde den
 // wichtigeren UID-Scan unnötig blockieren.
 constexpr unsigned long RFID_COMMAND_POLL_INTERVAL_MS = 5000;
+constexpr unsigned long STATUS_DISPLAY_SCREENSAVER_MS = 12000;

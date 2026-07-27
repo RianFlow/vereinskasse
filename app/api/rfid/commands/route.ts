@@ -4,6 +4,7 @@ import { requireRole } from "../../session";
 
 type Device={id:string;profileId:string};
 type Command={id:string;profileId:string;deviceId:string;uid:string;block:number;payloadHex:string;status:string;error:string|null;createdAt:string;expiresAt:string;completedAt:string|null};
+type DisplayState={state:string;customerName:string|null;itemCount:number;totalCents:number;revision:string;updatedAt:string};
 const headers={"cache-control":"no-store"};
 const hash=async(value:string)=>[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(byte=>byte.toString(16).padStart(2,"0")).join("");
 const uid=(value:unknown)=>String(value||"").trim().toUpperCase();
@@ -24,7 +25,19 @@ export async function GET(request:Request){
         env.DB.prepare("UPDATE rfid_devices SET last_seen_at=? WHERE id=?").bind(now,device.id)
       ]);
       const command=await env.DB.prepare("SELECT id,uid,block,payload_hex payloadHex,status,expires_at expiresAt FROM rfid_write_commands WHERE device_id=? AND status IN ('pending','processing') AND expires_at>? ORDER BY created_at LIMIT 1").bind(device.id,now).first<{id:string;uid:string;block:number;payloadHex:string;status:string;expiresAt:string}>();
-      if(!command)return new Response(null,{status:204,headers});
+      if(!command){
+        const knownRevision=request.headers.get("x-display-revision")||"";
+        let display=await env.DB.prepare("SELECT state,customer_name customerName,item_count itemCount,total_cents totalCents,revision,updated_at updatedAt FROM rfid_display_states WHERE profile_id=?").bind(device.profileId).first<DisplayState>();
+        if(display?.state==="cart"&&Date.parse(display.updatedAt)<Date.now()-90_000){
+          const previousRevision=display.revision,revision=crypto.randomUUID(),updatedAt=new Date().toISOString();
+          const expired=await env.DB.prepare("UPDATE rfid_display_states SET state='idle',customer_name=NULL,item_count=0,total_cents=0,revision=?,updated_at=? WHERE profile_id=? AND revision=?").bind(revision,updatedAt,device.profileId,previousRevision).run();
+          display=expired.meta.changes
+            ?{state:"idle",customerName:null,itemCount:0,totalCents:0,revision,updatedAt}
+            :await env.DB.prepare("SELECT state,customer_name customerName,item_count itemCount,total_cents totalCents,revision,updated_at updatedAt FROM rfid_display_states WHERE profile_id=?").bind(device.profileId).first<DisplayState>();
+        }
+        if(!display||display.revision===knownRevision)return new Response(null,{status:204,headers});
+        return Response.json({command:{action:"display",...display}},{headers});
+      }
       if(command.status==="pending"){
         const claimed=await env.DB.prepare("UPDATE rfid_write_commands SET status='processing',claimed_at=? WHERE id=? AND device_id=? AND status='pending'").bind(now,command.id,device.id).run();
         if(!claimed.meta.changes)return new Response(null,{status:204,headers});

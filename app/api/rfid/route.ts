@@ -3,6 +3,7 @@ import { requireProfile } from "../profile-session";
 import { issueSession, requireRole } from "../session";
 
 type RfidDevice={id:string;profileId:string;name:string};
+type RfidCardOwner={memberName:string};
 type RfidScan={id:string;uid:string;deviceId:string;deviceName:string;cardType:string|null;blocks:number|null;createdAt:string;memberId:string|null;memberName:string|null;memberRole:string|null;memberInitials:string|null};
 type RfidMember={id:string;name:string;role:string;initials:string};
 
@@ -25,12 +26,18 @@ export async function POST(request:Request){
     if(!uid)return Response.json({error:"Ungültige RFID-UID"},{status:400,headers:jsonHeaders});
     if(body.blocks!=null&&(!Number.isInteger(blocks)||blocks<1||blocks>512))return Response.json({error:"Ungültige Blockanzahl"},{status:400,headers:jsonHeaders});
     const now=new Date(),nowIso=now.toISOString(),duplicateCutoff=new Date(now.getTime()-1500).toISOString();
-    const duplicate=await env.DB.prepare("SELECT id FROM rfid_scans WHERE device_id=? AND uid=? AND created_at>=? ORDER BY created_at DESC LIMIT 1").bind(device.id,uid,duplicateCutoff).first<{id:string}>();
+    const [duplicate,owner]=await Promise.all([
+      env.DB.prepare("SELECT id FROM rfid_scans WHERE device_id=? AND uid=? AND created_at>=? ORDER BY created_at DESC LIMIT 1").bind(device.id,uid,duplicateCutoff).first<{id:string}>(),
+      env.DB.prepare("SELECT m.name memberName FROM rfid_cards c JOIN members m ON m.id=c.member_id AND m.active=1 WHERE c.profile_id=? AND c.uid=? LIMIT 1").bind(device.profileId,uid).first<RfidCardOwner>()
+    ]);
+    const scanIdentity=owner
+      ?{state:"recognized",memberName:owner.memberName}
+      :{state:"unknown",memberName:null};
     await env.DB.prepare("UPDATE rfid_devices SET last_seen_at=? WHERE id=?").bind(nowIso,device.id).run();
-    if(duplicate)return Response.json({accepted:true,id:duplicate.id,duplicate:true},{status:202,headers:jsonHeaders});
+    if(duplicate)return Response.json({accepted:true,id:duplicate.id,duplicate:true,...scanIdentity},{status:202,headers:jsonHeaders});
     const id=crypto.randomUUID(),expiresAt=new Date(now.getTime()+30_000).toISOString();
     await env.DB.prepare("INSERT INTO rfid_scans (id,profile_id,device_id,uid,card_type,blocks,created_at,expires_at,consumed_at) VALUES (?,?,?,?,?,?,?,?,NULL)").bind(id,device.profileId,device.id,uid,cardType,Number.isInteger(blocks)?blocks:null,nowIso,expiresAt).run();
-    return Response.json({accepted:true,id},{status:202,headers:jsonHeaders});
+    return Response.json({accepted:true,id,...scanIdentity},{status:202,headers:jsonHeaders});
   }catch{
     return Response.json({error:"RFID-Scan konnte nicht angenommen werden"},{status:500,headers:jsonHeaders});
   }

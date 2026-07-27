@@ -15,6 +15,7 @@ Kassendatenbank. Die beschreibbaren Kartendaten werden dafür nicht vertraut.
 | 1 | NodeMCU V3 | ESP8266/ESP-12E oder ESP-12F, 3,3-V-Logik |
 | 1 | MFRC522/RC522-Modul | SPI, **nur mit 3,3 V versorgen** |
 | 1 | WS2812B-Streifen/-Modul | 5 V, drei Anschlüsse `5V`, `DIN`, `GND` |
+| optional | I²C-OLED | SSD1306, 128 × 64 Pixel, Adresse `0x3C`, 3,3-V-tauglich |
 | 1 | 74AHCT125 oder 74HCT245 | zuverlässige Pegelanpassung von 3,3 V auf 5 V |
 | 1 | Widerstand | 330–470 Ω in der Datenleitung vor `DIN` |
 | 1 | Elektrolytkondensator | 500–1000 µF, mindestens 6,3 V |
@@ -70,6 +71,40 @@ Statusfarben:
 - violett pulsierend: erwarteten Chip zum Beschreiben auflegen
 - grün: Scan übertragen oder Schreiben erfolgreich
 - rot blinkend: WLAN-, Server-, Karten- oder Schreibfehler
+
+### Optionales I²C-Statusdisplay
+
+Die Firmware ist für ein übliches SSD1306-OLED mit 128 × 64 Pixeln vorbereitet.
+Ist kein Display angeschlossen, startet der Leser normal weiter. Das Display
+zeigt Start, WLAN-Verbindung, Bereitschaft, Scan, unbekannte Karten, Fehler und
+Schreibvorgänge an. Bei einer bereits zugeordneten Karte erscheint außerdem der
+Name aus der Vereinskassen-Datenbank; Kontostände und Berechtigungen werden
+nicht an das Display übertragen. Während des Verkaufs stehen Name, Artikelanzahl
+und Gesamtbetrag auf dem Kundendisplay. Ein leerer Bon schaltet nach zwölf
+Sekunden auf ein vereinfachtes Schwarz-Weiß-Wappen des SV Barver Darts um.
+
+| I²C-OLED | NodeMCU V3 |
+|---|---|
+| `VCC` | `3V3` |
+| `GND` | `GND` |
+| `SDA` | `D3` (GPIO 0) |
+| `SCL` | `D4` (GPIO 2) |
+
+Wichtig: D3 und D4 sind Boot-Pins und müssen beim Einschalten HIGH bleiben.
+Die normalen Pull-up-Widerstände eines I²C-OLEDs nach 3,3 V sind passend.
+Keine zusätzlichen Pull-down-Widerstände anschließen und die I²C-Leitungen
+nicht mit 5 V betreiben. Falls das Modul die Adresse `0x3D` verwendet, in
+`include/config.h` nur `STATUS_DISPLAY_ADDRESS` ändern.
+
+Weitere I²C-Sensoren können später parallel an SDA und SCL angeschlossen werden,
+sofern sie eine andere Adresse verwenden. Ein BME280 liegt typischerweise auf
+`0x76` oder `0x77`; dessen Temperaturmessung ist noch nicht aktiviert.
+
+Die Warenkorbanzeige wird über die geschützte Vereinskassen-Schnittstelle
+übertragen. Deshalb funktioniert sie auch dann, wenn das Tablet nicht mit dem
+Wartungs-WLAN `192.168.4.1` verbunden ist. Die Anzeige kann gegenüber dem Tablet
+je nach WLAN-Verbindung ungefähr zwei bis fünf Sekunden verzögert sein. Karten-
+und Schreibvorgänge werden immer vorrangig angezeigt.
 
 ```text
 Tablet ))) WLAN ))) NodeMCU ── SPI ── MFRC522 ))) Karte
@@ -220,6 +255,8 @@ Für breitere NFC-Kompatibilität ist ein PN532/PN7150 meist geeigneter.
 - HTTP 401/403: Geräte-Token ist falsch, deaktiviert oder der private
   Hosting-Zugang blockiert das Gerät.
 - TLS-Fehler: Root-CA passt nicht zum aktuell verwendeten Serverzertifikat.
+- I²C-Display bleibt dunkel: Versorgung, D3/D4 und Adresse `0x3C` prüfen; bei
+  Bootproblemen sicherstellen, dass kein Modul D3 oder D4 nach GND zieht.
 
 ## Ordner
 
