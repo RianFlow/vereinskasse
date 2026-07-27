@@ -22,9 +22,11 @@ test("Server verhindert doppelte und unvollständige Kontobuchungen", async () =
   assert.ok(route.includes("allocatedCents!==Math.round(body.total*100)"));
 });
 
-test("geteilte Bestellung vervielfacht Artikel nicht in den Zechendetails", async () => {
+test("geteilte Bestellung bleibt in Abrechnung und Zechendetails korrekt", async () => {
   const [control, monthly] = await Promise.all([read("app/api/control/route.ts"), read("app/api/monthly/route.ts")]);
-  for (const route of [control, monthly]) assert.ok(route.includes("(SELECT COUNT(*) FROM sale_allocations sa WHERE sa.sale_id=at.sale_id)=1"));
+  assert.ok(control.includes("(SELECT COUNT(*) FROM sale_allocations sa WHERE sa.sale_id=at.sale_id)=1"),"Die kompakte Kontenansicht darf Artikel nicht je Anteil vervielfachen");
+  assert.ok(!monthly.includes("(SELECT COUNT(*) FROM sale_allocations sa WHERE sa.sale_id=at.sale_id)=1"),"Geteilte Artikel werden noch aus der Monatsabrechnung ausgeschlossen");
+  for(const feature of ["Geteilte Bestellung","Persönlicher Anteil","Geteilt mit:","allocationsBySale","itemsBySale"])assert.ok(monthly.includes(feature),`${feature} fehlt in der Monatsabrechnung`);
 });
 
 test("Aufteilen ist auch ohne vorher ausgewähltes Mitglied erreichbar", async () => {
@@ -39,4 +41,10 @@ test("gemeinsame Buchung bleibt mit Beteiligten, Artikeln und Beleg nachvollzieh
   assert.ok(page.includes("Geteilte Einkäufe"));
   assert.ok(page.includes("Geteilt mit"));
   assert.ok(receipt.includes("Aufteilung"));
+});
+
+test("Monatsrechnung führt Bestellungen, Zahlungen und Stornos vollständig auf",async()=>{
+  const [monthly,receipt]=await Promise.all([read("app/api/monthly/route.ts"),read("app/api/receipt/route.ts")]);
+  for(const feature of ["Bestellungen und Artikel","Stornos und Korrekturen","Zahlungen","Rechnung rechnerisch vollständig","ältere Buchung ohne einzelne Positionsdaten"])assert.ok(monthly.includes(feature),`${feature} fehlt`);
+  for(const feature of ["Beleg rechnerisch vollständig","Inklusivartikel","Persönliche Anteile","reversalReason"])assert.ok(receipt.includes(feature),`${feature} fehlt im Einzelbeleg`);
 });
