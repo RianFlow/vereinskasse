@@ -42,6 +42,7 @@ import "./pos-ergonomics.css";
 import "./allocation-ergonomics.css";
 import "./split-history.css";
 import "./safety.css";
+import "./retail-pos.css";
 
 export const metadata: Metadata = {
   title: "Vereinskasse · SV Barver Darts",

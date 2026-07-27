@@ -1,0 +1,203 @@
+/* Ruhiger, heller Kassenarbeitsplatz – angelehnt an etablierte Tablet-POS-Muster. */
+.app.kiosk-design.light{
+  --retail-bg:#f3f4f4;
+  --retail-panel:#fff;
+  --retail-soft:#f7f8f8;
+  --retail-line:#d9dddd;
+  --retail-ink:#161919;
+  --cream:var(--retail-bg);
+  --line:var(--retail-line);
+  background:var(--retail-bg);
+  color:var(--retail-ink);
+}
+.app.kiosk-design.light header{
+  height:64px;
+  padding:0 18px;
+  background:#fff;
+  border-bottom:1px solid #dfe2e2;
+  box-shadow:0 1px 0 #00000008;
+}
+.app.kiosk-design.light .brand{min-width:215px}
+.app.kiosk-design.light .brand-logo{width:40px;height:40px;display:grid;place-items:center;overflow:hidden}
+.app.kiosk-design.light .brand-logo img{width:38px;height:38px;object-fit:contain}
+.app.kiosk-design.light .brand strong{font-size:15px;letter-spacing:.02em}
+.app.kiosk-design.light .profile-switch{font-size:10px;color:#737b79}
+.app.kiosk-design.light .header-actions{gap:6px}
+.app.kiosk-design.light .header-operation-mode,
+.app.kiosk-design.light .member-login,
+.app.kiosk-design.light .member-session,
+.app.kiosk-design.light .kiosk-toggle,
+.app.kiosk-design.light .theme-toggle,
+.app.kiosk-design.light .mode{
+  min-height:40px;
+  border:1px solid #d8dddd;
+  border-radius:4px;
+  background:#fff;
+  color:#252929;
+  box-shadow:none;
+}
+.app.kiosk-design.light .mode{background:#181b1b;color:#fff;border-color:#181b1b}
+.app.kiosk-design.light .kiosk-toggle.active{background:#e7f1ed;color:var(--green);border-color:#b8d0c7}
+.app.kiosk-design.light .rfid-header-status{height:40px;border-radius:4px;background:#f7f9f8;color:#222;border-color:#d7ddda}
+.app.kiosk-design.light .rfid-header-status small{color:#6f7773}
+
+.app.kiosk-design.light .pos{
+  min-height:calc(100dvh - 64px);
+  background:var(--retail-bg);
+}
+.app.kiosk-design.light .catalog{
+  padding:18px 20px 24px;
+  background:var(--retail-bg);
+}
+.app.kiosk-design.light .title-row{align-items:center}
+.app.kiosk-design.light .title-row h1{font:750 24px Arial,Helvetica,sans-serif}
+.app.kiosk-design.light .eyebrow{margin-bottom:4px;color:#7e8583;font-size:9px;letter-spacing:.14em}
+.app.kiosk-design.light .date{font-size:12px}
+.app.kiosk-design.light .system-live-strip{
+  display:flex;
+  gap:0;
+  margin:0 0 10px;
+  border:1px solid #dde1e0;
+  background:#fff;
+}
+.app.kiosk-design.light .system-live-strip>span{
+  flex:1;
+  min-width:0;
+  padding:6px 9px;
+  border:0;
+  border-right:1px solid #e5e8e7;
+  border-radius:0;
+}
+.app.kiosk-design.light .system-live-strip>span:last-child{border-right:0}
+.app.kiosk-design.light .system-live-strip strong{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app.kiosk-design.light .system-live-strip small{display:none}
+.app.kiosk-design.light .shift-start-strip,
+.app.kiosk-design.light .guest-debt-strip{
+  border-radius:3px;
+  box-shadow:none;
+}
+.app.kiosk-design.light .selected-customer,
+.app.kiosk-design.light .selected-customer.empty-customer,
+.app.kiosk-design.light .active-event-banner,
+.app.kiosk-design.light .open-rounds{
+  border:1px solid #d9dedd;
+  border-radius:4px;
+  background:#fff;
+  box-shadow:none;
+}
+.app.kiosk-design.light .selected-customer{border-left:4px solid var(--green)}
+.app.kiosk-design.light .selected-customer button{border-radius:3px}
+.app.kiosk-design.light .product-browser-bar{margin:12px 0}
+.app.kiosk-design.light .product-search{
+  min-height:44px;
+  border-radius:3px;
+  background:#fff;
+}
+.app.kiosk-design.light .filters{gap:4px}
+.app.kiosk-design.light .filters button{
+  min-height:44px;
+  padding:8px 15px;
+  border:1px solid #d9dedd;
+  border-radius:3px;
+  background:#fff;
+  color:#515856;
+}
+.app.kiosk-design.light .filters button.active{background:#171a1a;border-color:#171a1a;color:#fff}
+.app.kiosk-design.light .grid{
+  grid-template-columns:repeat(auto-fill,minmax(135px,1fr));
+  gap:8px;
+}
+.app.kiosk-design.light .product{
+  min-height:142px;
+  padding:13px;
+  border:1px solid #d9dedd;
+  border-radius:4px;
+  background:#fff;
+  box-shadow:none;
+}
+.app.kiosk-design.light .product:hover{border-color:#aeb6b3;background:#fafbfb}
+.app.kiosk-design.light .product:focus-visible{outline:3px solid color-mix(in srgb,var(--green) 30%,transparent);outline-offset:1px}
+.app.kiosk-design.light .product:before{height:3px;border-radius:4px 4px 0 0}
+.app.kiosk-design.light .product-icon{width:45px;height:45px;border-radius:3px;background:#f1f3f2}
+.app.kiosk-design.light .product-label{top:10px;right:9px;border-radius:2px;background:#f0f2f1}
+.app.kiosk-design.light .product-name{margin:10px 0 4px;font-size:14px}
+.app.kiosk-design.light .price{color:#161919;font-size:18px}
+.app.kiosk-design.light .badge{top:8px;right:8px;background:var(--green)}
+
+.app.kiosk-design.light .cart{
+  min-width:0;
+  background:#fff;
+  border-left:1px solid #d4d9d8;
+}
+.app.kiosk-design.light .cart-head{
+  min-height:76px;
+  padding:18px 20px 14px;
+  background:#fff;
+  color:#171a1a;
+  border-bottom:1px solid #dde1e0;
+}
+.app.kiosk-design.light .cart-head h2{font:750 20px Arial,Helvetica,sans-serif}
+.app.kiosk-design.light .cart-head .clear{color:#5e6764;font-size:12px}
+.app.kiosk-design.light .cart-items{padding:8px 18px;background:#fff}
+.app.kiosk-design.light .empty{color:#7f8784}
+.app.kiosk-design.light .line{padding:10px 0;border-color:#e6e9e8}
+.app.kiosk-design.light .mini{border-radius:3px;background:#f0f2f1}
+.app.kiosk-design.light .stepper{border:1px solid #d9dddc;border-radius:3px;background:#f8f9f9}
+.app.kiosk-design.light .stepper button{width:39px;height:39px}
+.app.kiosk-design.light .checkout{padding:14px;background:#f5f6f6;border-color:#d9dedd}
+.app.kiosk-design.light .price-mode-switch{border-radius:3px;background:#e9eceb}
+.app.kiosk-design.light .price-mode-switch button{border-radius:2px}
+.app.kiosk-design.light .pos-total{
+  min-height:82px;
+  margin:8px 0;
+  padding:12px 14px;
+  border-radius:3px;
+  border-left:5px solid var(--green);
+  background:#171a1a;
+}
+.app.kiosk-design.light .pos-total span{color:#c5cac8}
+.app.kiosk-design.light .pos-total strong{font-size:36px;color:#fff;letter-spacing:-.03em}
+.app.kiosk-design.light .direct-main,
+.app.kiosk-design.light .direct-payment-grid .pay,
+.app.kiosk-design.light .anonymous-checkout-note,
+.app.kiosk-design.light .anonymous-cash,
+.app.kiosk-design.light .select-member-instead,
+.app.kiosk-design.light .more-payment-toggle{border-radius:3px}
+.app.kiosk-design.light .direct-main{background:var(--green);color:#fff}
+.app.kiosk-design.light .direct-payment-grid .cash,
+.app.kiosk-design.light .anonymous-cash{background:#1f6a52!important}
+.app.kiosk-design.light .direct-payment-grid .split-pay{background:#d9a13d;color:#201807}
+.app.kiosk-design.light .direct-payment-grid .guest-pay{background:#436779}
+.app.kiosk-design.light .more-payment-toggle{background:#fff;color:#343a38;border-color:#d4d9d7}
+
+@media(min-width:1200px){
+  .app.kiosk-design.light .pos{grid-template-columns:minmax(510px,1fr) minmax(610px,47vw);height:calc(100dvh - 64px);overflow:hidden}
+  .app.kiosk-design.light .catalog{min-height:0;overflow-y:auto;overscroll-behavior:contain}
+  .app.kiosk-design.light .cart{display:grid;grid-template-columns:minmax(0,1fr) 238px;grid-template-rows:auto minmax(0,1fr);height:100%;overflow:hidden}
+  .app.kiosk-design.light .cart-head{grid-column:1;grid-row:1}
+  .app.kiosk-design.light .cart-items{grid-column:1;grid-row:2;min-height:0;overflow-y:auto}
+  .app.kiosk-design.light .checkout{grid-column:2;grid-row:1/3;min-width:0;overflow-y:auto;border-top:0;border-left:1px solid #d9dedd}
+  .app.kiosk-design.light .line{grid-template-columns:36px minmax(76px,1fr) auto}
+  .app.kiosk-design.light .line>.stepper{grid-column:2/4;justify-self:end}
+  .app.kiosk-design.light .direct-payment-grid{grid-template-columns:1fr 1fr}
+  .app.kiosk-design.light .direct-payment-grid .guest-pay,
+  .app.kiosk-design.light .direct-payment-grid .split-pay{grid-column:1/-1}
+  .app.kiosk-design.light .event-payments .guest-pay{grid-column:auto}
+}
+@media(min-width:801px) and (max-width:1199px){
+  .app.kiosk-design.light .pos{grid-template-columns:minmax(0,1fr) minmax(390px,430px);height:calc(100dvh - 64px);overflow:hidden}
+  .app.kiosk-design.light .catalog,.app.kiosk-design.light .cart-items{min-height:0;overflow-y:auto}
+  .app.kiosk-design.light .cart{height:100%;overflow:hidden}
+}
+@media(max-width:800px){
+  .app.kiosk-design.light .catalog{padding:13px}
+  .app.kiosk-design.light .product-browser-bar{background:var(--retail-bg)}
+  .app.kiosk-design.light .system-live-strip{display:grid;grid-template-columns:1fr 1fr}
+  .app.kiosk-design.light .system-live-strip>span:nth-child(2){border-right:0}
+  .app.kiosk-design.light .system-live-strip>span:nth-child(-n+2){border-bottom:1px solid #e5e8e7}
+  .app.kiosk-design.light .cart{border-left:0;border-top:1px solid #d4d9d8}
+}
+@media(max-width:520px){
+  .profile-fallback{align-items:stretch;flex-direction:column}
+  .app.kiosk-design.light .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

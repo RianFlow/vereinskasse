@@ -72,7 +72,7 @@ export default function Home() {
   const [claimRound,setClaimRound]=useState<OpenRound|null>(null);
   const [adminPrompt,setAdminPrompt]=useState(false); const [adminUser,setAdminUser]=useState<Member|null>(null); const [control,setControl]=useState<ControlData>({accounts:[],recent:[]});
   const [discounts,setDiscounts]=useState<Discount[]>([]);const [memberPricing,setMemberPricing]=useState(true);
-  const [darkMode,setDarkMode]=useState(true);
+  const [darkMode,setDarkMode]=useState(false);
   const [activeMember,setActiveMember]=useState<Member|null>(null); const [memberPrompt,setMemberPrompt]=useState(false);
   const [listMember,setListMember]=useState<Member|null>(null);
   const [memberFinder,setMemberFinder]=useState(false);
@@ -99,7 +99,7 @@ export default function Home() {
   useEffect(() => {
     // Initialisierung aus gerätelokalen Einstellungen; fachliche Daten kommen anschließend vom Server.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDarkMode(localStorage.getItem("vereinskasse-theme") !== "light");
+    setDarkMode(localStorage.getItem("vereinskasse-theme-v2") === "dark");
     const remembered=sessionStorage.getItem("vereinskasse-active-member"); if(remembered)setActiveMember(members.find(m=>m.id===remembered)||null);
     setOperationMode(localStorage.getItem("vereinskasse-operation-mode")==="event"?"event":"club");
     Promise.all([fetch("/api/profiles").then(r=>r.json()),fetch("/api/profile-session").then(async r=>r.ok?r.json():{profile:null})]).then(async([profileData,sessionData])=>{
@@ -109,7 +109,7 @@ export default function Home() {
     }).catch(()=>setStorageState("offline")).finally(()=>setProfileLoading(false));
   }, []);
   useEffect(() => { if(activeProfile)localStorage.setItem(`vereinskasse-data-${activeProfile.id}`, JSON.stringify({ products, sales })); }, [products, sales,activeProfile]);
-  useEffect(() => { localStorage.setItem("vereinskasse-theme", darkMode ? "dark" : "light"); }, [darkMode]);
+  useEffect(() => { localStorage.setItem("vereinskasse-theme-v2", darkMode ? "dark" : "light"); }, [darkMode]);
   useEffect(() => { localStorage.setItem("vereinskasse-operation-mode",operationMode); }, [operationMode]);
   useEffect(()=>{if(!activeProfile)return;const syncPending=async()=>{const key=`vereinskasse-pending-${activeProfile.id}`,pending=safeArray<Record<string,unknown>>(localStorage.getItem(key));setPendingCount(pending.length);if(!pending.length)return;const remaining:Record<string,unknown>[]=[];for(const sale of pending){try{const response=await fetch("/api/data",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...sale,rewardEligible:false,offlineQueuedAt:sale.offlineQueuedAt||new Date().toISOString()})});if(!response.ok)remaining.push(sale)}catch{remaining.push(sale)}}setPendingCount(remaining.length);if(remaining.length)localStorage.setItem(key,JSON.stringify(remaining));else localStorage.removeItem(key);if(remaining.length<pending.length){setStorageState(remaining.length?"offline":"online");loadControl();loadEvents()}};window.addEventListener("online",syncPending);return()=>window.removeEventListener("online",syncPending)},[activeProfile]);
   useEffect(()=>{if(!activeProfile)return;let stopped=false;const check=()=>fetch("/api/status",{cache:"no-store"}).then(async response=>{const data=await response.json();if(!response.ok)throw new Error();if(!stopped){setSystemHealth(data);setStorageState("online")}}).catch(()=>{if(!stopped)setStorageState("offline")});check();const timer=setInterval(check,60000);return()=>{stopped=true;clearInterval(timer)}},[activeProfile]);
