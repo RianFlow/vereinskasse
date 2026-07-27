@@ -42,6 +42,7 @@ String statusDisplayTitle;
 String statusDisplayDetail;
 String lastDisplayRevision;
 String displayOrderCustomer;
+String displayOrderItems;
 int displayOrderItemCount = 0;
 int displayOrderTotalCents = 0;
 bool displayOrderActive = false;
@@ -110,7 +111,9 @@ void showOrderDisplay() {
   if (!statusDisplayReady || !displayOrderActive) return;
   const String customer = displaySafeText(
       displayOrderCustomer.length() ? displayOrderCustomer : "Bestellung");
-  const String cacheKey = customer + ":" + String(displayOrderItemCount) + ":" +
+  const String items = displaySafeText(displayOrderItems.length()
+      ? displayOrderItems : String(displayOrderItemCount) + " Artikel");
+  const String cacheKey = customer + ":" + items + ":" + String(displayOrderItemCount) + ":" +
                           String(displayOrderTotalCents);
   if (statusDisplayTitle == "__order__" && statusDisplayDetail == cacheKey) return;
   statusDisplayTitle = "__order__";
@@ -122,11 +125,14 @@ void showOrderDisplay() {
   statusDisplay.setCursor(0, 0);
   statusDisplay.println(customer.substring(0, 20));
   statusDisplay.drawLine(0, 11, STATUS_DISPLAY_WIDTH - 1, 11, SSD1306_WHITE);
-  statusDisplay.setCursor(0, 17);
-  statusDisplay.print(displayOrderItemCount);
-  statusDisplay.print(" Artikel");
+  statusDisplay.setCursor(0, 15);
+  statusDisplay.println(items.substring(0, 21));
+  if (items.length() > 21) {
+    statusDisplay.setCursor(0, 25);
+    statusDisplay.println(items.substring(21, 42));
+  }
   statusDisplay.setTextSize(2);
-  statusDisplay.setCursor(0, 36);
+  statusDisplay.setCursor(0, 44);
   statusDisplay.println(displayMoney(displayOrderTotalCents));
   statusDisplay.display();
 }
@@ -684,6 +690,7 @@ void pollWriteCommand() {
     lastDisplayRevision = jsonStringField(response, "revision");
     displayOrderActive = jsonStringField(response, "state") == "cart";
     displayOrderCustomer = jsonStringField(response, "customerName");
+    displayOrderItems = jsonStringField(response, "itemsText");
     displayOrderItemCount = max(0, jsonIntField(response, "itemCount"));
     displayOrderTotalCents = max(0, jsonIntField(response, "totalCents"));
     if (!displayOrderActive || displayOrderItemCount == 0) {

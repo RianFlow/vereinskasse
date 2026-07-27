@@ -46,7 +46,7 @@ export const rfidWriteCommands=sqliteTable("rfid_write_commands",{
 
 export const rfidDisplayStates=sqliteTable("rfid_display_states",{
   profileId:text("profile_id").primaryKey(),state:text("state").notNull().default("idle"),
-  customerName:text("customer_name"),itemCount:integer("item_count").notNull().default(0),
+  customerName:text("customer_name"),itemsText:text("items_text"),itemCount:integer("item_count").notNull().default(0),
   totalCents:integer("total_cents").notNull().default(0),revision:text("revision").notNull(),
   updatedAt:text("updated_at").notNull(),
 });

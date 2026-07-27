@@ -79,8 +79,8 @@ Ist kein Display angeschlossen, startet der Leser normal weiter. Das Display
 zeigt Start, WLAN-Verbindung, Bereitschaft, Scan, unbekannte Karten, Fehler und
 Schreibvorgänge an. Bei einer bereits zugeordneten Karte erscheint außerdem der
 Name aus der Vereinskassen-Datenbank; Kontostände und Berechtigungen werden
-nicht an das Display übertragen. Während des Verkaufs stehen Name, Artikelanzahl
-und Gesamtbetrag auf dem Kundendisplay. Ein leerer Bon schaltet nach zwölf
+nicht an das Display übertragen. Während des Verkaufs stehen Name, eine kompakte
+Artikelliste und Gesamtbetrag auf dem Kundendisplay. Ein leerer Bon schaltet nach zwölf
 Sekunden auf ein vereinfachtes Schwarz-Weiß-Wappen des SV Barver Darts um.
 
 | I²C-OLED | NodeMCU V3 |

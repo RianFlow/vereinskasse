@@ -17,7 +17,7 @@ test("bereitet das I2C-Kundendisplay mit Bon und Vereinslogo vor",async()=>{
     read("app/api/backup/route.ts")
   ]);
   assert.ok(page.includes('fetch("/api/rfid/display"'));
-  for(const feature of ["itemCount","totalCents","customerName"])assert.ok(display.includes(feature));
+  for(const feature of ["itemCount","totalCents","customerName","itemsText"])assert.ok(display.includes(feature));
   assert.ok(commands.includes('action:"display"')&&commands.includes("x-display-revision"));
   for(const feature of ["Adafruit_SSD1306","showOrderDisplay","showClubLogo","STATUS_DISPLAY_SCREENSAVER_MS"])
     assert.ok(firmware.includes(feature),`${feature} fehlt`);
