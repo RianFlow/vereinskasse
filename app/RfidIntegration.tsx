@@ -32,7 +32,7 @@ async function playRfidRecognitionTone(){
   }
 }
 
-export function RfidScanner({members,onSelect}:{members:Member[];onSelect:(member:Member)=>void}){
+export function RfidScanner({onSelect}:{members:Member[];onSelect:(member:Member)=>void}){
   const [state,setState]=useState<ScannerState>({kind:"waiting",deviceCount:0});
   const stateRef=useRef(state),onSelectRef=useRef(onSelect),holdUntil=useRef(0);
   useEffect(()=>{stateRef.current=state},[state]);
@@ -126,6 +126,33 @@ export function RfidAdminLogin({expectedMemberId,onVerified}:{expectedMemberId?:
   </div>;
 }
 
+export function RfidShiftLogin({onVerified}:{onVerified:(member:Member)=>void}){
+  const [message,setMessage]=useState("Leser wird geprüft. Danach Mitgliedschip auflegen.");
+  const [state,setState]=useState<"checking"|"waiting"|"success"|"unknown"|"error">("checking");
+  const finished=useRef(false),onVerifiedRef=useRef(onVerified);
+  useEffect(()=>{onVerifiedRef.current=onVerified},[onVerified]);
+  useEffect(()=>{
+    let stopped=false,busy=false;
+    const poll=async()=>{
+      if(stopped||busy||finished.current||document.visibilityState!=="visible")return;
+      busy=true;
+      try{
+        const response=await fetch("/api/rfid?purpose=shift",{cache:"no-store"}),data=await response.json();
+        if(!response.ok)throw new Error(data.error||"RFID-Anmeldung ist momentan nicht erreichbar");
+        if(stopped)return;
+        if(data.state==="recognized"&&data.member){
+          finished.current=true;setState("success");setMessage(`✓ ${data.member.name} öffnet die Kasse.`);void playRfidRecognitionTone();
+          setTimeout(()=>{if(!stopped)onVerifiedRef.current(data.member)},300);
+        }else if(data.state==="unknown"){setState("unknown");setMessage("Diese Karte ist noch keinem aktiven Mitglied zugeordnet.")}
+        else{const online=Number(data.deviceCount||0)>0;setState("waiting");setMessage(online?"Leser ist bereit. Mitgliedschip jetzt auflegen.":"Kein RFID-Leser online. Strom und Vereins-WLAN prüfen.")}
+      }catch(reason){if(!stopped){setState("error");setMessage(reason instanceof Error?reason.message:"RFID-Anmeldung fehlgeschlagen")}}
+      finally{busy=false}
+    };
+    poll();const timer=setInterval(poll,350);return()=>{stopped=true;clearInterval(timer)};
+  },[]);
+  return <div className={`rfid-admin-login shift ${state}`} aria-live="polite"><span>{state==="success"?<IconCheck size={25}/>:state==="error"?<IconAlertCircle size={25}/>:<IconNfc size={25}/>}</span><div><strong>{state==="success"?"Mitglied erkannt":state==="checking"?"Leser wird geprüft":state==="waiting"?"Chip auflegen":state==="unknown"?"Unbekannte Karte":"Lesefehler"}</strong><small>{message}</small></div></div>;
+}
+
 export function RfidMemberCardDialog({member,onClose,onSaved}:{member:Member;onClose:()=>void;onSaved:()=>void}){
   const [scan,setScan]=useState<Scan|null>(null),[phase,setPhase]=useState<"scan"|"ready"|"saving"|"write"|"success"|"error">("scan");
   const [writeChip,setWriteChip]=useState(false),[block,setBlock]=useState(4),[text,setText]=useState(member.id.slice(0,16)),[message,setMessage]=useState("Verbindung zum Leser wird geprüft.");
@@ -165,6 +192,7 @@ export function RfidDevicePanel(){
   useEffect(()=>{load()},[]);
   const create=async()=>{if(name.trim().length<3||busy)return;setBusy(true);setError("");try{const response=await fetch("/api/rfid/devices",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:name.trim()})}),data=await response.json();if(!response.ok)throw new Error(data.error);setToken(data.token);setCopied(false);setName("RFID-Leser Vereinsheim");await load()}catch(reason){setError(reason instanceof Error?reason.message:"Einrichtung fehlgeschlagen")}finally{setBusy(false)}};
   const toggle=async(device:Device)=>{const response=await fetch("/api/rfid/devices",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id:device.id,active:!Boolean(device.active)})}),data=await response.json();if(!response.ok){setError(data.error||"Änderung fehlgeschlagen");return}load()};
+  // eslint-disable-next-line react-hooks/purity -- Zeitmessung startet ausschließlich nach dem Klick auf „Neu starten“.
   const restart=async(device:Device)=>{if(restarting||!confirm(`${device.name} neu starten? Der Leser ist für etwa 15 Sekunden nicht verfügbar.`))return;setRestarting(device.id);setError("");setNotice("");try{const response=await fetch("/api/rfid/commands",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({deviceId:device.id})}),data=await response.json();if(!response.ok)throw new Error(data.error||"Neustart konnte nicht gesendet werden");const started=Date.now();const timer=setInterval(async()=>{try{const statusResponse=await fetch(`/api/rfid/commands?id=${encodeURIComponent(data.id)}`,{cache:"no-store"}),statusData=await statusResponse.json();if(!statusResponse.ok)throw new Error(statusData.error);if(statusData.command?.status==="succeeded"){clearInterval(timer);setRestarting(null);setNotice(`${device.name} startet neu. Die Verbindung sollte in etwa 15 Sekunden wieder bereit sein.`);setTimeout(load,15000)}else if(["failed","expired"].includes(statusData.command?.status)||Date.now()-started>40000){clearInterval(timer);setRestarting(null);setError(statusData.command?.error||"Der Leser hat den Neustartauftrag nicht rechtzeitig abgeholt.")}}catch(reason){clearInterval(timer);setRestarting(null);setError(reason instanceof Error?reason.message:"Neustartstatus konnte nicht geprüft werden")}},1000)}catch(reason){setRestarting(null);setError(reason instanceof Error?reason.message:"Neustart fehlgeschlagen")}};
   const unassign=async(card:CardMapping)=>{if(!confirm(`Karte ${card.uid} von ${card.memberName} trennen?`))return;const response=await fetch("/api/rfid/devices",{method:"DELETE",headers:{"content-type":"application/json"},body:JSON.stringify({uid:card.uid})}),data=await response.json();if(!response.ok){setError(data.error||"Zuordnung konnte nicht entfernt werden");return}load()};
   const copyToken=async()=>{try{await navigator.clipboard.writeText(token);setCopied(true)}catch{setError("Gerätekennung konnte nicht kopiert werden")}};

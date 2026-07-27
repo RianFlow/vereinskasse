@@ -48,7 +48,7 @@ export async function GET(request:Request){
     const profile=await requireProfile(request);
     if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401,headers:jsonHeaders});
     const url=new URL(request.url),purpose=url.searchParams.get("purpose"),expectedMemberId=url.searchParams.get("memberId");
-    if(purpose&&purpose!=="admin")return Response.json({error:"Unbekannter RFID-Zweck"},{status:400,headers:jsonHeaders});
+    if(purpose&&!["admin","shift"].includes(purpose))return Response.json({error:"Unbekannter RFID-Zweck"},{status:400,headers:jsonHeaders});
     if(expectedMemberId&&expectedMemberId.length>40)return Response.json({error:"Ungültiges Mitglied"},{status:400,headers:jsonHeaders});
     const nowDate=new Date(),now=nowDate.toISOString(),onlineCutoff=new Date(nowDate.getTime()-60_000).toISOString();
     const [scan,deviceCount]=await Promise.all([
@@ -67,6 +67,11 @@ export async function GET(request:Request){
       if(member.role!=="Vorstand")return Response.json({state:"forbidden",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:jsonHeaders});
       const session=await issueSession(member);
       await env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_ADMIN_LOGIN","rfid_card",scan.uid,member.id,JSON.stringify({profileId:profile.id,deviceId:scan.deviceId}),session.createdAt).run();
+      return Response.json({state:"recognized",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:{...jsonHeaders,"set-cookie":session.cookie}});
+    }
+    if(purpose==="shift"){
+      const session=await issueSession(member);
+      await env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_SHIFT_LOGIN","rfid_card",scan.uid,member.id,JSON.stringify({profileId:profile.id,deviceId:scan.deviceId}),session.createdAt).run();
       return Response.json({state:"recognized",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:{...jsonHeaders,"set-cookie":session.cookie}});
     }
     return Response.json({state:"recognized",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:jsonHeaders});

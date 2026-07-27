@@ -44,6 +44,7 @@ type BillingEntry=TransactionRow&{
   shared:boolean;
   itemsLabel:string;
 };
+type ClosureRow={statementNumber:string;snapshotJson:string;checksum:string;closedByName:string;closedAt:string};
 
 const esc=(value:unknown)=>String(value??"").replace(/[&<>"']/g,character=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]!));
 const eur=(value:number)=>Number(value||0).toLocaleString("de-DE",{style:"currency",currency:"EUR"});
@@ -74,6 +75,7 @@ export async function GET(request:Request){
   const end=nextDate.toISOString();
   const dueDate=billingDueDate(month);
   const dueLabel=dateLabel(dueDate);
+  const closure=await env.DB.prepare("SELECT statement_number statementNumber,snapshot_json snapshotJson,checksum,closed_by_name closedByName,closed_at closedAt FROM monthly_closures WHERE profile_id=? AND month=?").bind(profile.id,month).first<ClosureRow>();
 
   const [activity,opening,current,transactions,saleItems,allocations,products]=await Promise.all([
     env.DB.prepare("SELECT member_id memberId,MAX(member_name) memberName,ROUND(SUM(CASE WHEN amount>0 THEN amount ELSE 0 END),2) charges,ROUND(ABS(SUM(CASE WHEN type='Zahlung' THEN amount ELSE 0 END)),2) payments,ROUND(SUM(CASE WHEN amount<0 AND type<>'Zahlung' THEN amount ELSE 0 END),2) adjustments,ROUND(SUM(amount),2) net FROM account_transactions WHERE profile_id=? AND created_at>=? AND created_at<? GROUP BY member_id ORDER BY memberName").bind(profile.id,start,end).all<Record<string,unknown>>(),
@@ -152,7 +154,7 @@ export async function GET(request:Request){
       allocatedAmount:entry.amount
     }))
   );
-  const payload={
+  let payload={
     month,
     label:monthLabel(month),
     dueDate,
@@ -168,8 +170,13 @@ export async function GET(request:Request){
       charges:people.reduce((sum,person)=>sum+person.charges,0),
       payments:people.reduce((sum,person)=>sum+person.payments,0),
       people:people.length
-    }
+    },
+    closure:closure?{closed:true,statementNumber:closure.statementNumber,checksum:closure.checksum,closedByName:closure.closedByName,closedAt:closure.closedAt}:{closed:false}
   };
+  if(closure){
+    const frozen=JSON.parse(closure.snapshotJson) as typeof payload;
+    payload={...frozen,closure:{closed:true,statementNumber:closure.statementNumber,checksum:closure.checksum,closedByName:closure.closedByName,closedAt:closure.closedAt}};
+  }
 
   if(url.searchParams.get("list")==="1"){
     const open=people.filter(person=>person.closingBalance>.005);
@@ -222,4 +229,30 @@ export async function GET(request:Request){
   const reconciliation=cents(person.openingBalance)+cents(person.charges)-cents(person.payments)+cents(person.adjustments)===cents(person.closingBalance);
   const html=`<!doctype html><html lang="de"><meta charset="utf-8"><title>Monatsabrechnung ${esc(person.memberName)} · ${esc(payload.label)}</title><style>body{font:15px Arial;max-width:780px;margin:30px auto;padding:24px;color:#172b25}h1{margin-bottom:4px}.meta{color:#68766f;line-height:1.5}h2{margin-top:26px}table{width:100%;border-collapse:collapse;margin:14px 0 24px}td{padding:9px 10px;border-bottom:1px solid #ddd;vertical-align:top}td:last-child{text-align:right;white-space:nowrap}td small{display:block;color:#68766f;margin-top:3px}.booking{border-top:2px solid #9caaa3}.booking-head{background:#edf3f0}.booking.shared .booking-head{background:#fff4df}.booking-head td{padding-top:12px}.personal-share{background:#f6faf8}.personal-share small{max-width:520px}.discount{color:#684181}.correction{color:#a33131;background:#fff4f2}.payment{color:#176044;background:#f0faf5}.totals{margin-left:auto;width:min(430px,100%)}.totals div{display:flex;justify-content:space-between;padding:8px}.due{font-size:20px;font-weight:bold;border-top:2px solid #173b32}.payment-note{margin-top:18px;padding:12px 14px;background:#edf7f1;border-left:4px solid #1d5b4c;font-size:17px;font-weight:bold}.check{font-size:12px;color:${reconciliation?"#176044":"#a33131"};text-align:right}.note{font-size:12px;color:#68766f;margin-top:25px}@media print{button{display:none}body{margin:0;padding:0}.booking{break-inside:avoid}}</style><h1>Monatsabrechnung</h1><p class="meta">${esc(profile.name)} · ${esc(payload.label)}<br>${esc(person.memberName)} · ${esc(person.memberId)}</p><h2>Bestellungen und Artikel</h2><table>${chargeRows||"<tbody><tr><td>Keine neuen Bestellungen in diesem Monat</td><td>–</td></tr></tbody>"}</table>${correctionRows?`<h2>Stornos und Korrekturen</h2><table>${correctionRows}</table>`:""}${paymentRows?`<h2>Zahlungen</h2><table>${paymentRows}</table>`:""}<div class="totals"><div><span>Stand Monatsanfang</span><b>${eur(person.openingBalance)}</b></div><div><span>Neue Buchungen</span><b>${eur(person.charges)}</b></div><div><span>Zahlungen</span><b>− ${eur(person.payments)}</b></div>${person.adjustments?`<div><span>Stornos / Korrekturen</span><b>${eur(person.adjustments)}</b></div>`:""}<div class="due"><span>Stand Monatsende</span><b>${eur(person.closingBalance)}</b></div></div><p class="check">${reconciliation?"✓ Rechnung rechnerisch vollständig":"⚠ Summenprüfung fehlgeschlagen – bitte Kassenwart informieren"}</p>${person.closingBalance>.005?`<p class="payment-note">${esc(paymentNotice)}</p>`:""}<p class="note">Geteilte Einkäufe zeigen den vollständigen gemeinsamen Bon und den tatsächlich auf dieses Konto gebuchten Anteil. Inklusivartikel werden für den Verbrauch aufgeführt, aber nicht erneut berechnet. Der aktuelle Gesamtsaldo kann durch spätere Buchungen vom Monatsendstand abweichen.</p><button onclick="print()">Abrechnung drucken</button></html>`;
   return new Response(html,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
+}
+
+export async function POST(request:Request){
+  const [user,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);
+  if(!user||!profile)return Response.json({error:"Nur Vorstand / Admin darf einen Monat festschreiben"},{status:403});
+  try{
+    const body=await request.json() as {month?:string};
+    const month=body.month||"";
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return Response.json({error:"Ungültiger Monat"},{status:400});
+    if(month>=new Date().toISOString().slice(0,7))return Response.json({error:"Ein Monat kann erst nach seinem Monatsende festgeschrieben werden"},{status:409});
+    const existing=await env.DB.prepare("SELECT statement_number statementNumber,checksum,closed_at closedAt FROM monthly_closures WHERE profile_id=? AND month=?").bind(profile.id,month).first();
+    if(existing)return Response.json({ok:true,alreadyClosed:true,closure:existing});
+    const reportUrl=new URL(request.url);reportUrl.search="";reportUrl.searchParams.set("month",month);
+    const report=await GET(new Request(reportUrl,{headers:request.headers}));
+    if(!report.ok) return report;
+    const snapshot=await report.json() as Record<string,unknown>;
+    delete snapshot.closure;
+    const snapshotJson=JSON.stringify(snapshot),checksum=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(snapshotJson))),byte=>byte.toString(16).padStart(2,"0")).join("");
+    const statementNumber=`VK-${profile.id.replace(/[^a-zA-Z0-9]/g,"").slice(0,12).toUpperCase()}-${month.replace("-","")}`,now=new Date().toISOString(),id=crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO monthly_closures (id,profile_id,month,statement_number,snapshot_json,checksum,closed_by,closed_by_name,closed_at) VALUES (?,?,?,?,?,?,?,?,?)").bind(id,profile.id,month,statementNumber,snapshotJson,checksum,user.id,user.name,now),
+      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"MONTH_CLOSED","monthly_closure",id,user.id,JSON.stringify({profileId:profile.id,month,statementNumber,checksum}),now)
+    ]);
+    await env.BACKUPS.put(`monthly-closures/${profile.id}/${month}/${statementNumber}.json`,JSON.stringify({profileId:profile.id,month,statementNumber,checksum,closedBy:user,closedAt:now,snapshot}),{httpMetadata:{contentType:"application/json"}});
+    return Response.json({ok:true,closure:{closed:true,statementNumber,checksum,closedByName:user.name,closedAt:now}});
+  }catch(error){return Response.json({error:error instanceof Error?error.message:"Monat konnte nicht festgeschrieben werden"},{status:500})}
 }

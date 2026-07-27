@@ -16,10 +16,12 @@ export async function GET(request:Request){
 export async function POST(request:Request){
   try{
     const body=await request.json() as {action:string;openingCash?:number;countedCash?:number;saleId?:string;reason?:string;memberId?:string;memberName?:string;amount?:number;paymentMethod?:string;tendered?:number};
-    const [operator,profile]=await Promise.all([requireRole(request,["Kassendienst","Vorstand"]),requireProfile(request)]);if(!operator||!profile)return Response.json({error:"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});const now=new Date().toISOString();
+    const roles=body.action==="open"?["Mitglied","Kassendienst","Vorstand"]:["Kassendienst","Vorstand"];
+    const [operator,profile]=await Promise.all([requireRole(request,roles),requireProfile(request)]);if(!operator||!profile)return Response.json({error:body.action==="open"?"Bitte Mitgliedschip auflegen":"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});const now=new Date().toISOString();
     if(body.action==="open"){
       if(await env.DB.prepare("SELECT id FROM shifts WHERE profile_id=? AND status='open'").bind(profile.id).first())return Response.json({error:"Für dieses Profil ist bereits eine Kasse geöffnet"},{status:409});
-      const id=crypto.randomUUID();await env.DB.prepare("INSERT INTO shifts (id,profile_id,opened_by,opened_by_name,opened_at,opening_cash,status) VALUES (?,?,?,?,?,?,'open')").bind(id,profile.id,operator.id,operator.name,now,Number(body.openingCash||0)).run();return Response.json({ok:true});
+      const openingCash=Number(body.openingCash||0);if(!Number.isFinite(openingCash)||openingCash<0||openingCash>10000)return Response.json({error:"Ungültiger Anfangsbestand"},{status:400});
+      const id=crypto.randomUUID();await env.DB.batch([env.DB.prepare("INSERT INTO shifts (id,profile_id,opened_by,opened_by_name,opened_at,opening_cash,status) VALUES (?,?,?,?,?,?,'open')").bind(id,profile.id,operator.id,operator.name,now,openingCash),env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"SHIFT_OPENED","shift",id,operator.id,JSON.stringify({profileId:profile.id,openingCash,via:"member-rfid-or-session"}),now)]);return Response.json({ok:true,shift:{id,openedBy:operator.name,openedAt:now,openingCash}});
     }
     if(body.action==="close"){
       const shift=await env.DB.prepare("SELECT * FROM shifts WHERE profile_id=? AND status='open' ORDER BY opened_at DESC LIMIT 1").bind(profile.id).first<{id:string;opening_cash:number;opened_at:string}>();if(!shift)return Response.json({error:"Keine offene Kasse"},{status:409});

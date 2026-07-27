@@ -20,6 +20,12 @@ export const members = sqliteTable("members", {
   code: text("code").notNull().unique(), initials: text("initials").notNull(), active: integer("active", { mode: "boolean" }).notNull().default(true),
 });
 
+export const memberLifecycle=sqliteTable("member_lifecycle",{
+  memberId:text("member_id").primaryKey(),status:text("status").notNull().default("active"),
+  leftAt:text("left_at"),privacyReviewAt:text("privacy_review_at"),retiredBy:text("retired_by"),
+  note:text("note").notNull().default(""),updatedAt:text("updated_at").notNull(),
+},table=>[index("member_lifecycle_status_review_idx").on(table.status,table.privacyReviewAt)]);
+
 export const rfidDevices=sqliteTable("rfid_devices",{
   id:text("id").primaryKey(),profileId:text("profile_id").notNull(),name:text("name").notNull(),
   tokenHash:text("token_hash").notNull(),active:integer("active",{mode:"boolean"}).notNull().default(true),
@@ -87,6 +93,21 @@ export const roundClaims = sqliteTable("round_claims", {
 export const shifts = sqliteTable("shifts", { id:text("id").primaryKey(),profileId:text("profile_id").notNull().default("darts"), openedBy:text("opened_by").notNull(), openedByName:text("opened_by_name").notNull(), openedAt:text("opened_at").notNull(), openingCash:real("opening_cash").notNull(), closedBy:text("closed_by"), closedAt:text("closed_at"), expectedCash:real("expected_cash"), countedCash:real("counted_cash"), difference:real("difference"), status:text("status").notNull() });
 export const reversals = sqliteTable("reversals", { id:text("id").primaryKey(), saleId:text("sale_id").notNull(), reason:text("reason").notNull(), amount:real("amount").notNull(), operatorId:text("operator_id").notNull(), operatorName:text("operator_name").notNull(), createdAt:text("created_at").notNull() },table=>[index("reversals_sale_idx").on(table.saleId)]);
 export const accountTransactions = sqliteTable("account_transactions", { id:text("id").primaryKey(),profileId:text("profile_id").notNull().default("darts"), memberId:text("member_id").notNull(), memberName:text("member_name").notNull(), saleId:text("sale_id"), type:text("type").notNull(), amount:real("amount").notNull(), note:text("note").notNull(), operatorId:text("operator_id").notNull(), createdAt:text("created_at").notNull() },table=>[index("account_transactions_profile_member_created_idx").on(table.profileId,table.memberId,table.createdAt),index("account_transactions_sale_idx").on(table.saleId)]);
+
+export const monthlyClosures=sqliteTable("monthly_closures",{
+  id:text("id").primaryKey(),profileId:text("profile_id").notNull(),month:text("month").notNull(),
+  statementNumber:text("statement_number").notNull(),snapshotJson:text("snapshot_json").notNull(),
+  checksum:text("checksum").notNull(),closedBy:text("closed_by").notNull(),closedByName:text("closed_by_name").notNull(),
+  closedAt:text("closed_at").notNull(),
+},table=>[uniqueIndex("monthly_closures_profile_month_unique").on(table.profileId,table.month),uniqueIndex("monthly_closures_statement_number_unique").on(table.statementNumber)]);
+
+export const restoreRequests=sqliteTable("restore_requests",{
+  id:text("id").primaryKey(),profileId:text("profile_id").notNull(),backupKey:text("backup_key").notNull(),
+  checksum:text("checksum").notNull(),status:text("status").notNull(),requestedBy:text("requested_by").notNull(),
+  requestedByName:text("requested_by_name").notNull(),approvedBy:text("approved_by"),approvedByName:text("approved_by_name"),
+  previewJson:text("preview_json").notNull(),createdAt:text("created_at").notNull(),expiresAt:text("expires_at").notNull(),
+  approvedAt:text("approved_at"),completedAt:text("completed_at"),error:text("error"),
+},table=>[index("restore_requests_profile_status_created_idx").on(table.profileId,table.status,table.createdAt)]);
 
 export const randomRewardCampaigns = sqliteTable("random_reward_campaigns", {
   id:text("id").primaryKey(),profileId:text("profile_id").notNull().default("darts"),name:text("name").notNull(),

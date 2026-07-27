@@ -48,7 +48,7 @@ test("stellt vergessene Profil-PINs im 2-aus-3-Verfahren wieder her",async()=>{
   assert.ok(profiles.includes("recoveryCards")&&profiles.includes('recoveryScheme:"2-of-3"'));
   assert.ok(helper.includes("PBKDF2")&&helper.includes("randomRecoveryCard"));
   assert.ok(schema.includes("profileRecoveryKeys")&&migration.includes("profile_recovery_keys"));
-  assert.ok(backup.includes("SCHEMA_VERSION=18")&&backup.includes('"profile_recovery_keys"'));
+  assert.ok(backup.includes("SCHEMA_VERSION=22")&&backup.includes('"profile_recovery_keys"'));
 });
 
 test("teilt den Adminbereich in übersichtliche Tablet-Bereiche",async()=>{
@@ -169,7 +169,7 @@ test("verteilt geheime Glücksmomente nur über den Adminbereich",async()=>{
   assert.ok(data.includes("finalTotal")&&data.includes("adjustedAllocations"),"Gewinn wird nicht sauber auf Endbetrag und Zechen verteilt");
   assert.ok(schema.includes("randomRewardCampaigns")&&schema.includes("randomRewardSlots"));
   assert.ok(migration.includes("random_reward_campaigns")&&migration.includes("random_reward_slots"));
-  assert.ok(backup.includes("SCHEMA_VERSION=18")&&backup.includes('"random_reward_campaigns"')&&backup.includes('"random_reward_slots"'));
+  assert.ok(backup.includes("SCHEMA_VERSION=22")&&backup.includes('"random_reward_campaigns"')&&backup.includes('"random_reward_slots"'));
   assert.ok(receipt.includes("rr.reward_amount")&&receipt.includes("rewardRow"),"Gewinn fehlt auf dem Beleg");
 });
 

@@ -2,13 +2,13 @@ import { env } from "cloudflare:workers";
 import { requireRole } from "../session";
 import { requireProfile } from "../profile-session";
 
-const safe=()=>env.DB.prepare("SELECT id,name,role,initials,active,CASE WHEN code LIKE 'NOLOGIN-%' THEN 0 ELSE 1 END hasAccess FROM members WHERE id NOT IN ('M-1042','M-1088','M-1137','M-1201','M-1214','M-1228','M-1240') ORDER BY name").all();
+const safe=()=>env.DB.prepare("SELECT m.id,m.name,m.role,m.initials,m.active,CASE WHEN m.code LIKE 'NOLOGIN-%' THEN 0 ELSE 1 END hasAccess,l.status lifecycleStatus,l.left_at leftAt,l.privacy_review_at privacyReviewAt FROM members m LEFT JOIN member_lifecycle l ON l.member_id=m.id WHERE m.id NOT IN ('M-1042','M-1088','M-1137','M-1201','M-1214','M-1228','M-1240') ORDER BY m.name").all();
 export async function GET(request:Request){const profile=await requireProfile(request);if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401});const rows=await safe();return Response.json({members:rows.results})}
 export async function POST(request:Request){
   try{
     const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);
     if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:403});
-    const b=await request.json() as {action:string;id?:string;name?:string;firstName?:string;lastName?:string;role?:string;code?:string};
+    const b=await request.json() as {action:string;id?:string;name?:string;firstName?:string;lastName?:string;role?:string;code?:string;note?:string};
     const now=new Date().toISOString();
 
     if(b.action==="bootstrap"){
@@ -62,9 +62,31 @@ export async function POST(request:Request){
       const active=member.active?0:1;
       await env.DB.batch([
         env.DB.prepare("UPDATE members SET active=? WHERE id=?").bind(active,b.id),
+        env.DB.prepare("INSERT INTO member_lifecycle (member_id,status,left_at,privacy_review_at,retired_by,note,updated_at) VALUES (?,? ,NULL,NULL,NULL,'',?) ON CONFLICT(member_id) DO UPDATE SET status=excluded.status,left_at=CASE WHEN excluded.status='active' THEN NULL ELSE member_lifecycle.left_at END,privacy_review_at=CASE WHEN excluded.status='active' THEN NULL ELSE member_lifecycle.privacy_review_at END,updated_at=excluded.updated_at").bind(b.id,active?"active":"inactive",now),
         env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),active?"MEMBER_ACTIVATED":"MEMBER_DEACTIVATED","member",b.id,admin.id,JSON.stringify({profileId:profile.id}),now)
       ]);
       return Response.json({ok:true,active:Boolean(active)});
+    }
+    if(b.action==="retire"){
+      if(!b.id||b.id===admin.id)return Response.json({error:"Das eigene Administratorkonto kann nicht als ausgetreten markiert werden"},{status:400});
+      const member=await env.DB.prepare("SELECT id,name,role,active FROM members WHERE id=?").bind(b.id).first<{id:string;name:string;role:string;active:number}>();
+      if(!member)return Response.json({error:"Mitglied nicht gefunden"},{status:404});
+      const balance=await env.DB.prepare("SELECT ROUND(COALESCE(SUM(amount),0),2) balance FROM account_transactions WHERE member_id=?").bind(member.id).first<{balance:number}>();
+      if(Math.abs(Number(balance?.balance||0))>.005)return Response.json({error:`Austritt noch nicht möglich: Das Konto hat noch ${Number(balance?.balance||0).toLocaleString("de-DE",{style:"currency",currency:"EUR"})}. Bitte zuerst vollständig abrechnen.`},{status:409});
+      if(member.role==="Vorstand"){
+        const others=await env.DB.prepare("SELECT COUNT(*) count FROM members WHERE active=1 AND role='Vorstand' AND id<>?").bind(member.id).first<{count:number}>();
+        if(!Number(others?.count||0))return Response.json({error:"Der letzte aktive Hauptadmin kann nicht austreten. Bitte zuerst einen weiteren Vorstand anlegen."},{status:409});
+      }
+      const review=new Date(now);review.setUTCFullYear(review.getUTCFullYear()+10);
+      await env.DB.batch([
+        env.DB.prepare("UPDATE members SET active=0,code=? WHERE id=?").bind(`NOLOGIN-${crypto.randomUUID()}`,member.id),
+        env.DB.prepare("DELETE FROM rfid_cards WHERE member_id=?").bind(member.id),
+        env.DB.prepare("DELETE FROM auth_sessions WHERE member_id=?").bind(member.id),
+        env.DB.prepare("INSERT INTO member_lifecycle (member_id,status,left_at,privacy_review_at,retired_by,note,updated_at) VALUES (?,'retired',?,?,?,?,?) ON CONFLICT(member_id) DO UPDATE SET status='retired',left_at=excluded.left_at,privacy_review_at=excluded.privacy_review_at,retired_by=excluded.retired_by,note=excluded.note,updated_at=excluded.updated_at").bind(member.id,now,review.toISOString(),admin.id,(b.note||"").trim().slice(0,300),now),
+        env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"MEMBER_RETIRED","member",member.id,admin.id,JSON.stringify({profileId:profile.id,name:member.name,rfidRevoked:true,accessRevoked:true,privacyReviewAt:review.toISOString()}),now)
+      ]);
+      await env.BACKUPS.put(`member-lifecycle/${now.slice(0,10)}/${member.id}.json`,JSON.stringify({action:"retire",memberId:member.id,name:member.name,profileId:profile.id,retiredBy:admin,privacyReviewAt:review.toISOString(),createdAt:now}),{httpMetadata:{contentType:"application/json"}});
+      return Response.json({ok:true,privacyReviewAt:review.toISOString()});
     }
     return Response.json({error:"Unbekannte Aktion"},{status:400});
   }catch(e){
