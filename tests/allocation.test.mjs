@@ -26,3 +26,17 @@ test("geteilte Bestellung vervielfacht Artikel nicht in den Zechendetails", asyn
   const [control, monthly] = await Promise.all([read("app/api/control/route.ts"), read("app/api/monthly/route.ts")]);
   for (const route of [control, monthly]) assert.ok(route.includes("(SELECT COUNT(*) FROM sale_allocations sa WHERE sa.sale_id=at.sale_id)=1"));
 });
+
+test("Aufteilen ist auch ohne vorher ausgewähltes Mitglied erreichbar", async () => {
+  const page = await read("app/page.tsx");
+  assert.ok(page.includes('className="pay split-pay anonymous-split"'));
+  assert.ok(page.includes('onClick={()=>checkout("Mitgliedskonto")}'));
+});
+
+test("gemeinsame Buchung bleibt mit Beteiligten, Artikeln und Beleg nachvollziehbar", async () => {
+  const [page, control, receipt] = await Promise.all([read("app/page.tsx"), read("app/api/control/route.ts"), read("app/api/receipt/route.ts")]);
+  assert.ok(control.includes("splitAllocations"));
+  assert.ok(page.includes("Geteilte Einkäufe"));
+  assert.ok(page.includes("Geteilt mit"));
+  assert.ok(receipt.includes("Aufteilung"));
+});

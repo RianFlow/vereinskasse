@@ -16,6 +16,7 @@
 .allocation-preview article>b{text-align:right;color:var(--ink)}
 .allocation-preview article>button{width:30px;height:30px;border:0;border-radius:8px;background:#fff;color:#8c5c52;font-size:20px}
 .fill-remainder{width:100%;padding:10px;border-top:1px solid #dce9e1!important;background:#fff!important}
+.custom-allocation-note{display:block;padding:8px 12px;color:#64756d;line-height:1.35}
 .allocation-search{margin:12px 0 8px}
 .allocation-members{max-height:270px;overflow:auto;padding:2px;overscroll-behavior:contain}
 .allocation-members>button{grid-template-columns:42px 1fr 34px;min-height:58px;cursor:pointer}
