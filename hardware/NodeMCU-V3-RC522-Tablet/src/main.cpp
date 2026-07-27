@@ -462,6 +462,27 @@ bool reportWriteResult() {
   return true;
 }
 
+void performRemoteRestart(const String &commandId) {
+  if (!beginVereinskasseRequest(commandApiUrl())) return;
+  vereinskasseHttps.addHeader("Content-Type", "application/json");
+  vereinskasseHttps.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  const String body = "{\"id\":\"" + jsonEscape(commandId) +
+                      "\",\"success\":true,\"uid\":\"DEVICE-RESTART\",\"hex\":\"\",\"error\":\"\"}";
+  const int status = vereinskasseHttps.POST(body);
+  vereinskasseHttps.end();
+  if (status < 200 || status >= 300) {
+    lastPushState = "Neustart konnte nicht bestätigt werden (HTTP " + String(status) + ").";
+    setStatusLed(StatusLedMode::Error, 1800);
+    return;
+  }
+  lastPushState = "Sicherer Fernneustart wird ausgeführt.";
+  setStatusLed(StatusLedMode::Starting);
+  renderStatusLed();
+  Serial.println(lastPushState);
+  delay(350);
+  ESP.restart();
+}
+
 void pollWriteCommand() {
   if (!pushConfigured() || WiFi.status() != WL_CONNECTED || !clockReady()) return;
   if (writeCommandActive) {
@@ -496,6 +517,11 @@ void pollWriteCommand() {
   }
 
   const String id = jsonStringField(response, "id");
+  const String action = jsonStringField(response, "action");
+  if (id.length() && action == "restart") {
+    performRemoteRestart(id);
+    return;
+  }
   const String uid = jsonStringField(response, "uid");
   const String payload = jsonStringField(response, "hex");
   const int block = jsonIntField(response, "block");

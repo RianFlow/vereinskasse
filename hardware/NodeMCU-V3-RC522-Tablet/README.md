@@ -120,6 +120,7 @@ Beim Start arbeitet das Gerät im kombinierten Modus:
 - automatische Wiederverbindung nach WLAN-Ausfällen
 - kurze Wiederholungssperre gegen versehentliche Doppelscans
 - sichere Schreibaufträge aus dem Adminbereich mit UID-Prüfung und Rücklesen
+- geschützter Fernneustart aus der Geräteverwaltung
 
 Der lokale Status ist nach Anmeldung unter `http://192.168.4.1` sichtbar.
 
@@ -134,6 +135,15 @@ und Sektor-Trailer und meldet erst nach erfolgreichem Rücklesen „Fertig“.
 Die App schreibt lediglich eine optionale Kurzbezeichnung bis 16 Byte. Diese
 Beschriftung ist kein Berechtigungsnachweis; alle verbindlichen Daten bleiben
 in der Vereinskassen-Datenbank.
+
+### Leser aus der App neu starten
+
+Unter **Admin → Sicherheit → RFID-Leser** kann ein aktiver Leser mit
+**Neu starten** kontrolliert neu gestartet werden. Ein laufender
+Kartenschreibauftrag wird dabei nicht unterbrochen. Der Leser bestätigt den
+Auftrag zuerst am Kassenserver, startet anschließend neu und verbindet sich
+selbstständig wieder mit dem Vereins-WLAN. Dafür muss diese Firmware-Version
+einmal per USB auf den NodeMCU übertragen worden sein.
 
 ### Arduino IDE
 

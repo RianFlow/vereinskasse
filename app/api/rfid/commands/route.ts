@@ -29,7 +29,7 @@ export async function GET(request:Request){
         const claimed=await env.DB.prepare("UPDATE rfid_write_commands SET status='processing',claimed_at=? WHERE id=? AND device_id=? AND status='pending'").bind(now,command.id,device.id).run();
         if(!claimed.meta.changes)return new Response(null,{status:204,headers});
       }
-      return Response.json({command:{id:command.id,uid:command.uid,block:command.block,hex:command.payloadHex,expiresAt:command.expiresAt}},{headers});
+      return Response.json({command:{id:command.id,action:command.block===-1?"restart":"write",uid:command.uid,block:command.block,hex:command.payloadHex,expiresAt:command.expiresAt}},{headers});
     }
 
     const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);
@@ -65,5 +65,26 @@ export async function POST(request:Request){
     return Response.json({ok:true,status:success?"succeeded":"failed"},{headers});
   }catch{
     return Response.json({error:"RFID-Schreibergebnis konnte nicht gespeichert werden"},{status:500,headers});
+  }
+}
+
+export async function PUT(request:Request){
+  try{
+    const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);
+    if(!admin||!profile)return Response.json({error:"Nur der Vorstand darf den RFID-Leser neu starten"},{status:403,headers});
+    const body=await request.json() as {deviceId?:unknown},deviceId=String(body.deviceId||"");
+    if(!deviceId||deviceId.length>100)return Response.json({error:"RFID-Leser fehlt"},{status:400,headers});
+    const device=await env.DB.prepare("SELECT id,name FROM rfid_devices WHERE id=? AND profile_id=? AND active=1").bind(deviceId,profile.id).first<{id:string;name:string}>();
+    if(!device)return Response.json({error:"Aktiver RFID-Leser nicht gefunden"},{status:404,headers});
+    const active=await env.DB.prepare("SELECT id FROM rfid_write_commands WHERE device_id=? AND status IN ('pending','processing') AND expires_at>? LIMIT 1").bind(device.id,new Date().toISOString()).first();
+    if(active)return Response.json({error:"Der Leser bearbeitet gerade einen Kartenauftrag. Bitte danach erneut starten."},{status:409,headers});
+    const id=crypto.randomUUID(),now=new Date(),expires=new Date(now.getTime()+45000).toISOString();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO rfid_write_commands (id,profile_id,device_id,uid,block,payload_hex,status,created_by,created_at,expires_at) VALUES (?,?,?,?,?,?,'pending',?,?,?)").bind(id,profile.id,device.id,"DEVICE-RESTART",-1,"",admin.id,now.toISOString(),expires),
+      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_RESTART_QUEUED","rfid_device",device.id,admin.id,JSON.stringify({profileId:profile.id,name:device.name}),now.toISOString())
+    ]);
+    return Response.json({ok:true,id},{status:201,headers});
+  }catch{
+    return Response.json({error:"Neustartauftrag konnte nicht erstellt werden"},{status:500,headers});
   }
 }

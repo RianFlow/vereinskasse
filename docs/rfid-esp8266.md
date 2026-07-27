@@ -94,6 +94,11 @@ Ergebnis per `POST /api/rfid/commands`. Beide Aufrufe benötigen
 `X-RFID-Token`. Geldbeträge, Kontostände, Preisgruppen und Berechtigungen
 werden auch nach dem Beschreiben ausschließlich aus der Datenbank gelesen.
 
+Ein Vorstand kann über dieselbe geschützte Auftragsstrecke einen Fernneustart
+auslösen. Der ESP8266 bestätigt den Auftrag vor `ESP.restart()` und verbindet
+sich danach automatisch wieder mit dem Vereins-WLAN. Laufende
+Kartenschreibaufträge blockieren einen Neustartauftrag.
+
 ## Sicherheitsgrenze
 
 - Auf der RFID-Karte werden keine Preise, Geldbeträge oder Rechte gespeichert.
