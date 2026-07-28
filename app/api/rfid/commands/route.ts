@@ -28,7 +28,7 @@ export async function GET(request:Request){
       if(!command){
         const knownRevision=request.headers.get("x-display-revision")||"";
         let display=await env.DB.prepare("SELECT state,customer_name customerName,items_text itemsText,item_count itemCount,total_cents totalCents,revision,updated_at updatedAt FROM rfid_display_states WHERE profile_id=?").bind(device.profileId).first<DisplayState>();
-        if(display?.state==="cart"&&Date.parse(display.updatedAt)<Date.now()-90_000){
+        if(display?.state==="cart"&&Date.parse(display.updatedAt)<Date.now()-120_000){
           const previousRevision=display.revision,revision=crypto.randomUUID(),updatedAt=new Date().toISOString();
           const expired=await env.DB.prepare("UPDATE rfid_display_states SET state='idle',customer_name=NULL,items_text=NULL,item_count=0,total_cents=0,revision=?,updated_at=? WHERE profile_id=? AND revision=?").bind(revision,updatedAt,device.profileId,previousRevision).run();
           display=expired.meta.changes

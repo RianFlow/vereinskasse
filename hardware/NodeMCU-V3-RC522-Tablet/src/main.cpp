@@ -61,6 +61,7 @@ String displayOrderItems;
 int displayOrderItemCount = 0;
 int displayOrderTotalCents = 0;
 bool displayOrderActive = false;
+unsigned long displayOrderUpdatedAt = 0;
 unsigned long displayReadySince = 0;
 
 enum class StatusLedMode {
@@ -186,7 +187,8 @@ void showOrderDisplay() {
   const String customer = displaySafeText(
       displayOrderCustomer.length() ? displayOrderCustomer : "Bestellung");
   const String items = displaySafeText(displayOrderItems.length()
-      ? displayOrderItems : String(displayOrderItemCount) + " Artikel");
+      ? displayOrderItems
+      : (displayOrderItemCount ? String(displayOrderItemCount) + " Artikel" : "Noch keine Artikel"));
   const String cacheKey = customer + ":" + items + ":" + String(displayOrderItemCount) + ":" +
                           String(displayOrderTotalCents);
   if (statusDisplayTitle == "__order__" && statusDisplayDetail == cacheKey) return;
@@ -292,6 +294,13 @@ void fillStatusPixels(uint8_t red, uint8_t green, uint8_t blue) {
 
 void renderStatusLed() {
   const unsigned long now = millis();
+  if (displayOrderActive && displayOrderUpdatedAt &&
+      now - displayOrderUpdatedAt >= CUSTOMER_DISPLAY_TIMEOUT_MS) {
+    displayOrderActive = false;
+    displayReadySince = now;
+    if (statusLedMode == StatusLedMode::Ready)
+      showStatusDisplay("RFID bereit", "Karte auflegen");
+  }
   if (statusLedUntil && (long)(now - statusLedUntil) >= 0) {
     statusLedUntil = 0;
     if (writeCommandActive) setStatusLed(StatusLedMode::WriteWaiting);
@@ -933,7 +942,8 @@ void pollWriteCommand() {
     displayOrderItems = jsonStringField(response, "itemsText");
     displayOrderItemCount = max(0, jsonIntField(response, "itemCount"));
     displayOrderTotalCents = max(0, jsonIntField(response, "totalCents"));
-    if (!displayOrderActive || displayOrderItemCount == 0) {
+    displayOrderUpdatedAt = millis();
+    if (!displayOrderActive) {
       displayOrderActive = false;
       displayReadySince = millis();
       if (statusLedMode == StatusLedMode::Ready)

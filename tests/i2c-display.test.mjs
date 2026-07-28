@@ -17,9 +17,11 @@ test("bereitet das I2C-Kundendisplay mit Bon und Vereinslogo vor",async()=>{
     read("app/api/backup/route.ts")
   ]);
   assert.ok(page.includes('fetch("/api/rfid/display"'));
+  assert.ok(page.includes('state:displayActive?"cart":"idle"')&&page.includes("if(displayActive)heartbeat"),"Ein ausgewählter Kunde bleibt nicht auf dem Display");
+  assert.ok(page.includes("Vorgang abbrechen")&&page.includes("cancelCheckout"),"Der Displayinhalt kann nicht eindeutig abgebrochen werden");
   for(const feature of ["itemCount","totalCents","customerName","itemsText"])assert.ok(display.includes(feature));
-  assert.ok(commands.includes('action:"display"')&&commands.includes("x-display-revision"));
-  for(const feature of ["Adafruit_SSD1306","showOrderDisplay","showClubLogo","STATUS_DISPLAY_SCREENSAVER_MS"])
+  assert.ok(commands.includes('action:"display"')&&commands.includes("x-display-revision")&&commands.includes("Date.now()-120_000"));
+  for(const feature of ["Adafruit_SSD1306","showOrderDisplay","showClubLogo","STATUS_DISPLAY_SCREENSAVER_MS","CUSTOMER_DISPLAY_TIMEOUT_MS","displayOrderUpdatedAt"])
     assert.ok(firmware.includes(feature),`${feature} fehlt`);
   assert.ok(config.includes("PIN_I2C_SDA = 0")&&config.includes("PIN_I2C_SCL = 2"));
   assert.ok(pio.includes("Adafruit SSD1306"));

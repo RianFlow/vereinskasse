@@ -48,6 +48,7 @@ constexpr unsigned long RFID_COMMAND_POLL_INTERVAL_MS = 5000;
 constexpr unsigned long MAINTENANCE_PRIORITY_MS = 4500;
 constexpr unsigned long HTTPS_TIMEOUT_MS = 2200;
 constexpr unsigned long STATUS_DISPLAY_SCREENSAVER_MS = 12000;
+constexpr unsigned long CUSTOMER_DISPLAY_TIMEOUT_MS = 2UL * 60UL * 1000UL;
 // Rückfallsicherung: Ein erkannter Scan bleibt im RAM, bis der Server ihn
 // bestätigt. Die Abstände wachsen, damit ein Ausfall den Server nicht flutet.
 constexpr unsigned long UID_RETRY_INITIAL_MS = 1000;
