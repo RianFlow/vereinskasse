@@ -53,6 +53,27 @@ VEREINSKASSE_SECONDARY_BACKUP_DIR=/mnt/vereinskasse-sicherung
 
 Die Einstellung steht in `/etc/vereinskasse/environment`.
 
+## Cloudflare bleibt kostenlos erhalten
+
+Der Raspberry ist die einzige beschreibbare Hauptanwendung. Cloudflare wird
+später als kostenlose, sichere Verbindung für den Online-Rechnungsbereich
+verwendet:
+
+- Im Vereinsheim läuft die vollständige Kasse direkt über das lokale Netz.
+- Von außen wird nur ein noch einzurichtender, schreibgeschützter
+  Rechnungsbereich veröffentlicht.
+- Der Router benötigt keine offene Portweiterleitung.
+- Cloudflare Tunnel stellt HTTPS und die Verbindung zum Raspberry bereit.
+- Vorstand/Admin kann zusätzlich über Cloudflare Access geschützt werden.
+- Die Mitgliederanmeldung bleibt in der Vereinskassen-App, damit mehr als
+  50 Mitglieder nicht von der Benutzergrenze des kostenlosen Access-Tarifs
+  betroffen sind.
+
+Die vollständige Planung steht in
+[`CLOUDFLARE.md`](./CLOUDFLARE.md). Der Tunnel wird erst eingeschaltet, wenn
+der schreibgeschützte Rechnungsbereich fertig ist. Bis dahin bleibt die
+bestehende Onlineversion unverändert.
+
 ## Wiederherstellung
 
 Zuerst immer nur prüfen:

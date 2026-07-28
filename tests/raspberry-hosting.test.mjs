@@ -62,3 +62,18 @@ test("aktualisiert über GitHub mit Vorab-Sicherung und automatischem Rückfall"
   assert.match(update, /npm run build:raspberry/);
   assert.match(update, /vorherige Version wurde wieder aktiviert/);
 });
+
+test("behält Cloudflare kostenlos als schreibgeschützte Außenschicht", async () => {
+  const architecture = await read("deploy/raspberry/CLOUDFLARE.md");
+  for (const rule of [
+    "einzige Quelle",
+    "Cloudflare Tunnel",
+    "keine Portfreigabe",
+    "mehr als 60 Mitglieder",
+    "nicht öffentlich",
+    "Nur festgeschriebene Monatsabrechnungen",
+    "keinem Zeitpunkt zwei",
+  ]) {
+    assert.ok(architecture.includes(rule), `${rule} fehlt`);
+  }
+});
