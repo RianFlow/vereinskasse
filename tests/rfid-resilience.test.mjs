@@ -23,3 +23,19 @@ test("RFID-Firmware puffert Scans und heilt Verbindungs- und Leserfehler",async(
   assert.ok(firmware.indexOf("pendingUid = uid")<firmware.indexOf("retryPendingUid();",firmware.indexOf("pendingUid = uid")),"Der Scan wird vor der Übertragung nicht gepuffert");
   for(const fragment of ["UID_RETRY_INITIAL_MS","UID_RETRY_MAX_MS","SELF_RECOVERY_RESTART_MS","RFID_HEALTHCHECK_INTERVAL_MS"])assert.ok(config.includes(fragment),`Wiederherstellungsgrenze fehlt: ${fragment}`);
 });
+
+test("RFID-WLAN kann geschützt eingerichtet und dauerhaft gespeichert werden",async()=>{
+  const [firmware,config,ui]=await Promise.all([
+    read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/include/config.h"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h")
+  ]);
+  for(const fragment of ["#include <EEPROM.h>","struct WifiSettings","loadWifiSettings()","saveWifiSettings","clubWifiSsid","/api/wifi","/api/wifi/scan","validWifiCsrf","SPEICHERN","LOESCHEN"]){
+    assert.ok(firmware.includes(fragment),`WLAN-Einrichtung fehlt: ${fragment}`);
+  }
+  for(const fragment of ["WIFI_SETTINGS_EEPROM_SIZE","WIFI_SETTINGS_EEPROM_ADDRESS"])assert.ok(config.includes(fragment),`EEPROM-Einstellung fehlt: ${fragment}`);
+  for(const fragment of ["Vereins-WLAN einrichten","WLANs suchen","WLAN speichern und verbinden","Gespeichertes WLAN entfernen","_csrf"]){
+    assert.ok(ui.includes(fragment),`WLAN-Oberfläche fehlt: ${fragment}`);
+  }
+  assert.ok(!firmware.includes('",\\"stationPassword\\":'),"Das WLAN-Kennwort darf nicht über den Status ausgeliefert werden");
+});

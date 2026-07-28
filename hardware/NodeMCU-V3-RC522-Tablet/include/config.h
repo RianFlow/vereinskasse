@@ -50,3 +50,8 @@ constexpr unsigned long UID_RETRY_INITIAL_MS = 1000;
 constexpr unsigned long UID_RETRY_MAX_MS = 30000;
 constexpr unsigned long RFID_HEALTHCHECK_INTERVAL_MS = 30000;
 constexpr unsigned long SELF_RECOVERY_RESTART_MS = 5UL * 60UL * 1000UL;
+
+// Das Vereins-WLAN wird im EEPROM gespeichert und bleibt dadurch bei normalen
+// Firmware-Updates erhalten. Ein kompletter Flash-Erase löscht es weiterhin.
+constexpr size_t WIFI_SETTINGS_EEPROM_SIZE = 256;
+constexpr int WIFI_SETTINGS_EEPROM_ADDRESS = 0;

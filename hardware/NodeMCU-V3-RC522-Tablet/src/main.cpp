@@ -2,6 +2,8 @@
 #include <time.h>
 #include <SPI.h>
 #include <Wire.h>
+#include <EEPROM.h>
+#include <stddef.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
@@ -22,6 +24,8 @@ BearSSL::WiFiClientSecure vereinskasseTls;
 HTTPClient vereinskasseHttps;
 BearSSL::X509List vereinskasseTrustAnchor(VEREINSKASSE_ROOT_CA);
 String apSsid, apPassword, webUser, webPassword;
+String clubWifiSsid, clubWifiPassword, wifiCsrfToken;
+bool wifiSettingsStored = false;
 String lastPushState = "Noch keine Karte übertragen.";
 String lastPushedUid;
 String pendingUid, pendingType;
@@ -73,6 +77,65 @@ unsigned long statusLedLastFrame = 0;
 
 bool clockReady();
 String jsonStringField(const String &body, const String &name);
+void maintainStationWifi();
+
+struct WifiSettings {
+  char magic[8];
+  uint8_t version;
+  char ssid[33];
+  char password[65];
+  uint32_t checksum;
+};
+
+uint32_t wifiSettingsChecksum(const WifiSettings &settings) {
+  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&settings);
+  uint32_t checksum = 2166136261UL;
+  for (size_t i = 0; i < offsetof(WifiSettings, checksum); ++i) {
+    checksum ^= bytes[i];
+    checksum *= 16777619UL;
+  }
+  return checksum;
+}
+
+void applyCompileTimeWifi() {
+  clubWifiSsid = CLUB_WIFI_SSID;
+  clubWifiPassword = CLUB_WIFI_PASSWORD;
+  wifiSettingsStored = false;
+}
+
+void loadWifiSettings() {
+  EEPROM.begin(WIFI_SETTINGS_EEPROM_SIZE);
+  WifiSettings settings{};
+  EEPROM.get(WIFI_SETTINGS_EEPROM_ADDRESS, settings);
+  const bool valid =
+      memcmp(settings.magic, "VK-WIFI", 7) == 0 &&
+      settings.version == 1 &&
+      settings.ssid[sizeof(settings.ssid) - 1] == '\0' &&
+      settings.password[sizeof(settings.password) - 1] == '\0' &&
+      settings.checksum == wifiSettingsChecksum(settings);
+  if (!valid) {
+    applyCompileTimeWifi();
+    return;
+  }
+  clubWifiSsid = settings.ssid;
+  clubWifiPassword = settings.password;
+  wifiSettingsStored = true;
+}
+
+bool saveWifiSettings(const String &ssid, const String &password) {
+  WifiSettings settings{};
+  memcpy(settings.magic, "VK-WIFI", 7);
+  settings.version = 1;
+  ssid.toCharArray(settings.ssid, sizeof(settings.ssid));
+  password.toCharArray(settings.password, sizeof(settings.password));
+  settings.checksum = wifiSettingsChecksum(settings);
+  EEPROM.put(WIFI_SETTINGS_EEPROM_ADDRESS, settings);
+  if (!EEPROM.commit()) return false;
+  clubWifiSsid = ssid;
+  clubWifiPassword = password;
+  wifiSettingsStored = true;
+  return true;
+}
 
 String displaySafeText(String text) {
   text.replace("Ä", "Ae");
@@ -254,7 +317,7 @@ void renderStatusLed() {
 }
 
 bool stationConfigured() {
-  return strlen(CLUB_WIFI_SSID) > 0;
+  return clubWifiSsid.length() > 0;
 }
 
 bool pushConfigured() {
@@ -401,13 +464,104 @@ void handleStatus() {
   String body = "{\"apIp\":\"" + WiFi.softAPIP().toString() +
                 "\",\"stationConfigured\":" + String(stationConfigured() ? "true" : "false") +
                 ",\"stationConnected\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false") +
+                ",\"stationSsid\":\"" + jsonEscape(clubWifiSsid) +
+                "\",\"wifiSettingsStored\":" + String(wifiSettingsStored ? "true" : "false") +
                 ",\"stationIp\":\"" +
                 (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("")) +
                 "\",\"pushConfigured\":" + String(pushConfigured() ? "true" : "false") +
                 ",\"clockReady\":" + String(clockReady() ? "true" : "false") +
                 ",\"pendingScan\":" + String(pendingUidReady ? "true" : "false") +
                 ",\"lastUid\":\"" + jsonEscape(lastPushedUid) +
+                "\",\"csrf\":\"" + jsonEscape(wifiCsrfToken) +
                 "\",\"message\":\"" + jsonEscape(lastPushState) + "\"}";
+  json(200, body);
+}
+
+bool validWifiCsrf() {
+  return server.hasArg("_csrf") && server.arg("_csrf") == wifiCsrfToken;
+}
+
+void reconnectStationWifi() {
+  WiFi.disconnect(false);
+  stationWasConnected = false;
+  clockWasReady = false;
+  timeSyncStarted = false;
+  wifiDisconnectedSince = 0;
+  lastWifiAttempt = 0;
+  if (stationConfigured()) {
+    lastPushState = "Neue WLAN-Einstellung gespeichert. Verbindung wird aufgebaut.";
+    maintainStationWifi();
+  } else {
+    lastPushState = "Vereins-WLAN entfernt. Wartungszugang bleibt erreichbar.";
+    setStatusLed(StatusLedMode::Connecting);
+  }
+}
+
+void handleWifiSave() {
+  if (!authorized()) return;
+  if (!validWifiCsrf()) {
+    json(403, "{\"error\":\"Sicherheitsprüfung fehlgeschlagen. Seite neu laden.\"}");
+    return;
+  }
+  if (server.arg("confirm") != "SPEICHERN") {
+    json(400, "{\"error\":\"Bestätigung SPEICHERN fehlt.\"}");
+    return;
+  }
+  String ssid = server.arg("ssid");
+  const String password = server.arg("password");
+  ssid.trim();
+  if (!ssid.length() || ssid.length() > 32) {
+    json(400, "{\"error\":\"Der WLAN-Name muss 1 bis 32 Byte lang sein.\"}");
+    return;
+  }
+  if (password.length() > 63 || (password.length() > 0 && password.length() < 8)) {
+    json(400, "{\"error\":\"Das WLAN-Kennwort muss leer oder 8 bis 63 Byte lang sein.\"}");
+    return;
+  }
+  if (!saveWifiSettings(ssid, password)) {
+    json(500, "{\"error\":\"WLAN-Einstellung konnte nicht dauerhaft gespeichert werden.\"}");
+    return;
+  }
+  reconnectStationWifi();
+  json(200, "{\"saved\":true,\"ssid\":\"" + jsonEscape(clubWifiSsid) + "\"}");
+}
+
+void handleWifiDelete() {
+  if (!authorized()) return;
+  if (!validWifiCsrf()) {
+    json(403, "{\"error\":\"Sicherheitsprüfung fehlgeschlagen. Seite neu laden.\"}");
+    return;
+  }
+  if (server.arg("confirm") != "LOESCHEN") {
+    json(400, "{\"error\":\"Bestätigung LOESCHEN fehlt.\"}");
+    return;
+  }
+  if (!saveWifiSettings("", "")) {
+    json(500, "{\"error\":\"WLAN-Einstellung konnte nicht entfernt werden.\"}");
+    return;
+  }
+  reconnectStationWifi();
+  json(200, "{\"deleted\":true}");
+}
+
+void handleWifiScan() {
+  if (!authorized()) return;
+  ESP.wdtFeed();
+  const int count = WiFi.scanNetworks(false, true);
+  ESP.wdtFeed();
+  if (count < 0) {
+    json(503, "{\"error\":\"WLAN-Suche ist gerade nicht möglich.\"}");
+    return;
+  }
+  String body = "{\"networks\":[";
+  for (int i = 0; i < count; ++i) {
+    if (i) body += ',';
+    body += "{\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) +
+            "\",\"rssi\":" + String(WiFi.RSSI(i)) +
+            ",\"secure\":" + String(WiFi.encryptionType(i) == ENC_TYPE_NONE ? "false" : "true") + "}";
+  }
+  body += "]}";
+  WiFi.scanDelete();
   json(200, body);
 }
 
@@ -442,8 +596,8 @@ void maintainStationWifi() {
   timeSyncStarted = false;
   lastPushState = "Verbinde mit Vereins-WLAN.";
   setStatusLed(StatusLedMode::Connecting);
-  Serial.printf("Verbinde mit Vereins-WLAN \"%s\" ...\n", CLUB_WIFI_SSID);
-  WiFi.begin(CLUB_WIFI_SSID, CLUB_WIFI_PASSWORD);
+  Serial.printf("Verbinde mit Vereins-WLAN \"%s\" ...\n", clubWifiSsid.c_str());
+  WiFi.begin(clubWifiSsid.c_str(), clubWifiPassword.c_str());
 }
 
 void retryPendingUid() {
@@ -861,6 +1015,8 @@ void setup() {
   apPassword = strlen(CUSTOM_AP_PASSWORD) ? CUSTOM_AP_PASSWORD : "NFC-" + id + "-Setup!";
   webUser = CUSTOM_WEB_USER;
   webPassword = strlen(CUSTOM_WEB_PASSWORD) ? CUSTOM_WEB_PASSWORD : "Web-" + id + "-Login!";
+  wifiCsrfToken = id + "-" + String(ESP.getCycleCount(), HEX) + "-" + String(micros(), HEX);
+  loadWifiSettings();
 
   // Der Wartungs-AP bleibt immer erreichbar. Parallel verbindet sich der
   // ESP8266 als Station mit dem Vereins-WLAN und sendet Scans per HTTPS.
@@ -880,6 +1036,9 @@ void setup() {
   });
   server.on("/api/uid", HTTP_GET, handleUid);
   server.on("/api/status", HTTP_GET, handleStatus);
+  server.on("/api/wifi", HTTP_POST, handleWifiSave);
+  server.on("/api/wifi", HTTP_DELETE, handleWifiDelete);
+  server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
   server.on("/api/read", HTTP_POST, handleRead);
   server.on("/api/write", HTTP_POST, handleWrite);
   server.onNotFound([] { if (authorized()) json(404, "{\"error\":\"Nicht gefunden.\"}"); });
