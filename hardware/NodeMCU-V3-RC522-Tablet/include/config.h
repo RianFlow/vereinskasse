@@ -43,6 +43,10 @@ constexpr unsigned long RFID_REPEAT_GUARD_MS = 1500;
 // Karten-Schreibaufträge sind selten. Eine häufigere HTTPS-Abfrage würde den
 // wichtigeren UID-Scan unnötig blockieren.
 constexpr unsigned long RFID_COMMAND_POLL_INTERVAL_MS = 5000;
+// Solange die lokale Wartungsseite benutzt wird, pausieren langsamere
+// HTTPS-Hintergrundabfragen. Dadurch reagiert die Oberfläche sofort.
+constexpr unsigned long MAINTENANCE_PRIORITY_MS = 4500;
+constexpr unsigned long HTTPS_TIMEOUT_MS = 2200;
 constexpr unsigned long STATUS_DISPLAY_SCREENSAVER_MS = 12000;
 // Rückfallsicherung: Ein erkannter Scan bleibt im RAM, bis der Server ihn
 // bestätigt. Die Abstände wachsen, damit ein Ausfall den Server nicht flutet.

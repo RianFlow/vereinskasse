@@ -30,10 +30,10 @@ test("RFID-WLAN kann geschützt eingerichtet und dauerhaft gespeichert werden",a
     read("hardware/NodeMCU-V3-RC522-Tablet/include/config.h"),
     read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h")
   ]);
-  for(const fragment of ["#include <EEPROM.h>","struct WifiSettings","loadWifiSettings()","saveWifiSettings","clubWifiSsid","/api/wifi","/api/wifi/scan","validWifiCsrf","scheduleStationReconnect","processStationReconnect","SPEICHERN","LOESCHEN"]){
+  for(const fragment of ["#include <EEPROM.h>","struct WifiSettings","loadWifiSettings()","saveWifiSettings","clubWifiSsid","/api/wifi","/api/wifi/scan","WiFi.scanComplete()","WiFi.scanNetworks(true, true)","validWifiCsrf","scheduleStationReconnect","processStationReconnect","lastMaintenanceRequestAt","pendingUidReady) return","SPEICHERN","LOESCHEN"]){
     assert.ok(firmware.includes(fragment),`WLAN-Einrichtung fehlt: ${fragment}`);
   }
-  for(const fragment of ["WIFI_SETTINGS_EEPROM_SIZE","WIFI_SETTINGS_EEPROM_ADDRESS"])assert.ok(config.includes(fragment),`EEPROM-Einstellung fehlt: ${fragment}`);
+  for(const fragment of ["WIFI_SETTINGS_EEPROM_SIZE","WIFI_SETTINGS_EEPROM_ADDRESS","MAINTENANCE_PRIORITY_MS","HTTPS_TIMEOUT_MS"])assert.ok(config.includes(fragment),`EEPROM-/Performance-Einstellung fehlt: ${fragment}`);
   for(const fragment of ["Vereins-WLAN einrichten","WLANs suchen","WLAN speichern und verbinden","Gespeichertes WLAN entfernen","_csrf"]){
     assert.ok(ui.includes(fragment),`WLAN-Oberfläche fehlt: ${fragment}`);
   }

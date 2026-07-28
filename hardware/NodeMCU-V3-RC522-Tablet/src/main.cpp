@@ -43,6 +43,7 @@ unsigned long lastScanAt = 0;
 unsigned long lastPushAt = 0;
 unsigned long lastCommandPollAt = 0;
 unsigned long lastCommandErrorLogAt = 0;
+unsigned long lastMaintenanceRequestAt = 0;
 bool timeSyncStarted = false;
 bool stationWasConnected = false;
 bool clockWasReady = false;
@@ -346,7 +347,10 @@ void json(int status, const String &body) {
 }
 
 bool authorized() {
-  if (server.authenticate(webUser.c_str(), webPassword.c_str())) return true;
+  if (server.authenticate(webUser.c_str(), webPassword.c_str())) {
+    lastMaintenanceRequestAt = millis();
+    return true;
+  }
   server.requestAuthentication(BASIC_AUTH, "NodeMCU NFC", "Anmeldung erforderlich");
   return false;
 }
@@ -388,8 +392,8 @@ bool clockReady() {
 
 bool beginVereinskasseRequest(const String &url) {
   vereinskasseTls.setTrustAnchors(&vereinskasseTrustAnchor);
-  vereinskasseTls.setTimeout(3500);
-  vereinskasseHttps.setTimeout(3500);
+  vereinskasseTls.setTimeout(HTTPS_TIMEOUT_MS);
+  vereinskasseHttps.setTimeout(HTTPS_TIMEOUT_MS);
   vereinskasseHttps.setReuse(true);
   return vereinskasseHttps.begin(vereinskasseTls, url);
 }
@@ -561,11 +565,15 @@ void handleWifiDelete() {
 
 void handleWifiScan() {
   if (!authorized()) return;
-  ESP.wdtFeed();
-  const int count = WiFi.scanNetworks(false, true);
-  ESP.wdtFeed();
-  if (count < 0) {
-    json(503, "{\"error\":\"WLAN-Suche ist gerade nicht möglich.\"}");
+  const int count = WiFi.scanComplete();
+  if (count == WIFI_SCAN_RUNNING) {
+    json(202, "{\"scanning\":true}");
+    return;
+  }
+  if (count == WIFI_SCAN_FAILED) {
+    WiFi.scanDelete();
+    WiFi.scanNetworks(true, true);
+    json(202, "{\"scanning\":true}");
     return;
   }
   String body = "{\"networks\":[";
@@ -575,7 +583,7 @@ void handleWifiScan() {
             "\",\"rssi\":" + String(WiFi.RSSI(i)) +
             ",\"secure\":" + String(WiFi.encryptionType(i) == ENC_TYPE_NONE ? "false" : "true") + "}";
   }
-  body += "]}";
+  body += "],\"scanning\":false}";
   WiFi.scanDelete();
   json(200, body);
 }
@@ -881,11 +889,13 @@ void performRemoteRestart(const String &commandId) {
 
 void pollWriteCommand() {
   if (!pushConfigured() || WiFi.status() != WL_CONNECTED || !clockReady()) return;
+  if (pendingUidReady) return;
   if (writeCommandActive) {
     if (writeResultReady) reportWriteResult();
     return;
   }
   const unsigned long now = millis();
+  if (lastMaintenanceRequestAt && now - lastMaintenanceRequestAt < MAINTENANCE_PRIORITY_MS) return;
   if (now - lastCommandPollAt < RFID_COMMAND_POLL_INTERVAL_MS) return;
   lastCommandPollAt = now;
 
