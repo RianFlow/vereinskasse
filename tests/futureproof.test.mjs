@@ -95,13 +95,14 @@ test("verwendet tabletfreundliche Zahlenfelder mit großen Schritten und Ziffern
 });
 
 test("zeigt Bestellung, Summe und häufige Bezahlarten wie eine direkte Kasse",async()=>{
-  const [page,style]=await Promise.all([read("app/page.tsx"),read("app/direct-checkout.css")]);
-  for(const feature of ["AKTUELLER BON","ZU ZAHLEN","DIREKT ANSCHREIBEN","Bar zahlen","Aufteilen","Tageskonto"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  const [page,style,paymentStyle]=await Promise.all([read("app/page.tsx"),read("app/direct-checkout.css"),read("app/payment-choice.css")]);
+  for(const feature of ["AKTUELLER BON","ZU ZAHLEN","Bezahlen / buchen","Bar zahlen","Betrag aufteilen","Gastkonto"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(page.includes('setOperator(activeMember||billingMember||'),"Kassendienst kann nicht ohne zusätzliche Anmeldung fortfahren");
   assert.ok(!page.includes("authorizeCheckout"),"Die alte Kassenberechtigung wird noch abgefragt");
   assert.ok(!page.includes("Weitere Aktionen"),"Häufige Bezahlarten sind noch versteckt");
-  for(const feature of ["direct-payment-grid","pos-total","position:sticky","min-height:78px"])assert.ok(style.includes(feature),`${feature} fehlt`);
-  assert.ok(page.includes("Betrag aufteilen")&&page.includes("club-payments"),"Betrag aufteilen fehlt beim Vereinsabend");
+  for(const feature of ["pos-total","position:sticky","min-height:78px"])assert.ok(style.includes(feature),`${feature} fehlt`);
+  assert.ok(paymentStyle.includes(".payment-choice-grid"),"Die Bezahlarten fehlen im kompakten Abschlussdialog");
+  assert.ok(page.includes("Betrag aufteilen")&&page.includes('operationMode==="club"'),"Betrag aufteilen fehlt beim Vereinsabend");
 });
 
 test("legt Mitglieder schlank an und schützt nur Vorstand oder Admin",async()=>{

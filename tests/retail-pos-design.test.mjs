@@ -29,3 +29,12 @@ test("pinnt Kassenhinweise an und scrollt nur die Artikel",async()=>{
     assert.ok(ergonomics.includes(feature),`${feature} fehlt im angepinnten Artikelbereich`);
   assert.ok(ergonomics.includes("repeat(3,minmax(0,1fr))")&&retail.includes("repeat(3,minmax(0,1fr))"),"Im Hochformat passen nicht mindestens drei Artikel nebeneinander");
 });
+
+test("wählt die Zahlungsart in einem platzsparenden Dialog",async()=>{
+  const [page,layout,style]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/payment-choice.css")]);
+  for(const fragment of ["PaymentChoiceDialog","Wie wird bezahlt?","Bezahlen / buchen","Bar zahlen","Gastkonto","Betrag aufteilen"])
+    assert.ok(page.includes(fragment),`Zahlungsdialog enthält ${fragment}`);
+  assert.ok(layout.includes('import "./payment-choice.css"'),"Layout bindet den Zahlungsdialog ein");
+  assert.ok(style.includes(".payment-choice-grid"),"Zahlungsarten sind als große Touch-Auswahl gestaltet");
+  assert.ok(style.includes(".open-payment-dialog"),"Kassenabschluss bleibt als kompakter Hauptknopf sichtbar");
+});

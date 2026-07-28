@@ -31,8 +31,9 @@ test("geteilte Bestellung bleibt in Abrechnung und Zechendetails korrekt", async
 
 test("Aufteilen ist auch ohne vorher ausgewähltes Mitglied erreichbar", async () => {
   const page = await read("app/page.tsx");
-  assert.ok(page.includes('className="pay split-pay anonymous-split"'));
-  assert.ok(page.includes('onClick={()=>checkout("Mitgliedskonto")}'));
+  assert.ok(page.includes('className="payment-choice-option split"'));
+  assert.ok(page.includes('operationMode==="club"&&!member'));
+  assert.ok(page.includes('onClick={()=>onMethod("Mitgliedskonto")}'));
 });
 
 test("gemeinsame Buchung bleibt mit Beteiligten, Artikeln und Beleg nachvollziehbar", async () => {
