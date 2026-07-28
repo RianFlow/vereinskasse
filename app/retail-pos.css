@@ -194,6 +194,11 @@
 @media(max-width:800px){
   .app.kiosk-design.light .catalog{padding:13px}
   .app.kiosk-design.light .product-browser-bar{background:var(--retail-bg)}
+  .app.kiosk-design.light .grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .app.kiosk-design.light .product{min-height:116px;padding:10px}
+  .app.kiosk-design.light .product-icon{width:38px;height:38px}
+  .app.kiosk-design.light .product-name{margin:7px 0 3px;font-size:12px}
+  .app.kiosk-design.light .price{font-size:16px}
   .app.kiosk-design.light .system-live-strip{display:grid;grid-template-columns:1fr 1fr}
   .app.kiosk-design.light .system-live-strip>span:nth-child(2){border-right:0}
   .app.kiosk-design.light .system-live-strip>span:nth-child(-n+2){border-bottom:1px solid #e5e8e7}
@@ -201,5 +206,5 @@
 }
 @media(max-width:520px){
   .profile-fallback{align-items:stretch;flex-direction:column}
-  .app.kiosk-design.light .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .app.kiosk-design.light .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }

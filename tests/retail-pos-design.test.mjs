@@ -21,3 +21,11 @@ test("hält Bon und Bezahlung in Hoch- und Querformat sichtbar",async()=>{
   for(const feature of [".app.kiosk-design>header","position:sticky","height:calc(100dvh - 64px)","grid-template-rows:minmax(0,55%) minmax(0,45%)",".app.kiosk-design .cart{",".app.kiosk-design .checkout{"])
     assert.ok(style.includes(feature),`${feature} fehlt im dauerhaft sichtbaren Kassenlayout`);
 });
+
+test("pinnt Kassenhinweise an und scrollt nur die Artikel",async()=>{
+  const [page,ergonomics,retail]=await Promise.all([read("app/page.tsx"),read("app/pos-ergonomics.css"),read("app/retail-pos.css")]);
+  assert.ok(page.includes("header-shift-status")&&page.includes("Kasse eröffnen"),"Der geschlossene Kassenstatus fehlt in der Kopfzeile");
+  for(const feature of [".catalog>.guest-debt-strip{order:-20",".catalog>.shift-start-strip{display:none}",".catalog>.grid{","overflow-y:auto"])
+    assert.ok(ergonomics.includes(feature),`${feature} fehlt im angepinnten Artikelbereich`);
+  assert.ok(ergonomics.includes("repeat(3,minmax(0,1fr))")&&retail.includes("repeat(3,minmax(0,1fr))"),"Im Hochformat passen nicht mindestens drei Artikel nebeneinander");
+});
