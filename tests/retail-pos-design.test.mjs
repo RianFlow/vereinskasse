@@ -40,3 +40,10 @@ test("wählt die Zahlungsart in einem platzsparenden Dialog",async()=>{
   assert.ok(style.includes(".payment-choice-grid"),"Zahlungsarten sind als große Touch-Auswahl gestaltet");
   assert.ok(style.includes(".open-payment-dialog"),"Kassenabschluss bleibt als kompakter Hauptknopf sichtbar");
 });
+
+test("öffnet die Mitgliedsauswahl ohne Bildschirmtastatur",async()=>{
+  const page=await read("app/page.tsx");
+  const finder=page.slice(page.indexOf("function MemberFinder"),page.indexOf("function MemberSessionDialog"));
+  assert.ok(finder.includes('placeholder="Name oder Mitgliedsnummer eingeben"'),"Die Mitgliedersuche fehlt");
+  assert.ok(!finder.includes("autoFocus"),"Die Mitgliedsauswahl öffnet weiterhin ungefragt die Bildschirmtastatur");
+});
