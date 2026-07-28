@@ -2,7 +2,8 @@ import { env } from "cloudflare:workers";
 import { hasRole, requireRole, type SessionUser } from "../session";
 import { requireProfile, type ActiveProfile } from "../profile-session";
 
-const SCHEMA_VERSION=22;
+const SCHEMA_VERSION=23;
+const COMPATIBLE_SCHEMA_VERSIONS=[22,SCHEMA_VERSION];
 const BACKUP_FORMAT_VERSION=3;
 const tables=["profiles","profile_recovery_keys","profile_sessions","members","member_lifecycle","rfid_devices","rfid_cards","rfid_scans","rfid_write_commands","rfid_display_states","guest_accounts","products","discount_rules","events","sales","sale_items","sale_allocations","payments","account_transactions","rounds","round_claims","random_reward_campaigns","random_reward_slots","shifts","reversals","monthly_closures","audit_logs"] as const;
 type Snapshot=Record<string,unknown>&{formatVersion:number;schemaVersion:number;createdAt:string;rowCounts:Record<string,number>};
@@ -29,7 +30,7 @@ async function validatedSnapshot(key:string){
   const payload=await new Response(object.body).text(),checksum=await digest(payload),expected=object.customMetadata?.sha256||"";
   if(!expected||checksum!==expected)throw new Error("Prüfsumme stimmt nicht – diese Sicherung darf nicht verwendet werden");
   const snapshot=JSON.parse(payload) as Snapshot;
-  const compatible=snapshot.schemaVersion===SCHEMA_VERSION&&snapshot.formatVersion===BACKUP_FORMAT_VERSION&&tables.every(table=>Array.isArray(snapshot[table]));
+  const compatible=COMPATIBLE_SCHEMA_VERSIONS.includes(snapshot.schemaVersion)&&snapshot.formatVersion===BACKUP_FORMAT_VERSION&&tables.every(table=>Array.isArray(snapshot[table]));
   return {snapshot,checksum,size:new TextEncoder().encode(payload).byteLength,compatible};
 }
 
@@ -66,7 +67,7 @@ export async function GET(request:Request){
     env.BACKUPS.list({prefix:"snapshots/",limit:10,include:["customMetadata"]}),
     env.DB.prepare("SELECT id,backup_key backupKey,checksum,status,requested_by requestedBy,requested_by_name requestedByName,approved_by approvedBy,approved_by_name approvedByName,preview_json previewJson,created_at createdAt,expires_at expiresAt,error FROM restore_requests WHERE profile_id=? ORDER BY created_at DESC LIMIT 5").bind(profile.id).all<Record<string,unknown>>()
   ]);
-  const snapshots=listed.objects.sort((a,b)=>b.uploaded.getTime()-a.uploaded.getTime()).map(object=>({key:object.key,size:object.size,uploaded:object.uploaded,checksum:object.customMetadata?.sha256||null,schemaVersion:Number(object.customMetadata?.schemaVersion||0),formatVersion:Number(object.customMetadata?.formatVersion||0),compatible:Number(object.customMetadata?.schemaVersion||0)===SCHEMA_VERSION&&Number(object.customMetadata?.formatVersion||0)===BACKUP_FORMAT_VERSION,downloadUrl:hasRole(admin,"Vorstand")?`/api/backup?download=${encodeURIComponent(object.key)}`:null}));
+  const snapshots=listed.objects.sort((a,b)=>b.uploaded.getTime()-a.uploaded.getTime()).map(object=>({key:object.key,size:object.size,uploaded:object.uploaded,checksum:object.customMetadata?.sha256||null,schemaVersion:Number(object.customMetadata?.schemaVersion||0),formatVersion:Number(object.customMetadata?.formatVersion||0),compatible:COMPATIBLE_SCHEMA_VERSIONS.includes(Number(object.customMetadata?.schemaVersion||0))&&Number(object.customMetadata?.formatVersion||0)===BACKUP_FORMAT_VERSION,downloadUrl:hasRole(admin,"Vorstand")?`/api/backup?download=${encodeURIComponent(object.key)}`:null}));
   const runtime=(env as unknown as {VEREINSKASSE_RUNTIME?:string}).VEREINSKASSE_RUNTIME==="raspberry"?"raspberry":"cloud";
   return Response.json({healthy:true,runtime,schemaVersion:SCHEMA_VERSION,backupFormatVersion:BACKUP_FORMAT_VERSION,database:{sales:sales?.count||0,members:members?.count||0,transactions:transactions?.count||0,profiles:profiles?.count||0},snapshots,restoreRequests:requests.results.map(row=>({...row,preview:JSON.parse(String(row.previewJson||"{}"))}))},{headers:{"cache-control":"no-store"}});
 }

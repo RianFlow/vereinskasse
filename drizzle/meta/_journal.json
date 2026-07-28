@@ -155,6 +155,13 @@
       "when": 1785178389353,
       "tag": "0021_bouncy_lifeguard",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1785277241977,
+      "tag": "0022_cool_maginty",
+      "breakpoints": true
     }
   ]
 }

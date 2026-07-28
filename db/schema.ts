@@ -18,6 +18,7 @@ export const profileSessions=sqliteTable("profile_sessions",{token:text("token")
 export const members = sqliteTable("members", {
   id: text("id").primaryKey(), name: text("name").notNull(), role: text("role").notNull(),
   code: text("code").notNull().unique(), initials: text("initials").notNull(), active: integer("active", { mode: "boolean" }).notNull().default(true),
+  whatsappNumber: text("whatsapp_number"), whatsappConsentAt: text("whatsapp_consent_at"),
 });
 
 export const memberLifecycle=sqliteTable("member_lifecycle",{

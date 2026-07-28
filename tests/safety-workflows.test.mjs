@@ -70,3 +70,12 @@ test("rechnet Gastrechnungen direkt in der normalen Kasse ab",async()=>{
   assert.ok(page.includes('action:"payment"')&&page.includes("Gastrechnung bezahlt"));
   assert.ok(control.includes('body.action==="payment"')&&control.includes("ACCOUNT_PAYMENT"));
 });
+
+test("legt Mitglieder schnell an und schützt freiwillige WhatsApp-Kontakte",async()=>{
+  const [page,members,data,schema,migration]=await Promise.all([read("app/page.tsx"),read("app/api/members/route.ts"),read("app/api/data/route.ts"),read("db/schema.ts"),read("drizzle/0022_cool_maginty.sql")]);
+  for(const copy of ["Für ein normales Mitglied reichen Vor- und Nachname","Funktion oder WhatsApp ergänzen","WhatsappSurveyDialog","Teilnehmerliste kopieren","Umfrage vorbereiten"])assert.ok(page.includes(copy),`${copy} fehlt`);
+  for(const feature of ["normalizeWhatsappNumber",'b.action==="set_contact"',"MEMBER_CONTACT_CHANGED","includeContacts"])assert.ok(members.includes(feature),`${feature} fehlt`);
+  assert.ok(!data.includes("whatsappNumber"),"Die normale Kassen-API darf keine WhatsApp-Nummern ausliefern");
+  assert.ok(schema.includes("whatsappNumber")&&schema.includes("whatsappConsentAt"));
+  assert.ok(migration.includes("whatsapp_number")&&migration.includes("whatsapp_consent_at"));
+});

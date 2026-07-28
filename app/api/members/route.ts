@@ -3,20 +3,24 @@ import { hasRole, requireRole } from "../session";
 import { requireProfile } from "../profile-session";
 import { protectAccessCode } from "../member-access";
 
-const safe=()=>env.DB.prepare("SELECT m.id,m.name,m.role,m.initials,m.active,CASE WHEN m.code LIKE 'NOLOGIN-%' THEN 0 ELSE 1 END hasAccess,l.status lifecycleStatus,l.left_at leftAt,l.privacy_review_at privacyReviewAt FROM members m LEFT JOIN member_lifecycle l ON l.member_id=m.id WHERE m.id NOT IN ('M-1042','M-1088','M-1137','M-1201','M-1214','M-1228','M-1240') ORDER BY m.name").all();
+const safe=(includeContacts=false)=>env.DB.prepare(`SELECT m.id,m.name,m.role,m.initials,m.active,${includeContacts?"m.whatsapp_number":"NULL"} whatsappNumber,${includeContacts?"CASE WHEN m.whatsapp_consent_at IS NULL THEN 0 ELSE 1 END":"0"} whatsappOptIn,CASE WHEN m.code LIKE 'NOLOGIN-%' THEN 0 ELSE 1 END hasAccess,l.status lifecycleStatus,l.left_at leftAt,l.privacy_review_at privacyReviewAt FROM members m LEFT JOIN member_lifecycle l ON l.member_id=m.id WHERE m.id NOT IN ('M-1042','M-1088','M-1137','M-1201','M-1214','M-1228','M-1240') ORDER BY m.name`).all();
 const allowedRoles=["Mitglied","Vorstand","Kassenwart","Systemadmin"];
+const normalizeWhatsappNumber=(value:string)=>{
+  const compact=value.trim().replace(/[\s()./-]/g,"").replace(/^00/,"+");
+  return /^\+[1-9]\d{7,14}$/.test(compact)?compact:null;
+};
 const canonicalRole=(requested:string[])=>{
   const roles=[...new Set(requested.map(role=>role.trim()))];
   if(!roles.length||roles.some(role=>!allowedRoles.includes(role)))return null;
   const protectedRoles=roles.filter(role=>role!=="Mitglied");
   return (protectedRoles.length?["Vorstand","Kassenwart","Systemadmin"].filter(candidate=>protectedRoles.includes(candidate)):["Mitglied"]).join("+");
 };
-export async function GET(request:Request){const profile=await requireProfile(request);if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401});const rows=await safe();return Response.json({members:rows.results})}
+export async function GET(request:Request){const [profile,admin]=await Promise.all([requireProfile(request),requireRole(request,["Vorstand"])]);if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401});const rows=await safe(Boolean(admin));return Response.json({members:rows.results})}
 export async function POST(request:Request){
   try{
     const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);
     if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:403});
-    const b=await request.json() as {action:string;id?:string;name?:string;firstName?:string;lastName?:string;role?:string;roles?:string[];code?:string;note?:string};
+    const b=await request.json() as {action:string;id?:string;name?:string;firstName?:string;lastName?:string;role?:string;roles?:string[];code?:string;note?:string;whatsappNumber?:string;whatsappOptIn?:boolean};
     const now=new Date().toISOString();
 
     if(b.action==="bootstrap"){
@@ -39,15 +43,33 @@ export async function POST(request:Request){
       const firstName=(b.firstName||"").trim().replace(/\s+/g," ").slice(0,60);
       const lastName=(b.lastName||"").trim().replace(/\s+/g," ").slice(0,60);
       const role=canonicalRole(Array.isArray(b.roles)?b.roles:[b.role?.trim()||"Mitglied"]);
+      const whatsappNumber=b.whatsappOptIn?normalizeWhatsappNumber(b.whatsappNumber||""):null;
       if(!role)return Response.json({error:"Ungültige Rolle"},{status:400});
       if(firstName.length<2||lastName.length<2)return Response.json({error:"Bitte Vorname und Nachname vollständig eingeben"},{status:400});
+      if(b.whatsappOptIn&&!whatsappNumber)return Response.json({error:"Bitte die WhatsApp-Nummer mit Ländervorwahl eingeben, zum Beispiel +49 170 1234567"},{status:400});
       const name=`${firstName} ${lastName}`,id=`M-${crypto.randomUUID().slice(0,8).toUpperCase()}`,initials=`${firstName[0]}${lastName[0]}`.toUpperCase(),code=`NOLOGIN-${crypto.randomUUID()}`;
+      const duplicate=await env.DB.prepare("SELECT id,name FROM members WHERE active=1 AND LOWER(TRIM(name))=LOWER(?) LIMIT 1").bind(name).first<{id:string;name:string}>();
+      if(duplicate)return Response.json({error:`${duplicate.name} ist bereits als aktives Mitglied angelegt.`},{status:409});
       await env.DB.batch([
-        env.DB.prepare("INSERT INTO members (id,name,role,code,initials,active) VALUES (?,?,?,?,?,1)").bind(id,name,role,code,initials),
-        env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"MEMBER_CREATED","member",id,admin.id,JSON.stringify({name,role,profileId:profile.id,adminAccess:false}),now)
+        env.DB.prepare("INSERT INTO members (id,name,role,code,initials,active,whatsapp_number,whatsapp_consent_at) VALUES (?,?,?,?,?,1,?,?)").bind(id,name,role,code,initials,whatsappNumber,b.whatsappOptIn?now:null),
+        env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"MEMBER_CREATED","member",id,admin.id,JSON.stringify({name,role,profileId:profile.id,adminAccess:false,whatsappOptIn:Boolean(b.whatsappOptIn)}),now)
       ]);
-      await env.BACKUPS.put(`members/${now.slice(0,10)}/${id}.json`,JSON.stringify({action:"create",id,name,role,initials,operator:admin,profileId:profile.id,createdAt:now}),{httpMetadata:{contentType:"application/json"}});
-      return Response.json({ok:true,member:{id,name,role,initials,active:true,hasAccess:false}},{status:201});
+      await env.BACKUPS.put(`members/${now.slice(0,10)}/${id}.json`,JSON.stringify({action:"create",id,name,role,initials,whatsappOptIn:Boolean(b.whatsappOptIn),operator:admin,profileId:profile.id,createdAt:now}),{httpMetadata:{contentType:"application/json"}});
+      return Response.json({ok:true,member:{id,name,role,initials,active:true,hasAccess:false,whatsappNumber,whatsappOptIn:Boolean(b.whatsappOptIn)}},{status:201});
+    }
+
+    if(b.action==="set_contact"){
+      if(!b.id)return Response.json({error:"Mitglied fehlt"},{status:400});
+      const member=await env.DB.prepare("SELECT id,name,whatsapp_number whatsappNumber,whatsapp_consent_at whatsappConsentAt FROM members WHERE id=? AND active=1").bind(b.id).first<{id:string;name:string;whatsappNumber:string|null;whatsappConsentAt:string|null}>();
+      if(!member)return Response.json({error:"Mitglied nicht gefunden"},{status:404});
+      const whatsappNumber=b.whatsappOptIn?normalizeWhatsappNumber(b.whatsappNumber||""):null;
+      if(b.whatsappOptIn&&!whatsappNumber)return Response.json({error:"Bitte die WhatsApp-Nummer mit Ländervorwahl eingeben, zum Beispiel +49 170 1234567"},{status:400});
+      const whatsappConsentAt=b.whatsappOptIn?(member.whatsappConsentAt||now):null;
+      await env.DB.batch([
+        env.DB.prepare("UPDATE members SET whatsapp_number=?,whatsapp_consent_at=? WHERE id=?").bind(whatsappNumber,whatsappConsentAt,member.id),
+        env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"MEMBER_CONTACT_CHANGED","member",member.id,admin.id,JSON.stringify({profileId:profile.id,whatsappOptIn:Boolean(b.whatsappOptIn),numberChanged:member.whatsappNumber!==whatsappNumber}),now)
+      ]);
+      return Response.json({ok:true,member:{id:member.id,whatsappNumber,whatsappOptIn:Boolean(b.whatsappOptIn)}});
     }
 
     if(b.action==="set_roles"){
