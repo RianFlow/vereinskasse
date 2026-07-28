@@ -27,7 +27,7 @@ constexpr uint16_t STATUS_DISPLAY_HEIGHT = 64;
 constexpr char CUSTOM_AP_SSID[] = "";
 constexpr char CUSTOM_AP_PASSWORD[] = "";
 constexpr char CUSTOM_WEB_USER[] = "admin";
-constexpr char CUSTOM_WEB_PASSWORD[] = "";
+constexpr char CUSTOM_WEB_PASSWORD[] = "svbarverdarts";
 
 // secrets.h wird absichtlich nicht in Git gespeichert. Ohne eigene secrets.h
 // baut die Firmware mit leeren Beispielwerten und bleibt im Wartungsmodus.
