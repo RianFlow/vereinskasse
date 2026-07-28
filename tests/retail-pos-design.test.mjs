@@ -20,6 +20,8 @@ test("hält Bon und Bezahlung in Hoch- und Querformat sichtbar",async()=>{
   const style=await read("app/pos-ergonomics.css");
   for(const feature of [".app.kiosk-design>header","position:sticky","height:calc(100dvh - 64px)","grid-template-rows:minmax(0,55%) minmax(0,45%)",".app.kiosk-design .cart{",".app.kiosk-design .checkout{"])
     assert.ok(style.includes(feature),`${feature} fehlt im dauerhaft sichtbaren Kassenlayout`);
+  assert.ok(style.includes("@media(max-width:800px) and (orientation:portrait)"),"Eine eigene Hochkantaufteilung fehlt");
+  assert.ok(style.includes("grid-template-rows:minmax(0,42%) minmax(0,58%)"),"Der Bon bekommt im Hochformat nicht genug Platz");
 });
 
 test("pinnt Kassenhinweise an und scrollt nur die Artikel",async()=>{
