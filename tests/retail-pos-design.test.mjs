@@ -15,3 +15,9 @@ test("nutzt einen ruhigen hellen Tablet-Kassenarbeitsplatz mit festem Bon",async
   assert.ok(page.includes("checkout-customer-compact")&&page.includes("Wird zur Monatsabrechnung hinzugefügt."),"Die Kundenzuordnung fehlt im rechten Kassenbereich");
   assert.ok(styles.includes(".catalog>.selected-customer{display:none}")&&styles.includes(".checkout-customer-head"),"Die große Kundenerklärung belegt weiterhin den Artikelbereich");
 });
+
+test("hält Bon und Bezahlung in Hoch- und Querformat sichtbar",async()=>{
+  const style=await read("app/pos-ergonomics.css");
+  for(const feature of [".app.kiosk-design>header","position:sticky","height:calc(100dvh - 64px)","grid-template-rows:minmax(0,55%) minmax(0,45%)",".app.kiosk-design .cart{",".app.kiosk-design .checkout{"])
+    assert.ok(style.includes(feature),`${feature} fehlt im dauerhaft sichtbaren Kassenlayout`);
+});

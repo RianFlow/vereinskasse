@@ -146,7 +146,9 @@ export default function Home() {
   useEffect(()=>{
     if(!activeProfile)return;
     let heartbeat:ReturnType<typeof setInterval>|undefined;
+    let lastDisplaySync=0;
     const syncDisplay=()=>{
+      lastDisplaySync=Date.now();
       fetch("/api/rfid/display",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({
         state:displayActive?"cart":"idle",
         customerName:displayCustomerName,
@@ -155,8 +157,12 @@ export default function Home() {
         totalCents:Math.round(total*100)
       })}).catch(()=>{});
     };
-    const timer=setTimeout(()=>{syncDisplay();if(displayActive)heartbeat=setInterval(syncDisplay,30_000)},300);
-    return()=>{clearTimeout(timer);if(heartbeat)clearInterval(heartbeat)};
+    const resumeDisplay=()=>{if(document.visibilityState==="visible"&&Date.now()-lastDisplaySync>3000)syncDisplay()};
+    const timer=setTimeout(()=>{syncDisplay();if(displayActive)heartbeat=setInterval(syncDisplay,20_000)},300);
+    document.addEventListener("visibilitychange",resumeDisplay);
+    window.addEventListener("focus",resumeDisplay);
+    window.addEventListener("pageshow",resumeDisplay);
+    return()=>{clearTimeout(timer);if(heartbeat)clearInterval(heartbeat);document.removeEventListener("visibilitychange",resumeDisplay);window.removeEventListener("focus",resumeDisplay);window.removeEventListener("pageshow",resumeDisplay)};
   },[activeProfile,itemCount,total,displayActive,displayCustomerName,displayItems]);
   const openEntries=control.accountEntries||[],guestOpenAccounts=control.accounts.filter(account=>accountUrgency(account,openEntries)==="guest"),guestOpenTotal=guestOpenAccounts.reduce((sum,account)=>sum+Number(account.balance),0);
   const currentLines=()=>{const sold=products.filter(p=>cart[p.id]).map(p=>({productId:p.id,productName:p.name,quantity:cart[p.id],unitPrice:unitPrice(p),total:Math.round(unitPrice(p)*cart[p.id]*100)/100,countsForConsumption:!p.isOffer||!(p.includedItems||[]).length}));const included=products.filter(parent=>cart[parent.id]).flatMap(parent=>(parent.includedItems||[]).flatMap(item=>{const component=products.find(product=>product.id===item.productId);return component?[{productId:component.id,productName:component.name,quantity:item.quantity*cart[parent.id],unitPrice:0,total:0,countsForConsumption:true}]:[]}));return [...sold,...included]};

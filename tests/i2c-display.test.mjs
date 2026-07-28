@@ -18,6 +18,7 @@ test("bereitet das I2C-Kundendisplay mit Bon und Vereinslogo vor",async()=>{
   ]);
   assert.ok(page.includes('fetch("/api/rfid/display"'));
   assert.ok(page.includes('state:displayActive?"cart":"idle"')&&page.includes("if(displayActive)heartbeat"),"Ein ausgewählter Kunde bleibt nicht auf dem Display");
+  for(const wakeEvent of ["visibilitychange","pageshow","window.addEventListener(\"focus\""])assert.ok(page.includes(wakeEvent),`Display wird nach Inaktivität nicht durch ${wakeEvent} geweckt`);
   assert.ok(page.includes("Vorgang abbrechen")&&page.includes("cancelCheckout"),"Der Displayinhalt kann nicht eindeutig abgebrochen werden");
   for(const feature of ["itemCount","totalCents","customerName","itemsText"])assert.ok(display.includes(feature));
   assert.ok(commands.includes('action:"display"')&&commands.includes("x-display-revision")&&commands.includes("Date.now()-120_000"));
