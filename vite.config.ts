@@ -1,5 +1,6 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
 
@@ -34,6 +35,21 @@ const localBindingConfig = {
 };
 
 export default defineConfig(async () => {
+  const raspberryRuntime = process.env.VEREINSKASSE_RUNTIME === "raspberry";
+
+  if (raspberryRuntime) {
+    return {
+      resolve: {
+        alias: {
+          "cloudflare:workers": fileURLToPath(
+            new URL("./raspberry/cloudflare-workers.ts", import.meta.url),
+          ),
+        },
+      },
+      plugins: [vinext()],
+    };
+  }
+
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= "false";

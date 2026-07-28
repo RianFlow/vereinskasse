@@ -1,0 +1,25 @@
+[Unit]
+Description=SV Barver Vereinskasse
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vereinskasse
+Group=vereinskasse
+WorkingDirectory=/opt/vereinskasse/current
+EnvironmentFile=/etc/vereinskasse/environment
+ExecStart=/usr/local/bin/node raspberry/run-with-runtime.mjs start
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=10
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vereinskasse
+
+[Install]
+WantedBy=multi-user.target

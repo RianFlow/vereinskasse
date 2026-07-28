@@ -1,0 +1,6 @@
+[Unit]
+Description=Vereinskasse täglich konsistent sichern
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vereinskasse-backup

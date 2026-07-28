@@ -66,7 +66,8 @@ export async function GET(request:Request){
     env.DB.prepare("SELECT id,backup_key backupKey,checksum,status,requested_by requestedBy,requested_by_name requestedByName,approved_by approvedBy,approved_by_name approvedByName,preview_json previewJson,created_at createdAt,expires_at expiresAt,error FROM restore_requests WHERE profile_id=? ORDER BY created_at DESC LIMIT 5").bind(profile.id).all<Record<string,unknown>>()
   ]);
   const snapshots=listed.objects.sort((a,b)=>b.uploaded.getTime()-a.uploaded.getTime()).map(object=>({key:object.key,size:object.size,uploaded:object.uploaded,checksum:object.customMetadata?.sha256||null,schemaVersion:Number(object.customMetadata?.schemaVersion||0),formatVersion:Number(object.customMetadata?.formatVersion||0),compatible:Number(object.customMetadata?.schemaVersion||0)===SCHEMA_VERSION&&Number(object.customMetadata?.formatVersion||0)===BACKUP_FORMAT_VERSION,downloadUrl:`/api/backup?download=${encodeURIComponent(object.key)}`}));
-  return Response.json({healthy:true,schemaVersion:SCHEMA_VERSION,backupFormatVersion:BACKUP_FORMAT_VERSION,database:{sales:sales?.count||0,members:members?.count||0,transactions:transactions?.count||0,profiles:profiles?.count||0},snapshots,restoreRequests:requests.results.map(row=>({...row,preview:JSON.parse(String(row.previewJson||"{}"))}))},{headers:{"cache-control":"no-store"}});
+  const runtime=(env as unknown as {VEREINSKASSE_RUNTIME?:string}).VEREINSKASSE_RUNTIME==="raspberry"?"raspberry":"cloud";
+  return Response.json({healthy:true,runtime,schemaVersion:SCHEMA_VERSION,backupFormatVersion:BACKUP_FORMAT_VERSION,database:{sales:sales?.count||0,members:members?.count||0,transactions:transactions?.count||0,profiles:profiles?.count||0},snapshots,restoreRequests:requests.results.map(row=>({...row,preview:JSON.parse(String(row.previewJson||"{}"))}))},{headers:{"cache-control":"no-store"}});
 }
 
 export async function POST(request:Request){
