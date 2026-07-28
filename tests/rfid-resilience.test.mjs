@@ -30,7 +30,7 @@ test("RFID-WLAN kann geschützt eingerichtet und dauerhaft gespeichert werden",a
     read("hardware/NodeMCU-V3-RC522-Tablet/include/config.h"),
     read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h")
   ]);
-  for(const fragment of ["#include <EEPROM.h>","struct WifiSettings","loadWifiSettings()","saveWifiSettings","clubWifiSsid","/api/wifi","/api/wifi/scan","validWifiCsrf","SPEICHERN","LOESCHEN"]){
+  for(const fragment of ["#include <EEPROM.h>","struct WifiSettings","loadWifiSettings()","saveWifiSettings","clubWifiSsid","/api/wifi","/api/wifi/scan","validWifiCsrf","scheduleStationReconnect","processStationReconnect","SPEICHERN","LOESCHEN"]){
     assert.ok(firmware.includes(fragment),`WLAN-Einrichtung fehlt: ${fragment}`);
   }
   for(const fragment of ["WIFI_SETTINGS_EEPROM_SIZE","WIFI_SETTINGS_EEPROM_ADDRESS"])assert.ok(config.includes(fragment),`EEPROM-Einstellung fehlt: ${fragment}`);

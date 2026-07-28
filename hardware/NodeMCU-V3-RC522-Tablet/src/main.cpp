@@ -26,6 +26,8 @@ BearSSL::X509List vereinskasseTrustAnchor(VEREINSKASSE_ROOT_CA);
 String apSsid, apPassword, webUser, webPassword;
 String clubWifiSsid, clubWifiPassword, wifiCsrfToken;
 bool wifiSettingsStored = false;
+bool stationReconnectPending = false;
+unsigned long stationReconnectAt = 0;
 String lastPushState = "Noch keine Karte übertragen.";
 String lastPushedUid;
 String pendingUid, pendingType;
@@ -497,6 +499,17 @@ void reconnectStationWifi() {
   }
 }
 
+void scheduleStationReconnect() {
+  stationReconnectPending = true;
+  stationReconnectAt = millis() + 1200;
+}
+
+void processStationReconnect() {
+  if (!stationReconnectPending || (long)(millis() - stationReconnectAt) < 0) return;
+  stationReconnectPending = false;
+  reconnectStationWifi();
+}
+
 void handleWifiSave() {
   if (!authorized()) return;
   if (!validWifiCsrf()) {
@@ -522,7 +535,8 @@ void handleWifiSave() {
     json(500, "{\"error\":\"WLAN-Einstellung konnte nicht dauerhaft gespeichert werden.\"}");
     return;
   }
-  reconnectStationWifi();
+  lastPushState = "WLAN-Einstellung gespeichert. Verbindung startet gleich.";
+  scheduleStationReconnect();
   json(200, "{\"saved\":true,\"ssid\":\"" + jsonEscape(clubWifiSsid) + "\"}");
 }
 
@@ -540,7 +554,8 @@ void handleWifiDelete() {
     json(500, "{\"error\":\"WLAN-Einstellung konnte nicht entfernt werden.\"}");
     return;
   }
-  reconnectStationWifi();
+  lastPushState = "Vereins-WLAN entfernt. Wartungszugang bleibt erreichbar.";
+  scheduleStationReconnect();
   json(200, "{\"deleted\":true}");
 }
 
@@ -1061,6 +1076,7 @@ void setup() {
 void loop() {
   ESP.wdtFeed();
   server.handleClient();
+  processStationReconnect();
   maintainStationWifi();
   // Kartenscans haben Vorrang vor der langsameren HTTPS-Abfrage nach
   // Schreibaufträgen, damit ein Mitgliederwechsel sofort erkannt wird.
