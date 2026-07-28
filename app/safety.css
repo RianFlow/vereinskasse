@@ -20,6 +20,7 @@
 .system-live-strip .bad strong{color:#b13c34}
 
 .restore-panel{margin-top:16px;padding:15px;border:1px solid var(--line);border-radius:11px}
+.restore-locked-note{display:flex;gap:10px;align-items:flex-start;margin-top:16px;padding:13px 15px;border:1px solid #e2c378;border-radius:11px;background:#fff8e4}.restore-locked-note strong{white-space:nowrap}.restore-locked-note span{color:#71674b;line-height:1.4}
 .restore-panel header{display:flex;justify-content:space-between;gap:14px;align-items:start}
 .restore-panel header small{display:block;margin-top:4px;color:#74837c}
 .restore-snapshots{display:grid;gap:7px;margin-top:12px}

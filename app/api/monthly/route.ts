@@ -27,6 +27,7 @@ type TransactionRow={
   saleItemCount:number|null;
   rewardAmount:number|null;
   rewardLabel:string|null;
+  operatorName:string|null;
 };
 type SaleItemRow={
   lineId:string;
@@ -60,7 +61,7 @@ const cents=(value:number)=>Math.round(Number(value||0)*100);
 
 export async function GET(request:Request){
   const [user,profile]=await Promise.all([
-    requireRole(request,["Kassendienst","Vorstand"]),
+    requireRole(request,["Kassendienst","Kassenwart","Vorstand"]),
     requireProfile(request)
   ]);
   if(!user||!profile)return Response.json({error:"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});
@@ -81,7 +82,7 @@ export async function GET(request:Request){
     env.DB.prepare("SELECT member_id memberId,MAX(member_name) memberName,ROUND(SUM(CASE WHEN amount>0 THEN amount ELSE 0 END),2) charges,ROUND(ABS(SUM(CASE WHEN type='Zahlung' THEN amount ELSE 0 END)),2) payments,ROUND(SUM(CASE WHEN amount<0 AND type<>'Zahlung' THEN amount ELSE 0 END),2) adjustments,ROUND(SUM(amount),2) net FROM account_transactions WHERE profile_id=? AND created_at>=? AND created_at<? GROUP BY member_id ORDER BY memberName").bind(profile.id,start,end).all<Record<string,unknown>>(),
     env.DB.prepare("SELECT member_id memberId,MAX(member_name) memberName,ROUND(SUM(amount),2) balance FROM account_transactions WHERE profile_id=? AND created_at<? GROUP BY member_id").bind(profile.id,start).all<Record<string,unknown>>(),
     env.DB.prepare("SELECT member_id memberId,MAX(member_name) memberName,ROUND(SUM(amount),2) balance FROM account_transactions WHERE profile_id=? GROUP BY member_id").bind(profile.id).all<Record<string,unknown>>(),
-    env.DB.prepare("SELECT at.id transactionId,at.member_id memberId,at.member_name memberName,at.sale_id saleId,at.type,at.amount,at.note,at.created_at createdAt,s.time saleTime,s.total saleTotal,s.method saleMethod,s.items saleItemCount,rr.reward_amount rewardAmount,rr.reward_label rewardLabel FROM account_transactions at LEFT JOIN sales s ON s.id=at.sale_id AND s.profile_id=at.profile_id LEFT JOIN random_reward_slots rr ON rr.sale_id=s.id AND rr.profile_id=at.profile_id WHERE at.profile_id=? AND at.created_at>=? AND at.created_at<? ORDER BY at.created_at,at.id").bind(profile.id,start,end).all<TransactionRow>(),
+    env.DB.prepare("SELECT at.id transactionId,at.member_id memberId,at.member_name memberName,at.sale_id saleId,at.type,at.amount,at.note,at.created_at createdAt,COALESCE(op.name,at.operator_id) operatorName,s.time saleTime,s.total saleTotal,s.method saleMethod,s.items saleItemCount,rr.reward_amount rewardAmount,rr.reward_label rewardLabel FROM account_transactions at LEFT JOIN sales s ON s.id=at.sale_id AND s.profile_id=at.profile_id LEFT JOIN random_reward_slots rr ON rr.sale_id=s.id AND rr.profile_id=at.profile_id LEFT JOIN members op ON op.id=at.operator_id WHERE at.profile_id=? AND at.created_at>=? AND at.created_at<? ORDER BY at.created_at,at.id").bind(profile.id,start,end).all<TransactionRow>(),
     env.DB.prepare("SELECT DISTINCT si.id lineId,si.sale_id saleId,si.product_name productName,si.quantity,si.unit_price unitPrice,si.total,si.counts_for_consumption countsForConsumption FROM account_transactions at JOIN sale_items si ON si.sale_id=at.sale_id JOIN sales s ON s.id=si.sale_id AND s.profile_id=at.profile_id WHERE at.profile_id=? AND at.created_at>=? AND at.created_at<? ORDER BY si.sale_id,si.id").bind(profile.id,start,end).all<SaleItemRow>(),
     env.DB.prepare("SELECT DISTINCT sa.id allocationId,sa.sale_id saleId,sa.member_id memberId,sa.member_name memberName,sa.amount,sa.kind FROM account_transactions at JOIN sale_allocations sa ON sa.sale_id=at.sale_id AND sa.profile_id=at.profile_id WHERE at.profile_id=? AND at.created_at>=? AND at.created_at<? ORDER BY sa.sale_id,sa.id").bind(profile.id,start,end).all<AllocationRow>(),
     env.DB.prepare("SELECT si.product_name productName,SUM(si.quantity) quantity,ROUND(SUM(si.total),2) total FROM sale_items si JOIN sales s ON s.id=si.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.profile_id=? AND s.time>=? AND s.time<? AND r.id IS NULL AND si.counts_for_consumption=1 GROUP BY si.product_name ORDER BY quantity DESC").bind(profile.id,start,end).all<Record<string,unknown>>()
@@ -222,8 +223,8 @@ export async function GET(request:Request){
       :"";
     return `<tbody class="booking${entry.shared?" shared":""}"><tr class="booking-head"><td><strong>${entry.shared?"Geteilte Bestellung":"Bestellung"}</strong><small>${bookingDate} · ${esc(paymentLabel(entry.saleMethod))} · Beleg ${esc(entry.saleId)}</small></td><td>${entry.shared?`Gesamt ${eur(Number(entry.saleTotal||0))}`:eur(entry.amount)}</td></tr>${itemRows}${rewardRow}${adjustmentRow}${shareRow}</tbody>`;
   }).join("");
-  const correctionRows=corrections.map(entry=>`<tr class="correction"><td><strong>${esc(entry.type||"Korrektur")}</strong><small>${dateTime(entry.createdAt)}${entry.itemsLabel?` · ${esc(entry.itemsLabel)}`:""}${entry.note?` · ${esc(entry.note)}`:""}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
-  const paymentRows=payments.map(entry=>`<tr class="payment"><td><strong>Zahlung</strong><small>${dateTime(entry.createdAt)} · ${esc(entry.note||"Kontenausgleich")}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
+  const correctionRows=corrections.map(entry=>`<tr class="correction"><td><strong>${esc(entry.type||"Korrektur")}</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · ${esc(entry.operatorName)}`:""}${entry.itemsLabel?` · ${esc(entry.itemsLabel)}`:""}${entry.note?` · ${esc(entry.note)}`:""}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
+  const paymentRows=payments.map(entry=>`<tr class="payment"><td><strong>Zahlung</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · erfasst von ${esc(entry.operatorName)}`:""} · ${esc(entry.note||"Kontenausgleich")}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
   const isGuest=person.memberId.startsWith("GAST-");
   const paymentNotice=isGuest?"Gastrechnung bitte zeitnah begleichen.":`Zahlbar bis spätestens ${dueLabel}.`;
   const reconciliation=cents(person.openingBalance)+cents(person.charges)-cents(person.payments)+cents(person.adjustments)===cents(person.closingBalance);
@@ -232,8 +233,8 @@ export async function GET(request:Request){
 }
 
 export async function POST(request:Request){
-  const [user,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);
-  if(!user||!profile)return Response.json({error:"Nur Vorstand / Admin darf einen Monat festschreiben"},{status:403});
+  const [user,profile]=await Promise.all([requireRole(request,["Vorstand","Kassenwart"]),requireProfile(request)]);
+  if(!user||!profile)return Response.json({error:"Nur Vorstand oder Kassenwart dürfen einen Monat festschreiben"},{status:403});
   try{
     const body=await request.json() as {month?:string};
     const month=body.month||"";

@@ -4,6 +4,26 @@ import { readFile } from "node:fs/promises";
 
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),"utf8");
 
+test("trennt Systemadministration und Kassenwart serverseitig und erlaubt kombinierte Funktionen",async()=>{
+  const [page,session,members,control,monthly,backup,data]=await Promise.all([read("app/page.tsx"),read("app/api/session.ts"),read("app/api/members/route.ts"),read("app/api/control/route.ts"),read("app/api/monthly/route.ts"),read("app/api/backup/route.ts"),read("app/api/data/route.ts")]);
+  for(const feature of ["Systemadministration","Kassenwart-Zugang","systemOnly","allowedSections","memberRoles","member-role-choices","Hauptadministrator · alle Rechte","MemberRolesDialog"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(session.includes('role.split("+")')&&session.includes("roles.some"),"Kombinierte Funktionen werden nicht serverseitig ausgewertet");
+  assert.ok(members.includes('"Vorstand","Kassenwart","Systemadmin"')&&members.includes("canonicalRole")&&members.includes('b.action==="set_roles"')&&members.includes("MEMBER_ROLES_CHANGED"),"Mehrere Funktionen können nicht gespeichert oder geändert werden");
+  assert.ok(control.includes('["Mitglied","Kassendienst","Kassenwart","Vorstand"]')&&control.includes("SALE_REVERSED"),"Kassenwart oder Änderungsprotokoll fehlt");
+  assert.ok(page.includes("ReversalDialog")&&page.includes("storniert von")&&!page.includes('prompt("Stornogrund")'),"Stornos sind nicht als nachvollziehbares Popup umgesetzt");
+  assert.ok(monthly.includes('requireRole(request,["Vorstand","Kassenwart"])'),"Kassenwart darf den Monatsabschluss nicht verwalten");
+  assert.ok(!backup.match(/export async function PUT[\s\S]{0,250}Systemadmin/),"Systemadministration darf eine Rücksicherung auslösen");
+  assert.ok(data.includes('requireRole(request,["Vorstand","Systemadmin"])'),"Technische Artikelverwaltung fehlt");
+});
+
+test("speichert geschützte Zugangscodes nicht im Klartext",async()=>{
+  const [access,members,identify]=await Promise.all([read("app/api/member-access.ts"),read("app/api/members/route.ts"),read("app/api/identify/route.ts")]);
+  for(const feature of ["PBKDF2","120_000","SHA-256","crypto.getRandomValues","verifyAccessCode"])assert.ok(access.includes(feature),`${feature} fehlt beim Passwortschutz`);
+  assert.ok(members.includes("protectAccessCode(code)")&&!members.includes("bind(id,name,code,initials)"),"Ein Zugangscode wird noch direkt gespeichert");
+  assert.ok(identify.includes("verifyAccessCode")&&identify.includes("if(legacy)")&&identify.includes("safeMember"),"Alte Codes werden nicht sicher geprüft und aktualisiert");
+  for(const feature of ["MEMBER_ACCESS_FAILED","MEMBER_ACCESS_LOGIN","15*60*1000",">=5","shortHash(clientAddress)"])assert.ok(identify.includes(feature),`${feature} fehlt beim Schutz vor Login-Versuchen`);
+});
+
 test("stellt Sicherungen nur nach Prüfsumme und Vier-Augen-Freigabe wieder her",async()=>{
   const [route,schema,migration,page]=await Promise.all([read("app/api/backup/route.ts"),read("db/schema.ts"),read("drizzle/0021_bouncy_lifeguard.sql"),read("app/page.tsx")]);
   for(const feature of ["validatedSnapshot","Prüfsumme stimmt nicht","RESTORE_REQUESTED","RESTORE_APPROVED","RESTORE_COMPLETED","automatic-before-restore","requested_by)===admin.id"])assert.ok(route.includes(feature),`${feature} fehlt`);

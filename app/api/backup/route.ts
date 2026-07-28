@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { requireRole, type SessionUser } from "../session";
+import { hasRole, requireRole, type SessionUser } from "../session";
 import { requireProfile, type ActiveProfile } from "../profile-session";
 
 const SCHEMA_VERSION=22;
@@ -50,9 +50,10 @@ async function restoreSnapshot(snapshot:Snapshot){
 }
 
 export async function GET(request:Request){
-  const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);if(!admin||!profile)return Response.json({error:"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});
+  const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);if(!admin||!profile)return Response.json({error:"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});
   const url=new URL(request.url),download=url.searchParams.get("download");
   if(download){
+    if(!hasRole(admin,"Vorstand"))return Response.json({error:"Sicherungsdateien mit Buchungsdaten dürfen nur vom Vorstand heruntergeladen werden"},{status:403});
     if(!validKey(download))return Response.json({error:"Ungültige Sicherung"},{status:400});
     const object=await env.BACKUPS.get(download);if(!object)return Response.json({error:"Sicherung nicht gefunden"},{status:404});
     return new Response(object.body,{headers:{"content-type":"application/json; charset=utf-8","content-disposition":`attachment; filename="vereinskasse-${download.split("/").at(-1)}"`,"cache-control":"no-store","x-backup-sha256":object.customMetadata?.sha256||""}});
@@ -65,13 +66,13 @@ export async function GET(request:Request){
     env.BACKUPS.list({prefix:"snapshots/",limit:10,include:["customMetadata"]}),
     env.DB.prepare("SELECT id,backup_key backupKey,checksum,status,requested_by requestedBy,requested_by_name requestedByName,approved_by approvedBy,approved_by_name approvedByName,preview_json previewJson,created_at createdAt,expires_at expiresAt,error FROM restore_requests WHERE profile_id=? ORDER BY created_at DESC LIMIT 5").bind(profile.id).all<Record<string,unknown>>()
   ]);
-  const snapshots=listed.objects.sort((a,b)=>b.uploaded.getTime()-a.uploaded.getTime()).map(object=>({key:object.key,size:object.size,uploaded:object.uploaded,checksum:object.customMetadata?.sha256||null,schemaVersion:Number(object.customMetadata?.schemaVersion||0),formatVersion:Number(object.customMetadata?.formatVersion||0),compatible:Number(object.customMetadata?.schemaVersion||0)===SCHEMA_VERSION&&Number(object.customMetadata?.formatVersion||0)===BACKUP_FORMAT_VERSION,downloadUrl:`/api/backup?download=${encodeURIComponent(object.key)}`}));
+  const snapshots=listed.objects.sort((a,b)=>b.uploaded.getTime()-a.uploaded.getTime()).map(object=>({key:object.key,size:object.size,uploaded:object.uploaded,checksum:object.customMetadata?.sha256||null,schemaVersion:Number(object.customMetadata?.schemaVersion||0),formatVersion:Number(object.customMetadata?.formatVersion||0),compatible:Number(object.customMetadata?.schemaVersion||0)===SCHEMA_VERSION&&Number(object.customMetadata?.formatVersion||0)===BACKUP_FORMAT_VERSION,downloadUrl:hasRole(admin,"Vorstand")?`/api/backup?download=${encodeURIComponent(object.key)}`:null}));
   const runtime=(env as unknown as {VEREINSKASSE_RUNTIME?:string}).VEREINSKASSE_RUNTIME==="raspberry"?"raspberry":"cloud";
   return Response.json({healthy:true,runtime,schemaVersion:SCHEMA_VERSION,backupFormatVersion:BACKUP_FORMAT_VERSION,database:{sales:sales?.count||0,members:members?.count||0,transactions:transactions?.count||0,profiles:profiles?.count||0},snapshots,restoreRequests:requests.results.map(row=>({...row,preview:JSON.parse(String(row.previewJson||"{}"))}))},{headers:{"cache-control":"no-store"}});
 }
 
 export async function POST(request:Request){
-  const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);if(!admin||!profile)return Response.json({error:"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});
+  const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);if(!admin||!profile)return Response.json({error:"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});
   try{return Response.json({ok:true,...await createSnapshot(admin,profile)})}
   catch(error){return Response.json({error:error instanceof Error?error.message:"Sicherung fehlgeschlagen"},{status:500})}
 }

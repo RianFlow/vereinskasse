@@ -45,7 +45,7 @@ export async function GET(request:Request){
       return Response.json({command:{id:command.id,action:command.block===-1?"restart":"write",uid:command.uid,block:command.block,hex:command.payloadHex,expiresAt:command.expiresAt}},{headers});
     }
 
-    const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);
+    const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);
     if(!admin||!profile)return Response.json({error:"Keine Berechtigung"},{status:403,headers});
     const id=new URL(request.url).searchParams.get("id");
     if(!id||id.length>100)return Response.json({error:"Schreibauftrag fehlt"},{status:400,headers});
@@ -83,8 +83,8 @@ export async function POST(request:Request){
 
 export async function PUT(request:Request){
   try{
-    const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);
-    if(!admin||!profile)return Response.json({error:"Nur der Vorstand darf den RFID-Leser neu starten"},{status:403,headers});
+    const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);
+    if(!admin||!profile)return Response.json({error:"Nur Vorstand oder Systemadministration dürfen den RFID-Leser neu starten"},{status:403,headers});
     const body=await request.json() as {deviceId?:unknown},deviceId=String(body.deviceId||"");
     if(!deviceId||deviceId.length>100)return Response.json({error:"RFID-Leser fehlt"},{status:400,headers});
     const device=await env.DB.prepare("SELECT id,name FROM rfid_devices WHERE id=? AND profile_id=? AND active=1").bind(deviceId,profile.id).first<{id:string;name:string}>();

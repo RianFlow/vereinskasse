@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { activeProfile,compatibleBootstrapPinHash,hashProfilePin,legacyBootstrapPinHash,profileCookie,randomSalt } from "../profile-session";
-import { sessionUser } from "../session";
+import { hasRole, sessionUser } from "../session";
 
 export async function GET(request:Request){const profile=await activeProfile(request);return profile?Response.json({profile}):Response.json({profile:null},{status:401})}
 
@@ -17,7 +17,7 @@ export async function POST(request:Request){
 
 export async function PATCH(request:Request){
   try{
-    const [profile,user]=await Promise.all([activeProfile(request),sessionUser(request)]);if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401});if(!profile.mustChangePin&&user?.role!=="Vorstand")return Response.json({error:"Nur der Hauptadministrator darf die Profil-PIN ändern"},{status:403});
+    const [profile,user]=await Promise.all([activeProfile(request),sessionUser(request)]);if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401});if(!profile.mustChangePin&&(!user||!hasRole(user,"Vorstand")&&!hasRole(user,"Systemadmin")))return Response.json({error:"Nur Vorstand oder Systemadministration dürfen die Profil-PIN ändern"},{status:403});
     const {newPin}=await request.json() as {newPin?:string};if(!/^[0-9]{6}$/.test(newPin||""))return Response.json({error:"Die neue PIN muss genau sechs Ziffern haben"},{status:400});const salt=randomSalt(),hash=await hashProfilePin(newPin!,salt),now=new Date().toISOString();await env.DB.prepare("UPDATE profiles SET pin_salt=?,pin_hash=?,must_change_pin=0,failed_attempts=0,locked_until=NULL,updated_at=? WHERE id=?").bind(salt,hash,now,profile.id).run();return Response.json({ok:true,profile:{...profile,mustChangePin:false}});
   }catch(error){return Response.json({error:error instanceof Error?error.message:"PIN konnte nicht geändert werden"},{status:500})}
 }

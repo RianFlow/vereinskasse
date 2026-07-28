@@ -30,7 +30,7 @@ export async function GET(request:Request){
 
 export async function POST(request:Request){
   try{
-    const [operator,profile]=await Promise.all([requireRole(request,["Vorstand","Kassendienst"]),requireProfile(request)]);if(!operator||!profile)return Response.json({error:"Keine Berechtigung"},{status:403});
+    const [operator,profile]=await Promise.all([requireRole(request,["Vorstand","Kassenwart","Kassendienst"]),requireProfile(request)]);if(!operator||!profile)return Response.json({error:"Keine Berechtigung"},{status:403});
     const body=await request.json() as {name?:string;notes?:string};const name=(body.name||"").trim().slice(0,80);if(name.length<3)return Response.json({error:"Bitte einen Veranstaltungsnamen eingeben"},{status:400});
     if(await env.DB.prepare("SELECT id FROM events WHERE profile_id=? AND status='active' LIMIT 1").bind(profile.id).first())return Response.json({error:"Bitte zuerst die laufende Veranstaltung beenden"},{status:409});
     const id=`EVENT-${crypto.randomUUID()}`,now=new Date().toISOString(),notes=(body.notes||"").trim().slice(0,300)||null;
@@ -42,7 +42,7 @@ export async function POST(request:Request){
 
 export async function PATCH(request:Request){
   try{
-    const [operator,profile]=await Promise.all([requireRole(request,["Vorstand","Kassendienst"]),requireProfile(request)]);if(!operator||!profile)return Response.json({error:"Keine Berechtigung"},{status:403});
+    const [operator,profile]=await Promise.all([requireRole(request,["Vorstand","Kassenwart","Kassendienst"]),requireProfile(request)]);if(!operator||!profile)return Response.json({error:"Keine Berechtigung"},{status:403});
     const body=await request.json() as {id?:string;action?:"close"|"reopen"};if(!body.id||!body.action)return Response.json({error:"Ungültige Aktion"},{status:400});
     const event=await env.DB.prepare("SELECT id,name,status FROM events WHERE id=? AND profile_id=?").bind(body.id,profile.id).first<{id:string;name:string;status:string}>();if(!event)return Response.json({error:"Veranstaltung nicht gefunden"},{status:404});
     if(body.action==="reopen"&&await env.DB.prepare("SELECT id FROM events WHERE profile_id=? AND status='active' AND id<>? LIMIT 1").bind(profile.id,body.id).first())return Response.json({error:"Es läuft bereits eine andere Veranstaltung"},{status:409});

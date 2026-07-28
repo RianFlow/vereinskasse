@@ -105,15 +105,15 @@ test("zeigt Bestellung, Summe und häufige Bezahlarten wie eine direkte Kasse",a
   assert.ok(page.includes("Betrag aufteilen")&&page.includes('operationMode==="club"'),"Betrag aufteilen fehlt beim Vereinsabend");
 });
 
-test("legt Mitglieder schlank an und schützt nur Vorstand oder Admin",async()=>{
+test("legt Mitglieder schlank mit kombinierbaren geschützten Funktionen an",async()=>{
   const [page,route,data,style]=await Promise.all([read("app/page.tsx"),read("app/api/members/route.ts"),read("app/api/data/route.ts"),read("app/members.css")]);
-  for(const feature of ["MemberCreateDialog","Vorname","Nachname","Vorstand / Admin","Kein Passwort nötig","MemberAccessDialog","Sicheren Code vorschlagen","Später einrichten","Kassendienst darf jeder machen"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  for(const feature of ["MemberCreateDialog","Vorname","Nachname","Kassenwart","Systemadministration","Kein Passwort nötig","MemberAccessDialog","Sicheren Code vorschlagen","Später einrichten","Kassendienst darf jeder machen"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(!page.includes('prompt("Vor- und Nachname")'),"Mitglieder werden noch über unübersichtliche Eingabefenster angelegt");
   for(const feature of ["firstName","lastName","NOLOGIN-","set_access","MEMBER_ACCESS_SET","hasAccess"])assert.ok(route.includes(feature),`${feature} fehlt in der Mitgliederverwaltung`);
   assert.ok(data.includes('!m.code.startsWith("NOLOGIN-")'),"Zugangsstatus fehlt beim Laden");
   assert.ok(data.includes('body.method==="Vertrauensliste"&&!trusted'),"Vertrauensbuchungen werden serverseitig nicht geprüft");
   assert.ok(!data.includes('["Kassendienst","Vorstand"].includes(session.role)'),"Der Server beschränkt die normale Kasse noch auf alte Rollen");
-  for(const feature of [".member-name-fields",".member-row-actions",".cashier-for-everyone"])assert.ok(style.includes(feature),`${feature} fehlt im Mitgliederlayout`);
+  for(const feature of [".member-name-fields",".member-role-choices",".member-row-actions",".cashier-for-everyone"])assert.ok(style.includes(feature),`${feature} fehlt im Mitgliederlayout`);
 });
 
 test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",async()=>{
@@ -185,7 +185,7 @@ test("entfernt öffentliche Demo-Zugänge und richtet einmalig einen echten Admi
   const [page,data,identify,membersRoute]=await Promise.all([read("app/page.tsx"),read("app/api/data/route.ts"),read("app/api/identify/route.ts"),read("app/api/members/route.ts")]);
   assert.ok(!page.includes("Passende Demo-Kennung verwenden"));
   assert.ok(!data.includes("const seedMembers"));
-  assert.ok(identify.includes("id NOT IN ('M-1042'"));
+  assert.ok(identify.includes('retiredDemoIds=["M-1042"')&&identify.includes("id NOT IN (${retiredDemoIds.map"));
   assert.ok(membersRoute.includes('b.action==="bootstrap"')&&membersRoute.includes("PRIMARY_ADMIN_CREATED"));
 });
 

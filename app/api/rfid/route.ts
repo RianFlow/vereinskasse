@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { requireProfile } from "../profile-session";
-import { issueSession, requireRole } from "../session";
+import { hasRole, issueSession, requireRole } from "../session";
 
 type RfidDevice={id:string;profileId:string;name:string};
 type RfidCardOwner={memberName:string};
@@ -64,7 +64,7 @@ export async function GET(request:Request){
     if(!member)return Response.json({state:"unknown",deviceCount:Number(deviceCount?.count||0),scan},{headers:jsonHeaders});
     if(purpose==="admin"){
       if(expectedMemberId&&member.id!==expectedMemberId)return Response.json({state:"mismatch",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:jsonHeaders});
-      if(member.role!=="Vorstand")return Response.json({state:"forbidden",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:jsonHeaders});
+      if(!["Vorstand","Kassenwart","Systemadmin"].some(role=>hasRole(member,role)))return Response.json({state:"forbidden",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:jsonHeaders});
       const session=await issueSession(member);
       await env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_ADMIN_LOGIN","rfid_card",scan.uid,member.id,JSON.stringify({profileId:profile.id,deviceId:scan.deviceId}),session.createdAt).run();
       return Response.json({state:"recognized",deviceCount:Number(deviceCount?.count||0),scan,member},{headers:{...jsonHeaders,"set-cookie":session.cookie}});
@@ -82,8 +82,8 @@ export async function GET(request:Request){
 
 export async function PUT(request:Request){
   try{
-    const [profile,admin]=await Promise.all([requireProfile(request),requireRole(request,["Vorstand"])]);
-    if(!profile||!admin)return Response.json({error:"Nur Vorstand / Admin darf RFID-Karten zuordnen"},{status:403,headers:jsonHeaders});
+    const [profile,admin]=await Promise.all([requireProfile(request),requireRole(request,["Vorstand","Systemadmin"])]);
+    if(!profile||!admin)return Response.json({error:"Nur Vorstand oder Systemadministration dürfen RFID-Karten zuordnen"},{status:403,headers:jsonHeaders});
     const body=await request.json() as {scanId?:string;memberId?:string;writeText?:unknown;writeBlock?:unknown};
     if(!body.scanId||body.scanId.length>100||!body.memberId||body.memberId.length>100)return Response.json({error:"Scan und Mitglied sind erforderlich"},{status:400,headers:jsonHeaders});
     const [scan,member]=await Promise.all([
@@ -92,6 +92,9 @@ export async function PUT(request:Request){
     ]);
     if(!scan)return Response.json({error:"Der Kartenscan ist abgelaufen. Karte bitte erneut auflegen."},{status:404,headers:jsonHeaders});
     if(!member)return Response.json({error:"Mitglied nicht gefunden"},{status:404,headers:jsonHeaders});
+    const existingOwner=await env.DB.prepare("SELECT m.role FROM rfid_cards c JOIN members m ON m.id=c.member_id WHERE c.profile_id=? AND c.uid=?").bind(profile.id,scan.uid).first<{role:string}>();
+    const financeProtected=(candidate:{role:string}|null|undefined)=>Boolean(candidate&&(hasRole(candidate,"Vorstand")||hasRole(candidate,"Kassenwart")));
+    if(!hasRole(admin,"Vorstand")&&(financeProtected(member)||financeProtected(existingOwner)))return Response.json({error:"RFID-Karten von Vorstand oder Kassenwart dürfen nur durch den Vorstand zugeordnet oder geändert werden"},{status:403,headers:jsonHeaders});
     const wantsWrite=body.writeText!=null&&String(body.writeText).length>0;
     const writeBlock=Number(body.writeBlock??4);
     const isTrailer=(block:number)=>block<128?block%4===3:block%16===15;
