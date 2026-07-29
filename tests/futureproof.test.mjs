@@ -25,7 +25,7 @@ test("erstellt prüfbare und herunterladbare Vollsicherungen",async()=>{
 
 test("erstellt eine einfache Liste aus Name und offenem Betrag",async()=>{
   const [page,monthly,style]=await Promise.all([read("app/page.tsx"),read("app/api/monthly/route.ts"),read("app/openlist.css")]);
-  for(const feature of ["Einfache Zechenliste","Liste kopieren","Liste drucken","copyOpenList","openPeople"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  for(const feature of ["Offene Rechnungen","Liste kopieren","Liste drucken","copyOpenList","openPeople"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(monthly.includes('url.searchParams.get("list")==="1"'));
   assert.ok(monthly.includes("Offener Betrag"));
   assert.ok(style.includes(".open-list-rows"));
@@ -170,7 +170,7 @@ test("verteilt geheime Glücksmomente nur über den Adminbereich",async()=>{
   assert.ok(route.includes("crypto.getRandomValues")&&route.includes("windowStart"),"Gewinnmomente werden nicht sicher verteilt");
   assert.ok(!route.includes("triggerAt:campaign"),"Zukünftige Gewinnzeitpunkte dürfen nicht ausgegeben werden");
   for(const feature of ["random_reward_slots","reward_amount","remaining_wins","rewardRestored"])assert.ok(data.includes(feature)||control.includes(feature),`${feature} fehlt`);
-  assert.ok(data.includes("finalTotal")&&data.includes("adjustedAllocations"),"Gewinn wird nicht sauber auf Endbetrag und Zechen verteilt");
+  assert.ok(data.includes("finalTotal")&&data.includes("adjustedAllocations"),"Gewinn wird nicht sauber auf Endbetrag und Rechnungen verteilt");
   assert.ok(schema.includes("randomRewardCampaigns")&&schema.includes("randomRewardSlots"));
   assert.ok(migration.includes("random_reward_campaigns")&&migration.includes("random_reward_slots"));
   assert.ok(backup.includes("SCHEMA_VERSION=23")&&backup.includes('"random_reward_campaigns"')&&backup.includes('"random_reward_slots"'));
@@ -206,6 +206,6 @@ test("schützt Offline-Buchungen, Rundeneinlösung und Kassenabschluss",async()=
   const [page,data,rounds,control]=await Promise.all([read("app/page.tsx"),read("app/api/data/route.ts"),read("app/api/rounds/route.ts"),read("app/api/control/route.ts")]);
   assert.ok(page.includes("offlineQueuedAt")&&data.includes("rewardEligible"),"Offline-Verkäufe können noch unsichtbar Gewinne auslösen");
   assert.ok(rounds.includes("env.DB.batch")&&rounds.includes("claimed_at=?"),"Rundeneinlösung ist nicht atomar geschützt");
-  assert.ok(control.includes("sale_id IS NULL")&&control.includes("accountCash"),"Bar bezahlte Zechen fehlen im Kassenabschluss");
+  assert.ok(control.includes("sale_id IS NULL")&&control.includes("accountCash"),"Bar bezahlte Rechnungen fehlen im Kassenabschluss");
   assert.ok(page.includes("submittingRef.current"),"Doppeltipp-Schutz beim Verkauf fehlt");
 });

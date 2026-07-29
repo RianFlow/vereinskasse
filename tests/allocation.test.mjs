@@ -22,7 +22,7 @@ test("Server verhindert doppelte und unvollständige Kontobuchungen", async () =
   assert.ok(route.includes("allocatedCents!==Math.round(body.total*100)"));
 });
 
-test("geteilte Bestellung bleibt in Abrechnung und Zechendetails korrekt", async () => {
+test("geteilte Bestellung bleibt in Abrechnung und Rechnungsdetails korrekt", async () => {
   const [control, monthly] = await Promise.all([read("app/api/control/route.ts"), read("app/api/monthly/route.ts")]);
   assert.ok(control.includes("(SELECT COUNT(*) FROM sale_allocations sa WHERE sa.sale_id=at.sale_id)=1"),"Die kompakte Kontenansicht darf Artikel nicht je Anteil vervielfachen");
   assert.ok(!monthly.includes("(SELECT COUNT(*) FROM sale_allocations sa WHERE sa.sale_id=at.sale_id)=1"),"Geteilte Artikel werden noch aus der Monatsabrechnung ausgeschlossen");

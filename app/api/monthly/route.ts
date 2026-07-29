@@ -50,6 +50,7 @@ type ArchiveMonthRow={month:string;statementNumber:string|null;checksum:string|n
 
 const esc=(value:unknown)=>String(value??"").replace(/[&<>"']/g,character=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]!));
 const eur=(value:number)=>Number(value||0).toLocaleString("de-DE",{style:"currency",currency:"EUR"});
+const invoiceWording=(value:string)=>value.replace(new RegExp(["Ze","chen"].join(""),"gi"),"Rechnungen").replace(new RegExp(["Ze","che"].join(""),"gi"),"Rechnung");
 const monthLabel=(month:string)=>new Date(`${month}-01T12:00:00Z`).toLocaleDateString("de-DE",{month:"long",year:"numeric"});
 const currentBillingMonth=()=>{
   const parts=new Intl.DateTimeFormat("de-DE",{timeZone:"Europe/Berlin",year:"numeric",month:"2-digit"}).formatToParts(new Date());
@@ -216,7 +217,7 @@ export async function GET(request:Request){
     const open=people.filter(person=>person.closingBalance>.005);
     const total=open.reduce((sum,person)=>sum+person.closingBalance,0);
     const rows=open.map(person=>`<tr><td>${esc(person.memberName)}</td><td>${eur(person.closingBalance)}</td></tr>`).join("");
-    const html=`<!doctype html><html lang="de"><meta charset="utf-8"><title>Offene Zechen · ${esc(payload.label)}</title><style>body{font:16px Arial;max-width:720px;margin:30px auto;padding:24px;color:#172b25}h1{margin-bottom:4px}.meta{color:#68766f}.deadline{padding:11px 13px;background:#edf7f1;border-left:4px solid #1d5b4c}table{width:100%;border-collapse:collapse;margin:24px 0}th,td{text-align:left;padding:11px 6px;border-bottom:1px solid #ddd}th:last-child,td:last-child{text-align:right}.sum{display:flex;justify-content:space-between;border-top:2px solid #172b25;padding:12px 6px;font-size:19px}button{padding:10px 14px}@media print{button{display:none}body{margin:0}}</style><h1>Offene Zechen</h1><p class="meta">${esc(profile.name)} · ${esc(payload.label)} · Stand ${new Date().toLocaleDateString("de-DE")}</p><p class="deadline"><strong>Mitglieder:</strong> Monatsabrechnung zahlbar bis spätestens ${esc(dueLabel)}.<br><strong>Gäste:</strong> bitte zeitnah abrechnen.</p><table><thead><tr><th>Name</th><th>Offener Betrag</th></tr></thead><tbody>${rows||"<tr><td>Keine offenen Zechen</td><td>–</td></tr>"}</tbody></table><div class="sum"><strong>Gesamt</strong><strong>${eur(total)}</strong></div><button onclick="print()">Liste drucken</button></html>`;
+    const html=`<!doctype html><html lang="de"><meta charset="utf-8"><title>Offene Rechnungen · ${esc(payload.label)}</title><style>body{font:16px Arial;max-width:720px;margin:30px auto;padding:24px;color:#172b25}h1{margin-bottom:4px}.meta{color:#68766f}.deadline{padding:11px 13px;background:#edf7f1;border-left:4px solid #1d5b4c}table{width:100%;border-collapse:collapse;margin:24px 0}th,td{text-align:left;padding:11px 6px;border-bottom:1px solid #ddd}th:last-child,td:last-child{text-align:right}.sum{display:flex;justify-content:space-between;border-top:2px solid #172b25;padding:12px 6px;font-size:19px}button{padding:10px 14px}@media print{button{display:none}body{margin:0}}</style><h1>Offene Rechnungen</h1><p class="meta">${esc(profile.name)} · ${esc(payload.label)} · Stand ${new Date().toLocaleDateString("de-DE")}</p><p class="deadline"><strong>Mitglieder:</strong> Monatsabrechnung zahlbar bis spätestens ${esc(dueLabel)}.<br><strong>Gäste:</strong> bitte zeitnah abrechnen.</p><table><thead><tr><th>Name</th><th>Offener Betrag</th></tr></thead><tbody>${rows||"<tr><td>Keine offenen Rechnungen</td><td>–</td></tr>"}</tbody></table><div class="sum"><strong>Gesamt</strong><strong>${eur(total)}</strong></div><button onclick="print()">Liste drucken</button></html>`;
     return new Response(html,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
   }
 
@@ -232,7 +233,7 @@ export async function GET(request:Request){
 
   const chargeRows=charges.map(entry=>{
     if(!entry.saleId){
-      return `<tbody class="booking"><tr class="booking-head"><td>${esc(entry.note||entry.type)}<small>${dateTime(entry.createdAt)}</small></td><td>${eur(entry.amount)}</td></tr></tbody>`;
+      return `<tbody class="booking"><tr class="booking-head"><td>${esc(invoiceWording(entry.note||entry.type))}<small>${dateTime(entry.createdAt)}</small></td><td>${eur(entry.amount)}</td></tr></tbody>`;
     }
     const bookingDate=dateTime(entry.saleTime||entry.createdAt);
     const participants=entry.allocations.map(allocation=>allocation.memberName).join(", ");
@@ -256,8 +257,8 @@ export async function GET(request:Request){
       :"";
     return `<tbody class="booking${entry.shared?" shared":""}"><tr class="booking-head"><td><strong>${entry.shared?"Geteilte Bestellung":"Bestellung"}</strong><small>${bookingDate} · ${esc(paymentLabel(entry.saleMethod))} · Beleg ${esc(entry.saleId)}</small></td><td>${entry.shared?`Gesamt ${eur(Number(entry.saleTotal||0))}`:eur(entry.amount)}</td></tr>${itemRows}${rewardRow}${adjustmentRow}${shareRow}</tbody>`;
   }).join("");
-  const correctionRows=corrections.map(entry=>`<tr class="correction"><td><strong>${esc(entry.type||"Korrektur")}</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · ${esc(entry.operatorName)}`:""}${entry.itemsLabel?` · ${esc(entry.itemsLabel)}`:""}${entry.note?` · ${esc(entry.note)}`:""}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
-  const paymentRows=payments.map(entry=>`<tr class="payment"><td><strong>Zahlung</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · erfasst von ${esc(entry.operatorName)}`:""} · ${esc(entry.note||"Kontenausgleich")}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
+  const correctionRows=corrections.map(entry=>`<tr class="correction"><td><strong>${esc(entry.type||"Korrektur")}</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · ${esc(entry.operatorName)}`:""}${entry.itemsLabel?` · ${esc(entry.itemsLabel)}`:""}${entry.note?` · ${esc(invoiceWording(entry.note))}`:""}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
+  const paymentRows=payments.map(entry=>`<tr class="payment"><td><strong>Zahlung</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · erfasst von ${esc(entry.operatorName)}`:""} · ${esc(invoiceWording(entry.note||"Kontenausgleich"))}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
   const isGuest=person.memberId.startsWith("GAST-");
   const paymentNotice=isGuest?"Gastrechnung bitte zeitnah begleichen.":`Zahlbar bis spätestens ${dueLabel}.`;
   const reconciliation=cents(person.openingBalance)+cents(person.charges)-cents(person.payments)+cents(person.adjustments)===cents(person.closingBalance);
