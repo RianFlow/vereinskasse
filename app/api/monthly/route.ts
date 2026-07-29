@@ -46,10 +46,15 @@ type BillingEntry=TransactionRow&{
   itemsLabel:string;
 };
 type ClosureRow={statementNumber:string;snapshotJson:string;checksum:string;closedByName:string;closedAt:string};
+type ArchiveMonthRow={month:string;statementNumber:string|null;checksum:string|null;closedByName:string|null;closedAt:string|null;charges:number;people:number;salesCount:number};
 
 const esc=(value:unknown)=>String(value??"").replace(/[&<>"']/g,character=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]!));
 const eur=(value:number)=>Number(value||0).toLocaleString("de-DE",{style:"currency",currency:"EUR"});
 const monthLabel=(month:string)=>new Date(`${month}-01T12:00:00Z`).toLocaleDateString("de-DE",{month:"long",year:"numeric"});
+const currentBillingMonth=()=>{
+  const parts=new Intl.DateTimeFormat("de-DE",{timeZone:"Europe/Berlin",year:"numeric",month:"2-digit"}).formatToParts(new Date());
+  return `${parts.find(part=>part.type==="year")?.value}-${parts.find(part=>part.type==="month")?.value}`;
+};
 const billingDueDate=(month:string)=>{
   const [year,monthNumber]=month.split("-").map(Number);
   return new Date(Date.UTC(year,monthNumber,10,12)).toISOString().slice(0,10);
@@ -67,8 +72,36 @@ export async function GET(request:Request){
   if(!user||!profile)return Response.json({error:"Keine Berechtigung oder Profilanmeldung abgelaufen"},{status:403});
 
   const url=new URL(request.url);
-  const month=url.searchParams.get("month")||new Date().toISOString().slice(0,7);
+  const month=url.searchParams.get("month")||currentBillingMonth();
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return Response.json({error:"Ungültiger Monat"},{status:400});
+  if(url.searchParams.get("archive")==="1"){
+    const currentMonth=currentBillingMonth();
+    const archive=await env.DB.prepare(`WITH activity AS (
+      SELECT substr(created_at,1,7) month,ROUND(SUM(CASE WHEN amount>0 THEN amount ELSE 0 END),2) charges,COUNT(DISTINCT member_id) people
+      FROM account_transactions WHERE profile_id=? GROUP BY substr(created_at,1,7)
+    ), sale_months AS (
+      SELECT substr(time,1,7) month,COUNT(*) salesCount FROM sales WHERE profile_id=? GROUP BY substr(time,1,7)
+    ), used_months AS (
+      SELECT month FROM activity UNION SELECT month FROM sale_months UNION SELECT month FROM monthly_closures WHERE profile_id=?
+    )
+    SELECT u.month,c.statement_number statementNumber,c.checksum,c.closed_by_name closedByName,c.closed_at closedAt,
+      COALESCE(a.charges,0) charges,COALESCE(a.people,0) people,COALESCE(s.salesCount,0) salesCount
+    FROM used_months u
+    LEFT JOIN activity a ON a.month=u.month
+    LEFT JOIN sale_months s ON s.month=u.month
+    LEFT JOIN monthly_closures c ON c.profile_id=? AND c.month=u.month
+    WHERE u.month<? ORDER BY u.month DESC`).bind(profile.id,profile.id,profile.id,profile.id,currentMonth).all<ArchiveMonthRow>();
+    return Response.json({currentMonth,archive:archive.results.map(entry=>({
+      ...entry,
+      label:monthLabel(entry.month),
+      dueDate:billingDueDate(entry.month),
+      dueLabel:dateLabel(billingDueDate(entry.month)),
+      charges:Number(entry.charges||0),
+      people:Number(entry.people||0),
+      salesCount:Number(entry.salesCount||0),
+      closed:Boolean(entry.statementNumber)
+    }))},{headers:{"cache-control":"no-store"}});
+  }
 
   const start=`${month}-01T00:00:00.000Z`;
   const nextDate=new Date(`${month}-01T00:00:00.000Z`);
@@ -239,7 +272,7 @@ export async function POST(request:Request){
     const body=await request.json() as {month?:string};
     const month=body.month||"";
     if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return Response.json({error:"Ungültiger Monat"},{status:400});
-    if(month>=new Date().toISOString().slice(0,7))return Response.json({error:"Ein Monat kann erst nach seinem Monatsende festgeschrieben werden"},{status:409});
+    if(month>=currentBillingMonth())return Response.json({error:"Ein Monat kann erst nach seinem Monatsende festgeschrieben werden"},{status:409});
     const existing=await env.DB.prepare("SELECT statement_number statementNumber,checksum,closed_at closedAt FROM monthly_closures WHERE profile_id=? AND month=?").bind(profile.id,month).first();
     if(existing)return Response.json({ok:true,alreadyClosed:true,closure:existing});
     const reportUrl=new URL(request.url);reportUrl.search="";reportUrl.searchParams.set("month",month);
