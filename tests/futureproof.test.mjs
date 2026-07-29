@@ -78,10 +78,15 @@ test("ist als Vollbild-Web-App auf Tablets installierbar",async()=>{
 });
 
 test("verwendet das Clubiq-Logo und den Slogan ohne das Kassentheme umzubauen",async()=>{
-  const [page,layout,brand,info]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/clubiq-brand.css"),read("app/app-info.ts")]);
+  const [page,layout,brand,info,legal,legalStyle,packageFile]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/clubiq-brand.css"),read("app/app-info.ts"),read("app/legal/page.tsx"),read("app/legal.css"),read("package.json")]);
   for(const feature of ["Clubiq Ledger","Mehr als eine Vereinskasse.","APP_NAME","APP_SLOGAN"])assert.ok(`${layout}\n${info}`.includes(feature),`${feature} fehlt`);
   for(const feature of ["/brand/clubiq-ledger-symbol-gold.svg","clubiq-app-brand","clubiq-header-symbol"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(brand.includes('/brand/clubiq-ledger-primary-dark.svg'),"Logo mit Slogan fehlt an der Profilanmeldung");
+  for(const feature of ["APP_VERSION","APP_DEVELOPER","APP_COPYRIGHT_YEAR","1.1.0","Florian Hümmling"])assert.ok(info.includes(feature),`${feature} fehlt`);
+  for(const feature of ["Impressum","Angaben gemäß § 5 DDG","Sportverein Barver von 1926 e. V.","Amtsgericht Walsrode","VR 100163","Alle Rechte vorbehalten"])assert.ok(legal.includes(feature),`${feature} fehlt`);
+  assert.ok(layout.includes("clubiq-legal-shortcut")&&layout.includes("v{APP_VERSION} · Impressum"),"Sichtbarer Versions- und Impressumslink fehlt");
+  assert.ok(legalStyle.includes(".legal-brand")&&legalStyle.includes(".legal-version"),"Logo und Version sind auf der Infoseite nicht hervorgehoben");
+  assert.ok(packageFile.includes('"version": "1.1.0"'),"Paketversion stimmt nicht mit der sichtbaren Version überein");
   assert.ok(brand.includes(".theme-toggle{display:none!important}"),"Darkmode ist noch sichtbar");
   assert.ok(page.includes('className="app kiosk-design light"'),"Die App startet nicht fest im hellen Modus");
 });

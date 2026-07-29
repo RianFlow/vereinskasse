@@ -48,7 +48,8 @@ import "./balance-check.css";
 import "./member-admin-cleanup.css";
 import "./event-pos.css";
 import "./clubiq-brand.css";
-import { APP_NAME, APP_SHORT_NAME, APP_SLOGAN } from "./app-info";
+import "./legal.css";
+import { APP_NAME, APP_SHORT_NAME, APP_SLOGAN, APP_VERSION } from "./app-info";
 
 export const metadata: Metadata = {
   title: `${APP_NAME} · SV Barver Darts`,
@@ -88,7 +89,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="de">
-      <body>{children}</body>
+      <body>
+        {children}
+        <a
+          className="clubiq-legal-shortcut"
+          href="/legal"
+          aria-label={`Über ${APP_NAME}, Version ${APP_VERSION} und Impressum`}
+        >
+          v{APP_VERSION} · Impressum
+        </a>
+      </body>
     </html>
   );
 }

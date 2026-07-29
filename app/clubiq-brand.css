@@ -2,7 +2,7 @@
   --clubiq-ink:#111318;
   --clubiq-gold:#b99656;
 }
-.clubiq-app-brand{min-width:220px}
+.clubiq-app-brand{min-width:236px}
 .clubiq-header-symbol{
   width:46px;
   height:46px;
@@ -15,19 +15,30 @@
   padding:7px;
 }
 .clubiq-header-symbol img{width:100%;height:100%;object-fit:contain}
-.clubiq-app-brand>div>strong{font-size:18px;letter-spacing:-.02em}
+.clubiq-app-brand>div>strong{font-size:19px;letter-spacing:-.02em}
+.clubiq-header-slogan{
+  display:block;
+  margin-top:1px;
+  color:var(--clubiq-gold);
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.025em;
+  line-height:1.1;
+}
+.clubiq-app-brand .profile-switch{margin-top:2px}
 .profile-loading img{width:64px;height:64px;margin:auto}
 .profile-gate-card:before{
   content:"";
   display:block;
-  width:min(300px,72vw);
-  height:96px;
-  margin:-9px auto 17px;
+  width:min(470px,82vw);
+  height:174px;
+  margin:-18px auto 18px;
   background:url("/brand/clubiq-ledger-primary-dark.svg") center/contain no-repeat;
 }
 .theme-toggle{display:none!important}
 @media(max-width:800px){
   .clubiq-app-brand{min-width:0}
   .clubiq-header-symbol{width:42px;height:42px}
-  .profile-gate-card:before{width:230px;height:78px;margin:-5px auto 13px}
+  .clubiq-header-slogan{display:none}
+  .profile-gate-card:before{width:min(330px,86vw);height:122px;margin:-10px auto 14px}
 }
