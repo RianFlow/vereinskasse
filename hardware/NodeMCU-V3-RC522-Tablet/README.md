@@ -49,7 +49,7 @@ Für einen stabilen Dauerbetrieb wird die Datenleitung über einen
 
 | Verbindung | Ziel |
 |---|---|
-| NodeMCU D0 (GPIO 16) | 74AHCT125 Eingang `1A` |
+| NodeMCU D8 (GPIO 15) | 74AHCT125 Eingang `1A` |
 | 74AHCT125 `1OE` | GND |
 | 74AHCT125 `1Y` | über 330–470 Ω an WS2812B `DIN` |
 | 74AHCT125 `VCC` | 5 V |
@@ -61,6 +61,16 @@ Die Pfeilrichtung auf dem Streifen muss vom Anschluss weg zeigen; verwendet
 wird der Eingang `DIN`, nicht `DOUT`. In `include/config.h` ist die Anzeige auf
 die fünf LEDs am Leser eingestellt. Ein langer Streifen darf nicht aus dem
 3,3-V-Anschluss des NodeMCU versorgt werden.
+
+Wichtig: Die Datenleitung liegt jetzt auf **D8**, nicht mehr auf D0. GPIO 16
+(`D0`) wird von der schnellen ESP8266-Ausgabe der verwendeten NeoPixel-Bibliothek
+nicht zuverlässig angesteuert. D8 besitzt auf dem NodeMCU den nötigen
+Boot-Pulldown; deshalb keinen zusätzlichen Pull-up an D8 anschließen.
+
+Beim Einschalten läuft automatisch ein gut sichtbarer Selbsttest: Die fünf LEDs
+gehen nacheinander weiß an, anschließend leuchten alle gemeinsam rot, grün,
+blau und weiß. Derselbe Test kann auf der Wartungsseite unter
+`http://192.168.4.1` erneut gestartet werden.
 
 Statusfarben:
 

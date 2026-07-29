@@ -78,6 +78,8 @@ enum class StatusLedMode {
 StatusLedMode statusLedMode = StatusLedMode::Starting;
 unsigned long statusLedUntil = 0;
 unsigned long statusLedLastFrame = 0;
+bool statusLedTestActive = false;
+unsigned long statusLedTestStartedAt = 0;
 
 bool clockReady();
 String jsonStringField(const String &body, const String &name);
@@ -297,6 +299,45 @@ void fillStatusPixels(uint8_t red, uint8_t green, uint8_t blue) {
   statusPixels.show();
 }
 
+void startStatusLedTest() {
+  statusLedTestActive = true;
+  statusLedTestStartedAt = millis();
+  statusLedLastFrame = 0;
+}
+
+bool renderStatusLedTest(unsigned long now) {
+  if (!statusLedTestActive) return false;
+  const unsigned long step = (now - statusLedTestStartedAt) / STATUS_LED_TEST_STEP_MS;
+  if (step < STATUS_LED_COUNT) {
+    statusPixels.clear();
+    for (uint16_t i = 0; i <= step; ++i)
+      statusPixels.setPixelColor(i, statusPixels.Color(255, 255, 255));
+    statusPixels.show();
+    return true;
+  }
+  if (step == STATUS_LED_COUNT) {
+    fillStatusPixels(255, 0, 0);
+    return true;
+  }
+  if (step == STATUS_LED_COUNT + 1) {
+    fillStatusPixels(0, 255, 0);
+    return true;
+  }
+  if (step == STATUS_LED_COUNT + 2) {
+    fillStatusPixels(0, 0, 255);
+    return true;
+  }
+  if (step == STATUS_LED_COUNT + 3) {
+    fillStatusPixels(255, 255, 255);
+    return true;
+  }
+  statusLedTestActive = false;
+  statusLedLastFrame = 0;
+  statusPixels.clear();
+  statusPixels.show();
+  return false;
+}
+
 void renderStatusLed() {
   const unsigned long now = millis();
   if (displayOrderActive && displayOrderUpdatedAt &&
@@ -314,22 +355,24 @@ void renderStatusLed() {
   }
   if (statusLedLastFrame && now - statusLedLastFrame < 45) return;
   statusLedLastFrame = now;
+  if (renderStatusLedTest(now)) return;
   if (statusLedMode == StatusLedMode::Ready && !displayOrderActive &&
       displayReadySince && now - displayReadySince >= STATUS_DISPLAY_SCREENSAVER_MS) {
     showClubLogo();
   }
 
-  const uint8_t pulse = 18 + (uint8_t)((now / 12) % 34);
+  const uint8_t phase = (now / 8) % 160;
+  const uint8_t pulse = 55 + (phase < 80 ? phase : 159 - phase) * 2;
   const bool flash = (now / 180) % 2 == 0;
   switch (statusLedMode) {
-    case StatusLedMode::Starting: fillStatusPixels(pulse, pulse / 2, 0); break;
+    case StatusLedMode::Starting: fillStatusPixels(pulse, pulse / 3, 0); break;
     case StatusLedMode::Connecting: fillStatusPixels(0, 0, pulse); break;
-    case StatusLedMode::Ready: fillStatusPixels(0, 18, 24); break;
-    case StatusLedMode::Scanning: fillStatusPixels(28, 0, 34); break;
-    case StatusLedMode::Success: fillStatusPixels(0, 60, 8); break;
-    case StatusLedMode::Error: fillStatusPixels(flash ? 70 : 4, 0, 0); break;
+    case StatusLedMode::Ready: fillStatusPixels(0, 110, 90); break;
+    case StatusLedMode::Scanning: fillStatusPixels(165, 0, 220); break;
+    case StatusLedMode::Success: fillStatusPixels(0, 255, 30); break;
+    case StatusLedMode::Error: fillStatusPixels(flash ? 255 : 12, 0, 0); break;
     case StatusLedMode::WriteWaiting: fillStatusPixels(pulse, 0, pulse); break;
-    case StatusLedMode::Writing: fillStatusPixels(42, 0, 55); break;
+    case StatusLedMode::Writing: fillStatusPixels(185, 0, 255); break;
   }
 }
 
@@ -492,13 +535,32 @@ void handleStatus() {
                 ",\"clockReady\":" + String(clockReady() ? "true" : "false") +
                 ",\"pendingScan\":" + String(pendingUidReady ? "true" : "false") +
                 ",\"lastUid\":\"" + jsonEscape(lastPushedUid) +
-                "\",\"csrf\":\"" + jsonEscape(wifiCsrfToken) +
+                "\",\"ledPin\":\"D8 / GPIO 15\"" +
+                ",\"ledCount\":" + String(STATUS_LED_COUNT) +
+                ",\"ledTestActive\":" + String(statusLedTestActive ? "true" : "false") +
+                ",\"csrf\":\"" + jsonEscape(wifiCsrfToken) +
                 "\",\"message\":\"" + jsonEscape(lastPushState) + "\"}";
   json(200, body);
 }
 
 bool validWifiCsrf() {
   return server.hasArg("_csrf") && server.arg("_csrf") == wifiCsrfToken;
+}
+
+void handleLedTest() {
+  if (!authorized()) return;
+  if (!validWifiCsrf()) {
+    json(403, "{\"error\":\"Sicherheitsprüfung fehlgeschlagen. Seite neu laden.\"}");
+    return;
+  }
+  if (server.arg("confirm") != "TESTEN") {
+    json(400, "{\"error\":\"Bestätigung TESTEN fehlt.\"}");
+    return;
+  }
+  startStatusLedTest();
+  lastPushState = "LED-Test läuft: fünf LEDs, danach Rot, Grün, Blau und Weiß.";
+  json(200, "{\"started\":true,\"count\":" + String(STATUS_LED_COUNT) +
+            ",\"pin\":\"D8 / GPIO 15\"}");
 }
 
 void reconnectStationWifi() {
@@ -1043,6 +1105,12 @@ void setup() {
   statusPixels.setBrightness(STATUS_LED_BRIGHTNESS);
   statusPixels.clear();
   statusPixels.show();
+  startStatusLedTest();
+  while (statusLedTestActive) {
+    renderStatusLed();
+    ESP.wdtFeed();
+    delay(2);
+  }
   setupStatusDisplay();
   setStatusLed(StatusLedMode::Starting);
   renderStatusLed();
@@ -1076,6 +1144,7 @@ void setup() {
   });
   server.on("/api/uid", HTTP_GET, handleUid);
   server.on("/api/status", HTTP_GET, handleStatus);
+  server.on("/api/led-test", HTTP_POST, handleLedTest);
   server.on("/api/wifi", HTTP_POST, handleWifiSave);
   server.on("/api/wifi", HTTP_DELETE, handleWifiDelete);
   server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);

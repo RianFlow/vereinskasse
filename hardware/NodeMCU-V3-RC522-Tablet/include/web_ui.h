@@ -22,6 +22,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0c111b;padding:12px;b
 <pre id="syncMessage">Noch keine Statusmeldung.</pre>
 <p class="muted">Der Wartungszugang bleibt unter 192.168.4.1 erhalten. Kartenscans werden automatisch und verschlüsselt an die Vereinskasse gesendet, sobald WLAN, Geräte-Token und Zertifikat eingerichtet sind.</p>
 </section>
+<section class="card"><h2>LED-Statusstreifen</h2>
+<p id="ledHardware">5 LEDs an D8 / GPIO 15</p>
+<button onclick="testLeds()">Alle 5 LEDs testen</button>
+<p class="muted">Der Test schaltet nacheinander alle fünf LEDs ein und zeigt danach Rot, Grün, Blau und Weiß. Wenn nichts leuchtet: DIN, gemeinsame Masse und 5-V-Versorgung prüfen.</p>
+<pre id="ledOut">Beim Einschalten läuft der Test automatisch.</pre></section>
 <section class="card"><h2>Vereins-WLAN einrichten</h2>
 <div class="grid"><div><label>WLAN-Name</label><input id="wifiSsid" list="wifiNetworks" maxlength="32" autocomplete="off"><datalist id="wifiNetworks"></datalist></div>
 <div><label>WLAN-Kennwort</label><input id="wifiPassword" type="password" maxlength="63" autocomplete="new-password"></div></div>
@@ -51,6 +56,7 @@ function common(){return{block:$('block').value,key:$('key').value,keyType:$('kt
 async function uid(){let j=await call('/api/uid');$('uid').textContent=`UID: ${j.uid}\nTyp: ${j.type}\nGröße: ${j.blocks||'unbekannt'} Blöcke`}
 async function readBlock(){let j=await call('/api/read',common());$('hex').value=j.hex;$('txt').value=j.text;$('out').textContent=`Block ${j.block} gelesen.\nUID: ${j.uid}`}
 async function writeBlock(){let d=common();d.format=$('fmt').value;d.hex=$('hex').value;d.text=$('txt').value;d.confirm=$('confirm').value;let j=await call('/api/write',d);$('out').textContent=`Block ${j.block} geschrieben und verifiziert.\n${j.hex}`;$('confirm').value=''}
+async function testLeds(){try{if(!csrf)throw Error('Leserstatus wird noch geladen. Bitte kurz warten.');let j=await call('/api/led-test',{_csrf:csrf,confirm:'TESTEN'});$('ledOut').textContent=`Test läuft: ${j.count} LEDs an ${j.pin}.`}catch(e){$('ledOut').textContent=`LED-Test fehlgeschlagen: ${e.message}`}}
 async function scanWifi(){try{$('wifiOut').textContent='WLANs werden im Hintergrund gesucht …';let j;for(let i=0;i<24;i++){j=await call('/api/wifi/scan');if(!j.scanning)break;await new Promise(r=>setTimeout(r,250))}if(!j||j.scanning)throw Error('WLAN-Suche dauert ungewöhnlich lange. Bitte erneut versuchen.');let list=$('wifiNetworks');list.innerHTML='';j.networks.forEach(n=>{let o=document.createElement('option');o.value=n.ssid;o.label=`${n.rssi} dBm${n.secure?' · geschützt':' · offen'}`;list.appendChild(o)});$('wifiOut').textContent=`${j.networks.length} WLANs gefunden. Namen auswählen oder eingeben.`}catch(e){$('wifiOut').textContent=`WLAN-Suche fehlgeschlagen: ${e.message}`}}
 async function saveWifi(){try{if(!csrf)throw Error('Leserstatus wird noch geladen. Bitte kurz warten und erneut versuchen.');let ssid=$('wifiSsid').value.trim();if(!ssid)throw Error('Bitte einen WLAN-Namen eingeben.');$('wifiOut').textContent='WLAN wird dauerhaft gespeichert …';let j=await call('/api/wifi',{ssid,password:$('wifiPassword').value,_csrf:csrf,confirm:'SPEICHERN'});$('wifiPassword').value='';$('wifiOut').textContent=`✓ ${j.ssid} wurde gespeichert. Der Leser verbindet sich jetzt; dieser Wartungszugang bleibt geöffnet.`;setTimeout(refreshStatus,2500)}catch(e){$('wifiOut').textContent=`Nicht gespeichert: ${e.message}`}}
 async function deleteWifi(){if(!confirm('Gespeichertes Vereins-WLAN wirklich entfernen?'))return;try{if(!csrf)throw Error('Leserstatus wird noch geladen. Bitte kurz warten.');$('wifiOut').textContent='WLAN-Einstellung wird entfernt …';await call('/api/wifi',{_csrf:csrf,confirm:'LOESCHEN'},'DELETE');$('wifiSsid').value='';$('wifiPassword').value='';$('wifiOut').textContent='✓ Vereins-WLAN entfernt. Wartungszugang bleibt aktiv.';setTimeout(refreshStatus,2000)}catch(e){$('wifiOut').textContent=`Nicht entfernt: ${e.message}`}}
@@ -58,6 +64,7 @@ async function refreshStatus(){try{let r=await fetch('/api/status',{cache:'no-st
  csrf=j.csrf||csrf;if(document.activeElement!==$('wifiSsid'))$('wifiSsid').value=j.stationSsid||'';
  $('wifiState').textContent=j.stationConnected?`Verbunden mit ${j.stationSsid} · ${j.stationIp}`:(j.stationConfigured?`${j.stationSsid} · nicht verbunden`:'Nicht eingerichtet');
  $('pushState').textContent=j.pushConfigured?(j.clockReady?'Bereit':'Warte auf sichere Uhrzeit'):'Nicht vollständig eingerichtet';
+ $('ledHardware').textContent=`${j.ledCount||5} LEDs an ${j.ledPin||'D8 / GPIO 15'}${j.ledTestActive?' · Test läuft':''}`;
  $('syncMessage').textContent=j.message+(j.lastUid?`\nLetzte UID: ${j.lastUid}`:'');
 }catch(e){$('wifiState').textContent='Status nicht erreichbar'}}
 refreshStatus();setInterval(refreshStatus,3000);

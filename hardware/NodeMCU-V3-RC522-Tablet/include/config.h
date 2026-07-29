@@ -6,11 +6,14 @@ constexpr int PIN_RC522_SS = 4;    // D2
 constexpr int PIN_RC522_RST = 5;   // D1
 // Hardware-SPI ist beim ESP8266 fest: SCK D5, MISO D6, MOSI D7.
 
-// WS2812B-Statusstreifen. D0 ist frei und beeinflusst den Bootvorgang nicht.
-// Nur so viele LEDs eintragen, wie am Leser tatsächlich leuchten sollen.
-constexpr int PIN_STATUS_LED = 16;       // D0
+// WS2812B-Statusstreifen. GPIO 16 / D0 wird absichtlich nicht verwendet:
+// Die schnelle ESP8266-Ausgabe der NeoPixel-Bibliothek arbeitet mit GPIO 0–15.
+// D8 / GPIO 15 ist frei und besitzt auf dem NodeMCU bereits den nötigen
+// Boot-Pulldown. Am LED-Dateneingang darf deshalb kein Pull-up angeschlossen sein.
+constexpr int PIN_STATUS_LED = 15;       // D8
 constexpr uint16_t STATUS_LED_COUNT = 5;
-constexpr uint8_t STATUS_LED_BRIGHTNESS = 38;
+constexpr uint8_t STATUS_LED_BRIGHTNESS = 90;
+constexpr unsigned long STATUS_LED_TEST_STEP_MS = 180;
 
 // Optionales I2C-Statusdisplay: SSD1306, 128 x 64 Pixel.
 // D1/D2 werden bereits vom RC522 verwendet, daher liegt der separate I2C-Bus
