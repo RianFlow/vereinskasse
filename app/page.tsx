@@ -21,7 +21,7 @@ type SaleResult={total:number;originalTotal?:number;reward?:Omit<RewardWin,"orig
 type Allocation = { memberId: string; memberName: string; amount: number; kind: "anteil" | "runde" };
 type RoundSpec = { id:string; sponsorId:string; sponsorName:string; label:string; totalUnits:number; maxPerMember:number };
 type OpenRound = RoundSpec & { remaining:number; active:boolean; createdAt:string };
-type GuestAccount={id:string;name:string;type:"visitor"|"club";parentId?:string|null;parentName?:string;active?:boolean};
+type GuestAccount={id:string;name:string;type:"visitor"|"club";parentId?:string|null;parentName?:string;visitDate?:string|null;active?:boolean};
 type EventSummary={id:string;name:string;startsAt:string;endsAt?:string|null;status:"active"|"closed";notes?:string|null;createdBy?:string;salesCount?:number;itemsCount?:number;revenue?:number};
 type Profile={id:string;name:string;shortName:string;color:string;mustChangePin?:boolean;recoveryReady?:boolean};
 type RecoveryCard={slot:number;code:string};
@@ -245,7 +245,7 @@ export default function Home() {
     {memberPrompt&&<MemberSessionDialog current={activeMember} onClose={()=>setMemberPrompt(false)} onSelect={selectMember}/>}
     {memberFinder&&<MemberFinder current={listMember} onClose={()=>setMemberFinder(false)} onSelect={chooseListMember}/>}
     {balanceCheckOpen&&<BalanceCheckDialog initialMember={billingMember} accounts={control.accounts} entries={control.accountEntries||[]} onClose={()=>setBalanceCheckOpen(false)}/>}
-    {guestFinder&&<GuestFinder guests={guestAccounts} current={selectedGuest} onClose={()=>setGuestFinder(false)} onSelect={g=>{setSelectedGuest(g);setGuestAccounts(all=>[g,...all.filter(x=>x.id!==g.id)]);setGuestFinder(false)}}/>}
+    {guestFinder&&<GuestFinder guests={guestAccounts} current={selectedGuest} onChanged={setGuestAccounts} onClearCurrent={()=>setSelectedGuest(null)} onClose={()=>setGuestFinder(false)} onSelect={g=>{setSelectedGuest(g);setGuestAccounts(all=>[g,...all.filter(x=>x.id!==g.id)]);setGuestFinder(false)}}/>}
     {accountsOpen&&<GuestAccountsCheckoutDialog data={guestOpenAccounts} entries={control.accountEntries||[]} items={control.accountItems||[]} splits={control.splitAllocations||[]} onClose={()=>setAccountsOpen(false)} onPaid={()=>{setAccountsOpen(false);loadControl();showShortConfirmation("Gastrechnung bezahlt")}}/>}
     {kioskHelp&&<KioskHelpDialog installed={fullscreen} canInstall={Boolean(installPrompt)} onInstall={async()=>{if(!installPrompt)return;await installPrompt.prompt();const choice=await installPrompt.userChoice;if(choice.outcome==="accepted")setInstallPrompt(null);setKioskHelp(false)}} onClose={()=>setKioskHelp(false)}/>}
     {needsAdministrator&&<AdministratorSetupDialog onReady={async()=>{setNeedsAdministrator(false);await loadMembers()}}/>}
@@ -589,10 +589,53 @@ function ClaimDialog({round,onClose,onClaim}:{round:OpenRound;onClose:()=>void;o
   return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="identity-card"><button className="modal-close" onClick={onClose} disabled={busy}>×</button><div className="identity-icon">🎁</div><p className="eyebrow">RUNDE EINLÖSEN</p><h2>{round.label}</h2><p className="identity-sub">Noch {round.remaining} verfügbar · höchstens {round.maxPerMember} pro Mitglied. {message}</p><div className="code-entry"><input autoFocus disabled={busy} placeholder="Karte oder QR-Kennung" value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")verify()}}/><button disabled={busy} onClick={verify}>{busy?"Wird gebucht …":"Prüfen"}</button></div></div></div>
 }
 
-function GuestFinder({guests,current,onClose,onSelect}:{guests:GuestAccount[];current:GuestAccount|null;onClose:()=>void;onSelect:(g:GuestAccount)=>void}){
-  const [query,setQuery]=useState("");const [type,setType]=useState<"visitor"|"club">("visitor");const [name,setName]=useState("");const [clubId,setClubId]=useState<string|null>(current?.parentId||null);const club=guests.find(g=>g.id===clubId&&g.type==="club");const roots=guests.filter(g=>g.active!==false&&!g.parentId);const visible=(club?guests.filter(g=>g.parentId===club.id):roots).filter(g=>g.name.toLocaleLowerCase("de-DE").includes(query.trim().toLocaleLowerCase("de-DE")));
-  const cleanName=()=>name.trim().replace(/[^a-zA-Z0-9äöüÄÖÜß .&'\-]/g,"").slice(0,70);const create=()=>{const clean=cleanName();if(!clean)return;onSelect({id:`GAST-${crypto.randomUUID().slice(0,8).toUpperCase()}`,name:clean,type:club?"visitor":type,parentId:club?.id||null,parentName:club?.name})};
-  return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="identity-card finder-card guest-finder"><button className="modal-close" onClick={onClose}>×</button>{club?<><button className="back-accounts" onClick={()=>{setClubId(null);setQuery("");setName("")}}>← Alle Besucher und Vereine</button><p className="eyebrow">BESUCHERVEREIN</p><h2>{club.name}</h2><button className={`club-account-choice ${current?.id===club.id?"active":""}`} onClick={()=>onSelect(club)}><span>V</span><div><strong>Direkt auf den Verein buchen</strong><small>Gemeinsame Vereinszeche</small></div><b>Auswählen</b></button><label className="member-search"><span>⌕</span><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder={`Mitglied von ${club.name} suchen`}/><small>{visible.length} Personen</small></label><div className="guest-account-list">{visible.map(g=><button key={g.id} className={current?.id===g.id?"active":""} onClick={()=>onSelect({...g,parentName:club.name})}><span>G</span><div><strong>{g.name}</strong><small>Mitglied · {club.name}</small></div><b>{current?.id===g.id?"✓":"Auswählen"}</b></button>)}</div><div className="new-guest"><strong>Mitglied zu {club.name} hinzufügen</strong><label>Name<input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")create()}} placeholder="z. B. Tom Taylor"/></label><button className="confirm-allocation" disabled={!name.trim()} onClick={create}>Mitglied anlegen und auswählen</button></div></>:<><p className="eyebrow">VERANSTALTUNGSKONTO</p><h2>Besucher oder Verein</h2><label className="member-search"><span>⌕</span><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Besucher oder Verein durchsuchen"/><small>{visible.length} Treffer</small></label><div className="guest-account-list">{visible.map(g=><button key={g.id} className={current?.id===g.id?"active":""} onClick={()=>g.type==="club"?setClubId(g.id):onSelect(g)}><span>{g.type==="club"?"V":"G"}</span><div><strong>{g.name}</strong><small>{g.type==="club"?`${guests.filter(x=>x.parentId===g.id).length} Mitglieder · öffnen`:"Einzelner Besucher"}</small></div><b>{g.type==="club"?"Öffnen ›":current?.id===g.id?"✓":"Auswählen"}</b></button>)}{!visible.length&&roots.length>0&&<p>Kein passender Eintrag gefunden.</p>}</div><div className="new-guest"><strong>Neu anlegen</strong><div className="guest-type"><button className={type==="visitor"?"active":""} onClick={()=>setType("visitor")}>Einzelner Besucher</button><button className={type==="club"?"active":""} onClick={()=>setType("club")}>Besucherverein</button></div><label>Name<input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")create()}} placeholder={type==="club"?"z. B. Verein Versuchsdorf":"z. B. Familie Meier"}/></label><button className="confirm-allocation" disabled={!name.trim()} onClick={create}>Anlegen und auswählen</button></div></>}</div></div>
+function GuestFinder({guests,current,onClose,onSelect,onChanged,onClearCurrent}:{guests:GuestAccount[];current:GuestAccount|null;onClose:()=>void;onSelect:(g:GuestAccount)=>void;onChanged:(guests:GuestAccount[])=>void;onClearCurrent:()=>void}){
+  const [query,setQuery]=useState(""),[type,setType]=useState<"visitor"|"club">("visitor"),[name,setName]=useState(""),[clubId,setClubId]=useState<string|null>(current?.parentId||null),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const visitDate=new Intl.DateTimeFormat("sv-SE",{timeZone:"Europe/Berlin",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  const club=guests.find(guest=>guest.id===clubId&&guest.type==="club");
+  const normalized=query.trim().toLocaleLowerCase("de-DE");
+  const roots=guests.filter(guest=>guest.active!==false&&!guest.parentId);
+  const visibleRoots=roots.filter(guest=>guest.name.toLocaleLowerCase("de-DE").includes(normalized));
+  const clubMembers=club?guests.filter(guest=>guest.active!==false&&guest.parentId===club.id&&guest.name.toLocaleLowerCase("de-DE").includes(normalized)):[];
+  const todayMembers=clubMembers.filter(guest=>guest.visitDate===visitDate);
+  const previousMembers=clubMembers.filter(guest=>guest.visitDate!==visitDate);
+  const cleanName=()=>name.trim().replace(/\s+/g," ").replace(/[^a-zA-Z0-9äöüÄÖÜß .&'\-]/g,"").slice(0,70);
+  const save=async(payload:Record<string,unknown>)=>{
+    setBusy(true);setError("");
+    try{
+      const response=await fetch("/api/guests",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}),data=await response.json();
+      if(!response.ok)throw new Error(data.error);
+      onChanged(data.guests||[]);
+      if(data.focusId)setClubId(data.focusId);
+      return true;
+    }catch(reason){setError(reason instanceof Error?reason.message:"Besucherliste konnte nicht gespeichert werden");return false}
+    finally{setBusy(false)}
+  };
+  const create=async()=>{
+    const clean=cleanName();if(!clean||busy)return;
+    if(club){if(await save({action:"create_person",clubId:club.id,name:clean}))setName("");return}
+    if(type==="club"){if(await save({action:"create_club",name:clean})){setName("");setQuery("")}return}
+    onSelect({id:`GAST-${crypto.randomUUID().slice(0,8).toUpperCase()}`,name:clean,type:"visitor",visitDate});
+  };
+  const rosterAction=async(action:"use_today"|"remove_today",memberId:string)=>{if(await save({action,memberId})&&action==="remove_today"&&current?.id===memberId)onClearCurrent()};
+
+  return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="identity-card finder-card guest-finder">
+    <button className="modal-close" onClick={onClose}>×</button>
+    {club?<><button className="back-accounts" onClick={()=>{setClubId(null);setQuery("");setName("");setError("")}}>← Alle Besucher und Vereine</button>
+      <p className="eyebrow">BESUCHERVEREIN · DAUERHAFT GESPEICHERT</p><h2>{club.name}</h2>
+      <button className={`club-account-choice ${current?.id===club.id?"active":""}`} onClick={()=>onSelect(club)}><span>V</span><div><strong>Direkt auf den Verein buchen</strong><small>Gemeinsame Vereinszeche</small></div><b>Auswählen</b></button>
+      <div className="guest-roster-head"><div><strong>Gästeliste für heute</strong><small>Nur die hier aufgeführten Personen erscheinen für diesen Tag.</small></div><b>{todayMembers.length}</b></div>
+      <label className="member-search"><span>⌕</span><input value={query} onChange={event=>setQuery(event.target.value)} placeholder={`Person bei ${club.name} suchen`}/><small>{clubMembers.length} Treffer</small></label>
+      <div className="guest-roster-list">{todayMembers.map(guest=><article key={guest.id} className={current?.id===guest.id?"active":""}><button className="guest-roster-select" onClick={()=>onSelect({...guest,parentName:club.name})}><span>G</span><div><strong>{guest.name}</strong><small>Heute dabei · {club.name}</small></div><b>{current?.id===guest.id?"✓":"Auswählen"}</b></button><button className="guest-roster-remove" disabled={busy} onClick={()=>rosterAction("remove_today",guest.id)} aria-label={`${guest.name} von der heutigen Liste entfernen`}>×</button></article>)}{!todayMembers.length&&<p className="guest-roster-empty">Für heute ist noch niemand eingetragen.</p>}</div>
+      <div className="new-guest roster-add"><strong>Person für heute hinzufügen</strong><div><input value={name} onChange={event=>setName(event.target.value)} onKeyDown={event=>{if(event.key==="Enter")create()}} placeholder="z. B. Tom Taylor"/><button disabled={!name.trim()||busy} onClick={create}>{busy?"Speichert …":"Hinzufügen"}</button></div><small>Die Person gilt nur für die heutige Gästeliste und kann beim nächsten Besuch erneut ausgewählt werden.</small></div>
+      {previousMembers.length>0&&<details className="previous-guests"><summary>Früher dabei <b>{previousMembers.length}</b></summary><div>{previousMembers.map(guest=><article key={guest.id}><span>{guest.name}</span><button disabled={busy} onClick={()=>rosterAction("use_today",guest.id)}>Heute hinzufügen</button></article>)}</div></details>}
+      {error&&<p className="guest-roster-error" role="alert">{error}</p>}
+    </>:<><p className="eyebrow">VERANSTALTUNGSKONTO</p><h2>Besucher oder Verein</h2>
+      <label className="member-search"><span>⌕</span><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Besucher oder Verein durchsuchen"/><small>{visibleRoots.length} Treffer</small></label>
+      <div className="guest-account-list">{visibleRoots.map(guest=><button key={guest.id} className={current?.id===guest.id?"active":""} onClick={()=>guest.type==="club"?setClubId(guest.id):onSelect(guest)}><span>{guest.type==="club"?"V":"G"}</span><div><strong>{guest.name}</strong><small>{guest.type==="club"?`${guests.filter(candidate=>candidate.parentId===guest.id&&candidate.visitDate===visitDate).length} heute dabei · öffnen`:"Einzelner Besucher"}</small></div><b>{guest.type==="club"?"Öffnen ›":current?.id===guest.id?"✓":"Auswählen"}</b></button>)}{!visibleRoots.length&&roots.length>0&&<p>Kein passender Eintrag gefunden.</p>}</div>
+      <div className="new-guest"><strong>Neu anlegen</strong><div className="guest-type"><button className={type==="visitor"?"active":""} onClick={()=>setType("visitor")}>Einzelner Besucher</button><button className={type==="club"?"active":""} onClick={()=>setType("club")}>Besucherverein</button></div><label>Name<input value={name} onChange={event=>setName(event.target.value)} onKeyDown={event=>{if(event.key==="Enter")create()}} placeholder={type==="club"?"z. B. Verein Versuchsdorf":"z. B. Familie Meier"}/></label><button className="confirm-allocation" disabled={!name.trim()||busy} onClick={create}>{busy?"Speichert …":type==="club"?"Verein speichern und öffnen":"Anlegen und auswählen"}</button>{type==="club"&&<small className="guest-persist-note">Der Verein bleibt für kommende Veranstaltungen gespeichert. Die Personenliste wird pro Besuch neu zusammengestellt.</small>}{error&&<p className="guest-roster-error" role="alert">{error}</p>}</div>
+    </>}
+  </div></div>;
 }
 
 function GuestAccountDialog({total,selected,onClose,onConfirm}:{total:number;selected:GuestAccount|null;onClose:()=>void;onConfirm:(a:Allocation[],g:GuestAccount)=>void}){
