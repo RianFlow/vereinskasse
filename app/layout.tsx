@@ -47,12 +47,14 @@ import "./payment-choice.css";
 import "./balance-check.css";
 import "./member-admin-cleanup.css";
 import "./event-pos.css";
+import "./clubiq-brand.css";
+import { APP_NAME, APP_SHORT_NAME, APP_SLOGAN } from "./app-info";
 
 export const metadata: Metadata = {
-  title: "Vereinskasse · SV Barver Darts",
-  description: "Die einfache, tabletfreundliche Kasse für den SV Barver Darts.",
+  title: `${APP_NAME} · SV Barver Darts`,
+  description: `${APP_SLOGAN} Tabletfreundliche Kasse für den SV Barver Darts.`,
   manifest: "/manifest.webmanifest",
-  applicationName: "Vereinskasse",
+  applicationName: APP_NAME,
   icons: {
     icon: [
       { url: "/app-icon-192.png", sizes: "192x192", type: "image/png" },
@@ -62,12 +64,12 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "Vereinskasse",
+    title: APP_SHORT_NAME,
     statusBarStyle: "black-translucent",
   },
   openGraph: {
-    title: "Vereinskasse · SV Barver Darts",
-    description: "Vereinsabend, Veranstaltungen und Monatsabrechnungen für den SV Barver Darts.",
+    title: `${APP_NAME} · SV Barver Darts`,
+    description: `${APP_SLOGAN} Vereinsabend, Veranstaltungen und Monatsabrechnungen für den SV Barver Darts.`,
     images: ["/og.png"],
   },
 };

@@ -1,0 +1,33 @@
+:root{
+  --clubiq-ink:#111318;
+  --clubiq-gold:#b99656;
+}
+.clubiq-app-brand{min-width:220px}
+.clubiq-header-symbol{
+  width:46px;
+  height:46px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  overflow:hidden;
+  border-radius:12px;
+  background:var(--clubiq-ink);
+  padding:7px;
+}
+.clubiq-header-symbol img{width:100%;height:100%;object-fit:contain}
+.clubiq-app-brand>div>strong{font-size:18px;letter-spacing:-.02em}
+.profile-loading img{width:64px;height:64px;margin:auto}
+.profile-gate-card:before{
+  content:"";
+  display:block;
+  width:min(300px,72vw);
+  height:96px;
+  margin:-9px auto 17px;
+  background:url("/brand/clubiq-ledger-primary-dark.svg") center/contain no-repeat;
+}
+.theme-toggle{display:none!important}
+@media(max-width:800px){
+  .clubiq-app-brand{min-width:0}
+  .clubiq-header-symbol{width:42px;height:42px}
+  .profile-gate-card:before{width:230px;height:78px;margin:-5px auto 13px}
+}

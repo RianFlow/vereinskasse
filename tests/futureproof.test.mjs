@@ -62,8 +62,8 @@ test("teilt den Adminbereich in übersichtliche Tablet-Bereiche",async()=>{
 test("ist als Vollbild-Web-App auf Tablets installierbar",async()=>{
   const [manifestText,layout,icon192,icon512]=await Promise.all([read("public/manifest.webmanifest"),read("app/layout.tsx"),readFile(new URL("../public/app-icon-192.png",import.meta.url)),readFile(new URL("../public/app-icon-512.png",import.meta.url))]);
   const manifest=JSON.parse(manifestText);
-  assert.equal(manifest.name,"Vereinskasse · SV Barver Darts");
-  assert.equal(manifest.short_name,"Vereinskasse");
+  assert.equal(manifest.name,"Clubiq Ledger · SV Barver Darts");
+  assert.equal(manifest.short_name,"Clubiq");
   assert.equal(manifest.start_url,"/");
   assert.equal(manifest.display,"fullscreen");
   assert.deepEqual(manifest.display_override,["fullscreen","standalone","minimal-ui"]);
@@ -75,6 +75,15 @@ test("ist als Vollbild-Web-App auf Tablets installierbar",async()=>{
   for(const feature of ["manifest.webmanifest","appleWebApp","apple-touch-icon.png","viewportFit"])assert.ok(layout.includes(feature),`${feature} fehlt`);
   const page=await read("app/page.tsx");
   for(const feature of ["requestFullscreen","beforeinstallprompt","wakeLock","KioskHelpDialog","Vereinskasse als App öffnen","IconMaximize"])assert.ok(page.includes(feature),`${feature} fehlt`);
+});
+
+test("verwendet das Clubiq-Logo und den Slogan ohne das Kassentheme umzubauen",async()=>{
+  const [page,layout,brand,info]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/clubiq-brand.css"),read("app/app-info.ts")]);
+  for(const feature of ["Clubiq Ledger","Mehr als eine Vereinskasse.","APP_NAME","APP_SLOGAN"])assert.ok(`${layout}\n${info}`.includes(feature),`${feature} fehlt`);
+  for(const feature of ["/brand/clubiq-ledger-symbol-gold.svg","clubiq-app-brand","clubiq-header-symbol"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(brand.includes('/brand/clubiq-ledger-primary-dark.svg'),"Logo mit Slogan fehlt an der Profilanmeldung");
+  assert.ok(brand.includes(".theme-toggle{display:none!important}"),"Darkmode ist noch sichtbar");
+  assert.ok(page.includes('className="app kiosk-design light"'),"Die App startet nicht fest im hellen Modus");
 });
 
 test("startet nach jeder manuellen Buchung ohne den vorherigen Namen",async()=>{
@@ -124,7 +133,7 @@ test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",asy
   for(const feature of ["kiosk-design","screen-title","Hauptmenü"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(layout.includes('import "./kiosk-design.css"'));
   for(const feature of ["--kiosk-orange:#ff9800","admin-section-nav","min-height:138px","product","pos-total","@media(min-width:1200px)","grid-template-columns:minmax(0,1fr) 225px","grid-row:1/3"])assert.ok(style.includes(feature),`${feature} fehlt`);
-  for(const feature of ["productIconOptions","IconBeer","IconTargetArrow","IconBallFootball","IconGlassCocktail"])assert.ok(icons.includes(feature),`${feature} fehlt`);
+  for(const feature of ["productIconOptions","IconBeer","IconTargetArrow","IconBallFootball","IconGlassCocktail","brandBadges","cola-zero","heineken","becks","veterano","jaegermeister","product-brand-badge"])assert.ok(icons.includes(feature),`${feature} fehlt`);
   assert.ok(page.includes("<ProductManager")&&manager.includes("product-icon-picker")&&manager.includes("<ProductIcon"));
   for(const feature of ["brand-label-input","Marke / Kategorie"])assert.ok(manager.includes(feature),`${feature} fehlt`);
   assert.ok(page.includes("product-label"),"Kategorien fehlen auf den Verkaufskacheln");

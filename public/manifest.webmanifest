@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Vereinskasse · SV Barver Darts",
-  "short_name": "Vereinskasse",
-  "description": "Tabletfreundliche Vereinskasse für Vereinsabende und Veranstaltungen.",
+  "name": "Clubiq Ledger · SV Barver Darts",
+  "short_name": "Clubiq",
+  "description": "Mehr als eine Vereinskasse. Tabletfreundlich für Vereinsabende und Veranstaltungen.",
   "lang": "de-DE",
   "start_url": "/",
   "scope": "/",

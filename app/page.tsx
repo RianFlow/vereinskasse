@@ -8,6 +8,7 @@ import { ProductIcon, productIconOptions } from "./ProductIcon";
 import { ProductManager } from "./ProductManager";
 import { RfidAdminLogin, RfidBalanceLookup, RfidDevicePanel, RfidMemberCardDialog, RfidProfileLogin, RfidScanner, RfidShiftLogin } from "./RfidIntegration";
 import { IconArrowLeft,IconCalendarEvent,IconCashBanknote,IconGift,IconHome2,IconMaximize,IconMinimize,IconMoon,IconPackage,IconPlus,IconReceiptEuro,IconSearch,IconSettings,IconShieldLock,IconSun,IconTicket,IconUserCircle,IconUsers,IconUsersGroup } from "@tabler/icons-react";
+import { APP_NAME, APP_SLOGAN } from "./app-info";
 
 type IncludedItem={productId:number;quantity:number};
 type Product = { id: number; name: string; price: number; memberPrice?:number|null; includedItems?:IncludedItem[]; isOffer?:boolean; icon: string; category: string; color: string };
@@ -108,7 +109,8 @@ export default function Home() {
   useEffect(() => {
     // Initialisierung aus gerätelokalen Einstellungen; fachliche Daten kommen anschließend vom Server.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDarkMode(localStorage.getItem("vereinskasse-theme-v2") === "dark");
+    setDarkMode(false);
+    localStorage.removeItem("vereinskasse-theme-v2");
     const remembered=sessionStorage.getItem("vereinskasse-active-member"); if(remembered)setActiveMember(members.find(m=>m.id===remembered)||null);
     setOperationMode(localStorage.getItem("vereinskasse-operation-mode")==="event"?"event":"club");
     Promise.all([fetch("/api/profiles").then(r=>r.json()),fetch("/api/profile-session").then(async r=>r.ok?r.json():{profile:null})]).then(async([profileData,sessionData])=>{
@@ -215,11 +217,11 @@ export default function Home() {
     showUndo({id:sale.id,undoToken:sale.undoToken,total:result.total,member:bookingTarget,roundId:round?.id});submittingRef.current=false;
   };
 
-  if(profileLoading)return <main className="profile-loading"><span>⌛</span><strong>Vereinskasse wird vorbereitet</strong></main>;
+  if(profileLoading)return <main className="profile-loading"><Image src="/brand/clubiq-ledger-symbol-gold.svg" alt="" width={64} height={64} priority unoptimized/><strong>{APP_NAME} wird vorbereitet</strong></main>;
   if(!activeProfile)return <ProfileGateSecure profiles={profiles}/>;
-  return <MembersContext.Provider value={clubMembers}><main className={`app kiosk-design ${darkMode ? "dark" : "light"}`} style={{"--green":activeProfile.color} as React.CSSProperties}>
+  return <MembersContext.Provider value={clubMembers}><main className="app kiosk-design light" style={{"--green":activeProfile.color} as React.CSSProperties}>
     <header>
-      <div className="brand">{activeProfile.id==="darts"?<span className="brand-logo"><Image src="/sv-barver-darts.png" alt="Logo SV Barver Darts" width={52} height={52} priority unoptimized/></span>:<span className="profile-mark" style={{background:activeProfile.color}}>{activeProfile.shortName.slice(0,2).toUpperCase()}</span>}<div><strong>Vereinskasse</strong><button className="profile-switch" onClick={async()=>{await fetch("/api/profile-session",{method:"DELETE"});location.reload()}}>{activeProfile.name} <span>wechseln</span></button></div></div>
+      <div className="brand clubiq-app-brand"><span className="clubiq-header-symbol"><Image src="/brand/clubiq-ledger-symbol-gold.svg" alt="" width={46} height={46} priority unoptimized/></span><div><strong>{APP_NAME}</strong><button className="profile-switch" onClick={async()=>{await fetch("/api/profile-session",{method:"DELETE"});location.reload()}}>{activeProfile.name} <span>wechseln</span></button></div></div>
       <span className="screen-title">{view==="admin"?"Hauptmenü":operationMode==="club"?"Vereinsabend":"Veranstaltung"}</span>
       <div className="header-actions">{view==="kasse"&&<label className="header-operation-mode"><span>Betriebsart</span><select value={operationMode} onChange={event=>switchOperation(event.target.value as "club"|"event")}><option value="club">Vereinsabend</option><option value="event">Veranstaltung</option></select></label>}{view==="kasse"&&!control.shift&&<button className="header-shift-status" onClick={()=>{setShiftOpener(null);setShiftPrompt(true)}} title="Kasse eröffnen"><IconCashBanknote size={19}/><span><small>KASSE</small><strong>Geschlossen</strong></span></button>}{view==="kasse"&&operationMode==="club"&&!adminPrompt&&!shiftPrompt&&!balanceCheckOpen&&<RfidScanner members={clubMembers} onSelect={chooseListMember}/>}<span className={`status ${storageState}`}><i /> {storageState === "online" ? "Zentral gespeichert" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span>{view==="kasse"&&(activeMember?<button className="member-session" onClick={()=>setMemberPrompt(true)}><span>{activeMember.initials}</span><div><small>Angemeldet</small><strong>{activeMember.name}</strong></div></button>:<button className="member-login" onClick={()=>setMemberPrompt(true)}><IconUserCircle size={20}/> Mitglied anmelden</button>)}<button className={`kiosk-toggle ${fullscreen?"active":""}`} onClick={()=>fullscreen&&!document.fullscreenElement?setKioskHelp(true):toggleKiosk()} title="Kioskmodus / Vollbild">{fullscreen?<IconMinimize size={20}/>:<IconMaximize size={20}/>}<span>{fullscreen?"Kiosk aktiv":"Vollbild"}</span></button><button className="theme-toggle" onClick={()=>setDarkMode(v=>!v)} aria-label={darkMode ? "Hellen Modus einschalten" : "Dunklen Modus einschalten"} title={darkMode ? "Heller Modus" : "Darkmode"}>{darkMode ? <IconSun size={20}/>:<IconMoon size={20}/>}</button><button className="mode" onClick={() => {if(view==="admin")setView("kasse");else setAdminPrompt(true)}}>{view === "kasse" ? <><IconSettings size={19}/> Admin</> : <><IconArrowLeft size={19}/> Zur Kasse</>}</button></div>
     </header>
