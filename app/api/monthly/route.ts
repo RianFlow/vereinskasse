@@ -11,7 +11,14 @@ type PersonRow={
   adjustments:number;
   closingBalance:number;
   currentBalance:number;
+  parentId?:string|null;
+  parentName?:string|null;
+  isClubGroup?:boolean;
+  directBalance?:number;
+  childIds?:string[];
+  children?:PersonRow[];
 };
+type GuestLink={id:string;name:string;type:"visitor"|"club";parentId:string|null;parentName:string|null};
 type TransactionRow={
   transactionId:string;
   memberId:string;
@@ -112,14 +119,15 @@ export async function GET(request:Request){
   const dueLabel=dateLabel(dueDate);
   const closure=await env.DB.prepare("SELECT statement_number statementNumber,snapshot_json snapshotJson,checksum,closed_by_name closedByName,closed_at closedAt FROM monthly_closures WHERE profile_id=? AND month=?").bind(profile.id,month).first<ClosureRow>();
 
-  const [activity,opening,current,transactions,saleItems,allocations,products]=await Promise.all([
+  const [activity,opening,current,transactions,saleItems,allocations,products,guestLinks]=await Promise.all([
     env.DB.prepare("SELECT member_id memberId,MAX(member_name) memberName,ROUND(SUM(CASE WHEN amount>0 THEN amount ELSE 0 END),2) charges,ROUND(ABS(SUM(CASE WHEN type='Zahlung' THEN amount ELSE 0 END)),2) payments,ROUND(SUM(CASE WHEN amount<0 AND type<>'Zahlung' THEN amount ELSE 0 END),2) adjustments,ROUND(SUM(amount),2) net FROM account_transactions WHERE profile_id=? AND created_at>=? AND created_at<? GROUP BY member_id ORDER BY memberName").bind(profile.id,start,end).all<Record<string,unknown>>(),
     env.DB.prepare("SELECT member_id memberId,MAX(member_name) memberName,ROUND(SUM(amount),2) balance FROM account_transactions WHERE profile_id=? AND created_at<? GROUP BY member_id").bind(profile.id,start).all<Record<string,unknown>>(),
     env.DB.prepare("SELECT member_id memberId,MAX(member_name) memberName,ROUND(SUM(amount),2) balance FROM account_transactions WHERE profile_id=? GROUP BY member_id").bind(profile.id).all<Record<string,unknown>>(),
     env.DB.prepare("SELECT at.id transactionId,at.member_id memberId,at.member_name memberName,at.sale_id saleId,at.type,at.amount,at.note,at.created_at createdAt,COALESCE(op.name,at.operator_id) operatorName,s.time saleTime,s.total saleTotal,s.method saleMethod,s.items saleItemCount,rr.reward_amount rewardAmount,rr.reward_label rewardLabel FROM account_transactions at LEFT JOIN sales s ON s.id=at.sale_id AND s.profile_id=at.profile_id LEFT JOIN random_reward_slots rr ON rr.sale_id=s.id AND rr.profile_id=at.profile_id LEFT JOIN members op ON op.id=at.operator_id WHERE at.profile_id=? AND at.created_at>=? AND at.created_at<? ORDER BY at.created_at,at.id").bind(profile.id,start,end).all<TransactionRow>(),
     env.DB.prepare("SELECT DISTINCT si.id lineId,si.sale_id saleId,si.product_name productName,si.quantity,si.unit_price unitPrice,si.total,si.counts_for_consumption countsForConsumption FROM account_transactions at JOIN sale_items si ON si.sale_id=at.sale_id JOIN sales s ON s.id=si.sale_id AND s.profile_id=at.profile_id WHERE at.profile_id=? AND at.created_at>=? AND at.created_at<? ORDER BY si.sale_id,si.id").bind(profile.id,start,end).all<SaleItemRow>(),
     env.DB.prepare("SELECT DISTINCT sa.id allocationId,sa.sale_id saleId,sa.member_id memberId,sa.member_name memberName,sa.amount,sa.kind FROM account_transactions at JOIN sale_allocations sa ON sa.sale_id=at.sale_id AND sa.profile_id=at.profile_id WHERE at.profile_id=? AND at.created_at>=? AND at.created_at<? ORDER BY sa.sale_id,sa.id").bind(profile.id,start,end).all<AllocationRow>(),
-    env.DB.prepare("SELECT si.product_name productName,SUM(si.quantity) quantity,ROUND(SUM(si.total),2) total FROM sale_items si JOIN sales s ON s.id=si.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.profile_id=? AND s.time>=? AND s.time<? AND r.id IS NULL AND si.counts_for_consumption=1 GROUP BY si.product_name ORDER BY quantity DESC").bind(profile.id,start,end).all<Record<string,unknown>>()
+    env.DB.prepare("SELECT si.product_name productName,SUM(si.quantity) quantity,ROUND(SUM(si.total),2) total FROM sale_items si JOIN sales s ON s.id=si.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.profile_id=? AND s.time>=? AND s.time<? AND r.id IS NULL AND si.counts_for_consumption=1 GROUP BY si.product_name ORDER BY quantity DESC").bind(profile.id,start,end).all<Record<string,unknown>>(),
+    env.DB.prepare("SELECT child.id,child.name,child.type,child.parent_id parentId,parent.name parentName FROM guest_accounts child LEFT JOIN guest_accounts parent ON parent.id=child.parent_id AND parent.profile_id=child.profile_id WHERE child.profile_id=?").bind(profile.id).all<GuestLink>()
   ]);
 
   const itemsBySale=new Map<string,SaleItemRow[]>();
@@ -159,12 +167,14 @@ export async function GET(request:Request){
     ...activityMap.keys(),
     ...opening.results.filter(row=>Math.abs(Number(row.balance||0))>.001).map(row=>String(row.memberId))
   ])];
-  const people:PersonRow[]=ids.map(id=>{
+  const guestMap=new Map(guestLinks.results.map(guest=>[guest.id,guest]));
+  const basePeople:PersonRow[]=ids.map(id=>{
     const row=activityMap.get(id);
     const openingRow=openingMap.get(id);
     const openingBalance=Number(openingRow?.balance||0);
     const net=Number(row?.net||0);
     const currentRow=currentMap.get(id);
+    const guest=guestMap.get(id);
     return {
       memberId:id,
       memberName:String(row?.memberName||currentRow?.memberName||openingRow?.memberName||id),
@@ -173,9 +183,35 @@ export async function GET(request:Request){
       payments:Number(row?.payments||0),
       adjustments:Number(row?.adjustments||0),
       closingBalance:Math.round((openingBalance+net)*100)/100,
-      currentBalance:Number(currentRow?.balance||0)
+      currentBalance:Number(currentRow?.balance||0),
+      parentId:guest?.parentId||null,
+      parentName:guest?.parentName||null
     };
-  }).sort((left,right)=>left.memberName.localeCompare(right.memberName,"de"));
+  });
+  const groupedIds=new Set<string>();
+  const clubRows:PersonRow[]=guestLinks.results.filter(guest=>guest.type==="club").flatMap(club=>{
+    const linked=basePeople.filter(person=>person.memberId===club.id||person.parentId===club.id);
+    if(!linked.length)return[];
+    linked.forEach(person=>groupedIds.add(person.memberId));
+    const direct=linked.find(person=>person.memberId===club.id);
+    const children=linked.filter(person=>person.memberId!==club.id).sort((left,right)=>left.memberName.localeCompare(right.memberName,"de"));
+    const sum=(key:keyof Pick<PersonRow,"openingBalance"|"charges"|"payments"|"adjustments"|"closingBalance"|"currentBalance">)=>Math.round(linked.reduce((total,person)=>total+Number(person[key]),0)*100)/100;
+    return[{
+      memberId:club.id,
+      memberName:club.name,
+      openingBalance:sum("openingBalance"),
+      charges:sum("charges"),
+      payments:sum("payments"),
+      adjustments:sum("adjustments"),
+      closingBalance:sum("closingBalance"),
+      currentBalance:sum("currentBalance"),
+      isClubGroup:true,
+      directBalance:Number(direct?.closingBalance||0),
+      childIds:children.map(child=>child.memberId),
+      children
+    }];
+  });
+  const people:PersonRow[]=[...basePeople.filter(person=>!groupedIds.has(person.memberId)),...clubRows].sort((left,right)=>left.memberName.localeCompare(right.memberName,"de"));
 
   const itemDetails=entries.filter(entry=>entry.amount>0&&entry.saleId).flatMap(entry=>
     entry.items.map(item=>({
@@ -224,16 +260,17 @@ export async function GET(request:Request){
   const memberId=url.searchParams.get("memberId");
   if(!memberId)return Response.json(payload,{headers:{"cache-control":"no-store"}});
 
-  const person=people.find(candidate=>candidate.memberId===memberId);
+  const person=people.find(candidate=>candidate.memberId===memberId)||people.flatMap(candidate=>candidate.children||[]).find(candidate=>candidate.memberId===memberId);
   if(!person)return Response.json({error:"Für diese Person gibt es im gewählten Monat keine Abrechnung"},{status:404});
-  const personEntries=entries.filter(entry=>entry.memberId===memberId);
+  const personIds=new Set([person.memberId,...(person.childIds||[])]);
+  const personEntries=entries.filter(entry=>personIds.has(entry.memberId));
   const charges=personEntries.filter(entry=>entry.amount>0);
   const payments=personEntries.filter(entry=>entry.type==="Zahlung"&&entry.amount<0);
   const corrections=personEntries.filter(entry=>entry.type!=="Zahlung"&&entry.amount<0);
 
   const chargeRows=charges.map(entry=>{
     if(!entry.saleId){
-      return `<tbody class="booking"><tr class="booking-head"><td>${esc(invoiceWording(entry.note||entry.type))}<small>${dateTime(entry.createdAt)}</small></td><td>${eur(entry.amount)}</td></tr></tbody>`;
+      return `<tbody class="booking"><tr class="booking-head"><td>${esc(invoiceWording(entry.note||entry.type))}${person.isClubGroup?` · ${esc(entry.memberName)}`:""}<small>${dateTime(entry.createdAt)}</small></td><td>${eur(entry.amount)}</td></tr></tbody>`;
     }
     const bookingDate=dateTime(entry.saleTime||entry.createdAt);
     const participants=entry.allocations.map(allocation=>allocation.memberName).join(", ");
@@ -255,10 +292,10 @@ export async function GET(request:Request){
     const shareRow=entry.shared
       ?`<tr class="personal-share"><td><strong>Persönlicher Anteil</strong><small>Geteilt mit: ${esc(participants)}</small></td><td><strong>${eur(entry.amount)}</strong></td></tr>`
       :"";
-    return `<tbody class="booking${entry.shared?" shared":""}"><tr class="booking-head"><td><strong>${entry.shared?"Geteilte Bestellung":"Bestellung"}</strong><small>${bookingDate} · ${esc(paymentLabel(entry.saleMethod))} · Beleg ${esc(entry.saleId)}</small></td><td>${entry.shared?`Gesamt ${eur(Number(entry.saleTotal||0))}`:eur(entry.amount)}</td></tr>${itemRows}${rewardRow}${adjustmentRow}${shareRow}</tbody>`;
+    return `<tbody class="booking${entry.shared?" shared":""}"><tr class="booking-head"><td><strong>${entry.shared?"Geteilte Bestellung":"Bestellung"}${person.isClubGroup?` · ${esc(entry.memberName)}`:""}</strong><small>${bookingDate} · ${esc(paymentLabel(entry.saleMethod))} · Beleg ${esc(entry.saleId)}</small></td><td>${entry.shared?`Gesamt ${eur(Number(entry.saleTotal||0))}`:eur(entry.amount)}</td></tr>${itemRows}${rewardRow}${adjustmentRow}${shareRow}</tbody>`;
   }).join("");
-  const correctionRows=corrections.map(entry=>`<tr class="correction"><td><strong>${esc(entry.type||"Korrektur")}</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · ${esc(entry.operatorName)}`:""}${entry.itemsLabel?` · ${esc(entry.itemsLabel)}`:""}${entry.note?` · ${esc(invoiceWording(entry.note))}`:""}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
-  const paymentRows=payments.map(entry=>`<tr class="payment"><td><strong>Zahlung</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · erfasst von ${esc(entry.operatorName)}`:""} · ${esc(invoiceWording(entry.note||"Kontenausgleich"))}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
+  const correctionRows=corrections.map(entry=>`<tr class="correction"><td><strong>${esc(entry.type||"Korrektur")}${person.isClubGroup?` · ${esc(entry.memberName)}`:""}</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · ${esc(entry.operatorName)}`:""}${entry.itemsLabel?` · ${esc(entry.itemsLabel)}`:""}${entry.note?` · ${esc(invoiceWording(entry.note))}`:""}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
+  const paymentRows=payments.map(entry=>`<tr class="payment"><td><strong>Zahlung${person.isClubGroup?` · ${esc(entry.memberName)}`:""}</strong><small>${dateTime(entry.createdAt)}${entry.operatorName?` · erfasst von ${esc(entry.operatorName)}`:""} · ${esc(invoiceWording(entry.note||"Kontenausgleich"))}</small></td><td>− ${eur(Math.abs(entry.amount))}</td></tr>`).join("");
   const isGuest=person.memberId.startsWith("GAST-");
   const paymentNotice=isGuest?"Gastrechnung bitte zeitnah begleichen.":`Zahlbar bis spätestens ${dueLabel}.`;
   const reconciliation=cents(person.openingBalance)+cents(person.charges)-cents(person.payments)+cents(person.adjustments)===cents(person.closingBalance);

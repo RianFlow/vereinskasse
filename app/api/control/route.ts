@@ -2,15 +2,32 @@ import { env } from "cloudflare:workers";
 import { requireProfile } from "../profile-session";
 import { hasRole, requireRole } from "../session";
 
+type RawAccount={memberId:string;memberName:string;balance:number;accountType:"guest"|"member";guestType:"visitor"|"club"|null;parentId:string|null;parentName:string|null};
+type AccountSummary=RawAccount&{isClubGroup?:boolean;directBalance?:number;children?:RawAccount[]};
+
 export async function GET(request:Request){
   const profile=await requireProfile(request);if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401});
   const shift=await env.DB.prepare("SELECT * FROM shifts WHERE profile_id=? AND status='open' ORDER BY opened_at DESC LIMIT 1").bind(profile.id).first();
-  const accounts=await env.DB.prepare("SELECT member_id memberId,member_name memberName,ROUND(SUM(amount),2) balance,CASE WHEN member_id LIKE 'GAST-%' THEN 'guest' ELSE 'member' END accountType FROM account_transactions WHERE profile_id=? GROUP BY member_id,member_name HAVING ROUND(SUM(amount),2)>0 ORDER BY accountType DESC,memberName").bind(profile.id).all();
+  const accounts=await env.DB.prepare("SELECT at.member_id memberId,MAX(at.member_name) memberName,ROUND(SUM(at.amount),2) balance,CASE WHEN ga.id IS NULL THEN 'member' ELSE 'guest' END accountType,ga.type guestType,ga.parent_id parentId,parent.name parentName FROM account_transactions at LEFT JOIN guest_accounts ga ON ga.id=at.member_id AND ga.profile_id=at.profile_id LEFT JOIN guest_accounts parent ON parent.id=ga.parent_id AND parent.profile_id=ga.profile_id WHERE at.profile_id=? GROUP BY at.member_id,ga.type,ga.parent_id,parent.name HAVING ROUND(SUM(at.amount),2)>0 ORDER BY accountType DESC,memberName").bind(profile.id).all<RawAccount>();
   const recent=await env.DB.prepare("SELECT s.*,r.id reversal_id,r.reason reversal_reason,r.operator_name reversal_operator_name,r.created_at reversal_created_at FROM sales s LEFT JOIN reversals r ON r.sale_id=s.id WHERE s.profile_id=? ORDER BY s.time DESC LIMIT 20").bind(profile.id).all();
   const accountEntries=await env.DB.prepare("SELECT at.id,at.member_id memberId,at.member_name memberName,at.sale_id saleId,at.type,at.amount,at.note,at.created_at createdAt,COALESCE(op.name,at.operator_id) operatorName,s.cart_json cartJson,(SELECT COUNT(*) FROM sale_allocations sa WHERE sa.sale_id=at.sale_id) allocationCount FROM account_transactions at LEFT JOIN sales s ON s.id=at.sale_id LEFT JOIN members op ON op.id=at.operator_id WHERE at.profile_id=? ORDER BY at.created_at DESC LIMIT 1000").bind(profile.id).all();
   const accountItems=await env.DB.prepare("SELECT at.member_id memberId,si.sale_id saleId,si.product_name productName,si.quantity,si.unit_price unitPrice,si.total FROM account_transactions at JOIN sale_items si ON si.sale_id=at.sale_id WHERE at.profile_id=? AND at.amount>0 AND (SELECT COUNT(*) FROM sale_allocations sa WHERE sa.sale_id=at.sale_id)=1 ORDER BY at.created_at DESC").bind(profile.id).all();
   const splitAllocations=await env.DB.prepare("SELECT sa.sale_id saleId,s.time,s.total,sa.member_id memberId,sa.member_name memberName,sa.amount,r.id reversalId,(SELECT GROUP_CONCAT(si.quantity || '× ' || si.product_name, ', ') FROM sale_items si WHERE si.sale_id=s.id AND si.total>0) itemsLabel FROM sale_allocations sa JOIN sales s ON s.id=sa.sale_id LEFT JOIN reversals r ON r.sale_id=s.id WHERE sa.profile_id=? AND sa.sale_id IN (SELECT sa2.sale_id FROM sale_allocations sa2 JOIN sales s2 ON s2.id=sa2.sale_id WHERE sa2.profile_id=? GROUP BY sa2.sale_id HAVING COUNT(*)>1 ORDER BY MAX(s2.time) DESC LIMIT 100) ORDER BY s.time DESC,sa.id").bind(profile.id,profile.id).all();
-  return Response.json({shift,accounts:accounts.results,recent:recent.results,accountEntries:accountEntries.results,accountItems:accountItems.results,splitAllocations:splitAllocations.results});
+  const rawAccounts=accounts.results.map(account=>({...account,balance:Number(account.balance)}));
+  const clubGroups=new Map<string,AccountSummary>();
+  for(const account of rawAccounts){
+    const clubId=account.parentId||(account.guestType==="club"?account.memberId:null);
+    if(!clubId)continue;
+    const clubName=account.parentName||(account.guestType==="club"?account.memberName:clubId);
+    const group=clubGroups.get(clubId)||{memberId:clubId,memberName:clubName,balance:0,accountType:"guest",guestType:"club",parentId:null,parentName:null,isClubGroup:true,directBalance:0,children:[]};
+    group.balance=Math.round((group.balance+account.balance)*100)/100;
+    if(account.memberId===clubId)group.directBalance=account.balance;
+    else group.children!.push(account);
+    clubGroups.set(clubId,group);
+  }
+  const groupedIds=new Set([...clubGroups.values()].flatMap(group=>[group.memberId,...(group.children||[]).map(child=>child.memberId)]));
+  const visibleAccounts=[...rawAccounts.filter(account=>!groupedIds.has(account.memberId)),...clubGroups.values()].sort((left,right)=>left.accountType.localeCompare(right.accountType)||left.memberName.localeCompare(right.memberName,"de"));
+  return Response.json({shift,accounts:visibleAccounts,recent:recent.results,accountEntries:accountEntries.results,accountItems:accountItems.results,splitAllocations:splitAllocations.results});
 }
 
 export async function POST(request:Request){
@@ -40,8 +57,28 @@ export async function POST(request:Request){
       await env.DB.batch(statements);await env.BACKUPS.put(`reversals/${profile.id}/${now.slice(0,10)}/${id}.json`,JSON.stringify({profileId:profile.id,id,saleId:sale.id,reason:body.reason,operator,rewardRestored:Boolean(rewardSlot),createdAt:now}));return Response.json({ok:true});
     }
     if(body.action==="payment"){
-      if(!body.memberId||!body.amount||body.amount<=0)return Response.json({error:"Ungültige Zahlung"},{status:400});const outstanding=await env.DB.prepare("SELECT ROUND(COALESCE(SUM(amount),0),2) balance FROM account_transactions WHERE profile_id=? AND member_id=?").bind(profile.id,body.memberId).first<{balance:number}>();const amount=Math.min(Number(body.amount),Number(outstanding?.balance||0));if(amount<=0)return Response.json({error:"Konto ist bereits ausgeglichen"},{status:409});const method=body.paymentMethod==="Bar"?"Bar":"Sonstige",tendered=method==="Bar"?Number(body.tendered??amount):amount;if(tendered<amount)return Response.json({error:"Erhaltener Betrag ist zu niedrig"},{status:400});const id=crypto.randomUUID(),changeDue=Math.round((tendered-amount)*100)/100;
-      await env.DB.batch([env.DB.prepare("INSERT INTO account_transactions (id,profile_id,member_id,member_name,type,amount,note,operator_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)").bind(id,profile.id,body.memberId,body.memberName||body.memberId,"Zahlung",-amount,`Kontenausgleich ${method}`,operator.id,now),env.DB.prepare("INSERT INTO payments (id,profile_id,member_id,method,amount,tendered,change_due,note,operator_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(`${id}-payment`,profile.id,body.memberId,method,amount,tendered,changeDue,"Offene Rechnung bezahlt",operator.id,now),env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(`${id}-audit`,"ACCOUNT_PAYMENT","member_account",body.memberId,operator.id,JSON.stringify({profileId:profile.id,amount,method,tendered,changeDue}),now)]);await env.BACKUPS.put(`payments/${profile.id}/${now.slice(0,10)}/${id}.json`,JSON.stringify({profileId:profile.id,id,memberId:body.memberId,memberName:body.memberName,amount,method,tendered,changeDue,operator,createdAt:now}));return Response.json({ok:true,amount,changeDue,remaining:Math.max(0,Number(outstanding?.balance||0)-amount)});
+      const requestedAmount=Number(body.amount);
+      if(!body.memberId||!Number.isFinite(requestedAmount)||requestedAmount<=0)return Response.json({error:"Ungültige Zahlung"},{status:400});
+      const guestTarget=await env.DB.prepare("SELECT id,name,type FROM guest_accounts WHERE id=? AND profile_id=? AND active=1").bind(body.memberId,profile.id).first<{id:string;name:string;type:"visitor"|"club"}>();
+      const clubPayment=guestTarget?.type==="club";
+      const balances=clubPayment
+        ?await env.DB.prepare("SELECT at.member_id memberId,MAX(at.member_name) memberName,ROUND(SUM(at.amount),2) balance,MIN(at.created_at) openedAt FROM account_transactions at LEFT JOIN guest_accounts ga ON ga.id=at.member_id AND ga.profile_id=at.profile_id WHERE at.profile_id=? AND (at.member_id=? OR ga.parent_id=?) GROUP BY at.member_id HAVING ROUND(SUM(at.amount),2)>0 ORDER BY openedAt,memberName").bind(profile.id,body.memberId,body.memberId).all<{memberId:string;memberName:string;balance:number;openedAt:string}>()
+        :await env.DB.prepare("SELECT member_id memberId,MAX(member_name) memberName,ROUND(SUM(amount),2) balance,MIN(created_at) openedAt FROM account_transactions WHERE profile_id=? AND member_id=? GROUP BY member_id HAVING ROUND(SUM(amount),2)>0").bind(profile.id,body.memberId).all<{memberId:string;memberName:string;balance:number;openedAt:string}>();
+      const outstanding=Math.round(balances.results.reduce((sum,account)=>sum+Number(account.balance),0)*100)/100;
+      const amount=Math.min(requestedAmount,outstanding);
+      if(amount<=0)return Response.json({error:"Konto ist bereits ausgeglichen"},{status:409});
+      const method=body.paymentMethod==="Bar"?"Bar":"Sonstige",tendered=method==="Bar"?Number(body.tendered??amount):amount;
+      if(!Number.isFinite(tendered)||tendered<amount)return Response.json({error:"Erhaltener Betrag ist zu niedrig"},{status:400});
+      const id=crypto.randomUUID(),changeDue=Math.round((tendered-amount)*100)/100;
+      let remainingPayment=amount;
+      const distribution=balances.results.flatMap(account=>{if(remainingPayment<=.001)return[];const paid=Math.min(remainingPayment,Number(account.balance));remainingPayment=Math.round((remainingPayment-paid)*100)/100;return[{memberId:account.memberId,memberName:account.memberName,amount:paid}]});
+      await env.DB.batch([
+        ...distribution.map((share,index)=>env.DB.prepare("INSERT INTO account_transactions (id,profile_id,member_id,member_name,type,amount,note,operator_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)").bind(`${id}-${index}`,profile.id,share.memberId,share.memberName,"Zahlung",-share.amount,clubPayment?`Zahlung auf Vereinsrechnung ${guestTarget.name}`:`Kontenausgleich ${method}`,operator.id,now)),
+        env.DB.prepare("INSERT INTO payments (id,profile_id,member_id,method,amount,tendered,change_due,note,operator_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(`${id}-payment`,profile.id,body.memberId,method,amount,tendered,changeDue,clubPayment?`Vereinsrechnung ${guestTarget.name} bezahlt`:"Offene Rechnung bezahlt",operator.id,now),
+        env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(`${id}-audit`,"ACCOUNT_PAYMENT",clubPayment?"guest_club_account":"member_account",body.memberId,operator.id,JSON.stringify({profileId:profile.id,amount,method,tendered,changeDue,distribution}),now)
+      ]);
+      await env.BACKUPS.put(`payments/${profile.id}/${now.slice(0,10)}/${id}.json`,JSON.stringify({profileId:profile.id,id,memberId:body.memberId,memberName:guestTarget?.name||body.memberName,amount,method,tendered,changeDue,distribution,operator,createdAt:now}));
+      return Response.json({ok:true,amount,changeDue,remaining:Math.max(0,Math.round((outstanding-amount)*100)/100),distribution});
     }
     return Response.json({error:"Unbekannte Aktion"},{status:400});
   }catch(error){return Response.json({error:error instanceof Error?error.message:"Vorgang fehlgeschlagen"},{status:500})}
