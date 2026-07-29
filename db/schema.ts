@@ -62,7 +62,7 @@ export const events = sqliteTable("events", {
   id: text("id").primaryKey(), name: text("name").notNull(),
   profileId: text("profile_id").notNull().default("darts"),
   startsAt: text("starts_at").notNull(), endsAt: text("ends_at"), status: text("status").notNull().default("active"),
-  notes: text("notes"), createdBy: text("created_by").notNull(), createdAt: text("created_at").notNull(),
+  notes: text("notes"), productIdsJson:text("product_ids_json"),createdBy: text("created_by").notNull(), createdAt: text("created_at").notNull(),
 },table=>[index("events_profile_status_starts_idx").on(table.profileId,table.status,table.startsAt)]);
 
 export const sales = sqliteTable("sales", {

@@ -1,0 +1,1 @@
+ALTER TABLE `events` ADD `product_ids_json` text;

@@ -48,3 +48,12 @@ test("öffnet die Mitgliedsauswahl ohne Bildschirmtastatur",async()=>{
   assert.ok(finder.includes('placeholder="Name oder Mitgliedsnummer eingeben"'),"Die Mitgliedersuche fehlt");
   assert.ok(!finder.includes("autoFocus"),"Die Mitgliedsauswahl öffnet weiterhin ungefragt die Bildschirmtastatur");
 });
+
+test("gibt der Veranstaltungskasse mehr Platz für Artikel und zeigt ihren Status kompakt",async()=>{
+  const [page,layout,style]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/event-pos.css")]);
+  assert.ok(page.includes('operationMode==="event"?"event-pos":""'),"Der Veranstaltungskasse fehlt ihr eigenes Layout");
+  assert.ok(page.includes("VERANSTALTUNG LÄUFT")&&page.includes("event-live-mark"),"Der kompakte Live-Status fehlt");
+  assert.ok(layout.includes('import "./event-pos.css"'),"Das Veranstaltungs-Layout wird nicht geladen");
+  for(const feature of [".event-pos .title-row{display:none}","minmax(500px,36vw)","grid-template-columns:minmax(0,1fr) 205px"])
+    assert.ok(style.includes(feature),`${feature} fehlt im platzsparenden Veranstaltungs-Layout`);
+});
