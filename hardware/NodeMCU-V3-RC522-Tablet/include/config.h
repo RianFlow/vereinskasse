@@ -21,6 +21,8 @@ constexpr int PIN_I2C_SCL = 2;           // D4 / GPIO 2
 constexpr uint8_t STATUS_DISPLAY_ADDRESS = 0x3C;
 constexpr uint16_t STATUS_DISPLAY_WIDTH = 128;
 constexpr uint16_t STATUS_DISPLAY_HEIGHT = 64;
+// Zweifarbige OLEDs haben die gelbe Zone fest in den Pixelzeilen 0 bis 15.
+constexpr uint8_t STATUS_DISPLAY_HEADER_HEIGHT = 16;
 
 // Leer lassen: geräteabhängige Werte werden aus der Chip-ID erzeugt.
 // Eigene Werte: AP mindestens 8, Web-Passwort möglichst mindestens 12 Zeichen.

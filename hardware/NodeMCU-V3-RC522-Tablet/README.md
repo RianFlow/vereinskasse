@@ -83,6 +83,11 @@ nicht an das Display übertragen. Während des Verkaufs stehen Name, eine kompak
 Artikelliste und Gesamtbetrag auf dem Kundendisplay. Ein leerer Bon schaltet nach zwölf
 Sekunden auf ein vereinfachtes Schwarz-Weiß-Wappen des SV Barver Darts um.
 
+Bei den verbreiteten gelb-blauen OLEDs sind die oberen 16 Pixelzeilen
+hardwareseitig gelb. Die Firmware nutzt diesen Bereich ausschließlich für Name
+oder Status und beginnt Artikellisten mit Abstand darunter. Dadurch werden
+Buchstaben nicht mehr teilweise gelb und teilweise blau dargestellt.
+
 | I²C-OLED | NodeMCU V3 |
 |---|---|
 | `VCC` | `3V3` |

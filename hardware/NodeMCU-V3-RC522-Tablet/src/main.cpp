@@ -166,7 +166,9 @@ void showStatusDisplay(const String &title, const String &detail) {
   statusDisplay.setTextSize(1);
   statusDisplay.setCursor(0, 0);
   statusDisplay.println("VEREINSKASSE");
-  statusDisplay.drawLine(0, 11, STATUS_DISPLAY_WIDTH - 1, 11, SSD1306_WHITE);
+  statusDisplay.drawLine(0, STATUS_DISPLAY_HEADER_HEIGHT - 3,
+                         STATUS_DISPLAY_WIDTH - 1, STATUS_DISPLAY_HEADER_HEIGHT - 3,
+                         SSD1306_WHITE);
   statusDisplay.setTextSize(2);
   statusDisplay.setCursor(0, 18);
   statusDisplay.println(safeTitle.substring(0, 10));
@@ -200,11 +202,14 @@ void showOrderDisplay() {
   statusDisplay.setTextSize(1);
   statusDisplay.setCursor(0, 0);
   statusDisplay.println(customer.substring(0, 20));
-  statusDisplay.drawLine(0, 11, STATUS_DISPLAY_WIDTH - 1, 11, SSD1306_WHITE);
-  statusDisplay.setCursor(0, 15);
+  statusDisplay.drawLine(0, STATUS_DISPLAY_HEADER_HEIGHT - 3,
+                         STATUS_DISPLAY_WIDTH - 1, STATUS_DISPLAY_HEADER_HEIGHT - 3,
+                         SSD1306_WHITE);
+  // Zwei Pixel Abstand zur festen Gelb/Blau-Grenze verhindern Mischfarben.
+  statusDisplay.setCursor(0, STATUS_DISPLAY_HEADER_HEIGHT + 2);
   statusDisplay.println(items.substring(0, 21));
   if (items.length() > 21) {
-    statusDisplay.setCursor(0, 25);
+    statusDisplay.setCursor(0, STATUS_DISPLAY_HEADER_HEIGHT + 12);
     statusDisplay.println(items.substring(21, 42));
   }
   statusDisplay.setTextSize(2);
