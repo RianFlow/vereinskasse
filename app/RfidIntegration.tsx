@@ -154,6 +154,37 @@ export function RfidShiftLogin({onVerified}:{onVerified:(member:Member)=>void}){
   return <div className={`rfid-admin-login shift ${state}`} aria-live="polite"><span>{state==="success"?<IconCheck size={25}/>:state==="error"?<IconAlertCircle size={25}/>:<IconNfc size={25}/>}</span><div><strong>{state==="success"?"Mitglied erkannt":state==="checking"?"Leser wird geprüft":state==="waiting"?"Chip auflegen":state==="unknown"?"Unbekannte Karte":"Lesefehler"}</strong><small>{message}</small></div></div>;
 }
 
+export function RfidBalanceLookup({onVerified}:{onVerified:(member:Member)=>void}){
+  const [message,setMessage]=useState("Leser wird geprüft. Danach Mitgliedschip auflegen.");
+  const [state,setState]=useState<"checking"|"waiting"|"success"|"unknown"|"error">("checking");
+  const finished=useRef(false),holdUntil=useRef(0),onVerifiedRef=useRef(onVerified);
+  useEffect(()=>{onVerifiedRef.current=onVerified},[onVerified]);
+  useEffect(()=>{
+    let stopped=false,busy=false;
+    const poll=async()=>{
+      if(stopped||busy||finished.current||document.visibilityState!=="visible")return;
+      busy=true;
+      try{
+        const response=await fetch("/api/rfid",{cache:"no-store"}),data=await response.json();
+        if(!response.ok)throw new Error(data.error||"RFID-Leser ist momentan nicht erreichbar");
+        if(stopped)return;
+        if(data.state==="recognized"&&data.member){
+          finished.current=true;setState("success");setMessage(`✓ ${data.member.name} erkannt.`);void playRfidRecognitionTone();
+          setTimeout(()=>{if(!stopped)onVerifiedRef.current(data.member)},250);
+        }else if(data.state==="unknown"){
+          holdUntil.current=Date.now()+3500;setState("unknown");setMessage("Diese Karte ist noch keinem aktiven Mitglied zugeordnet.");
+        }else if(Date.now()>=holdUntil.current){
+          const online=Number(data.deviceCount||0)>0;setState("waiting");setMessage(online?"Leser ist bereit. Mitgliedschip jetzt auflegen.":"Kein RFID-Leser online. Name kann weiterhin ausgewählt werden.");
+        }
+      }catch(reason){
+        if(!stopped){setState("error");setMessage(reason instanceof Error?reason.message:"RFID-Abfrage fehlgeschlagen")}
+      }finally{busy=false}
+    };
+    poll();const timer=setInterval(poll,350);return()=>{stopped=true;clearInterval(timer)};
+  },[]);
+  return <div className={`rfid-admin-login balance ${state}`} aria-live="polite"><span>{state==="success"?<IconCheck size={25}/>:state==="error"?<IconAlertCircle size={25}/>:<IconNfc size={25}/>}</span><div><strong>{state==="success"?"Mitglied erkannt":state==="checking"?"Leser wird geprüft":state==="waiting"?"Chip auflegen":state==="unknown"?"Unbekannte Karte":"Leser nicht erreichbar"}</strong><small>{message}</small></div></div>;
+}
+
 export function RfidProfileLogin({profile,onVerified}:{profile:LoginProfile;onVerified:(member:Member)=>void}){
   const [message,setMessage]=useState("Verbindung zum RFID-Leser wird geprüft.");
   const [state,setState]=useState<"checking"|"waiting"|"success"|"unknown"|"pin_required"|"error">("checking");
