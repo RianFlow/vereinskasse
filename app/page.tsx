@@ -226,8 +226,10 @@ export default function Home() {
         <div className="checkout">
           {operationMode==="club"?<div className={`checkout-customer-compact ${billingMember?"assigned":"anonymous"}`}><div className="checkout-customer-head"><span>{billingMember?.initials||"€"}</span><div><small>{billingMember?"BUCHUNG AUF":"DIREKTVERKAUF"}</small><strong>{billingMember?.name||"Ohne Namen"}</strong></div>{billingMember&&<b>{money(Number(control.accounts.find(account=>account.memberId===billingMember.id)?.balance||0))}<small>bisher offen</small></b>}</div><p>{billingMember?"Wird zur Monatsabrechnung hinzugefügt.":"Barzahlung sofort möglich."}</p><div><button onClick={()=>setMemberFinder(true)}>{billingMember?"Ändern":"Mitglied wählen"}</button>{billingMember&&<button className="compact-customer-clear" onClick={clearBillingMember}>Entfernen</button>}</div></div>:<div className={`checkout-customer-compact ${selectedGuest?"assigned guest":"anonymous"}`}><div className="checkout-customer-head"><span>{selectedGuest?(selectedGuest.type==="club"?"V":"G"):"€"}</span><div><small>{selectedGuest?"GASTRECHNUNG":"DIREKTVERKAUF"}</small><strong>{selectedGuest?guestDisplayName(selectedGuest):"Ohne Namen"}</strong></div>{selectedGuest&&<b>{money(Number(control.accounts.find(account=>account.memberId===selectedGuest.id)?.balance||0))}<small>bisher offen</small></b>}</div><p>{selectedGuest?"Wird auf diesem Gastkonto gesammelt.":"Barzahlung sofort möglich."}</p><div><button onClick={()=>setGuestFinder(true)}>{selectedGuest?"Ändern":"Gast wählen"}</button></div></div>}
           <div className="checkout-price-summary"><span>Preisgruppe</span><strong>{memberPricing?"Mitgliedspreise":"Normalpreise"}</strong></div>
-          <div className="sum pos-total"><span>ZU ZAHLEN <small>{itemCount} Artikel</small></span><strong>{money(total)}</strong></div>
-          <button className="pay open-payment-dialog" disabled={!itemCount} onClick={()=>setPaymentMenu(true)}><span>Bezahlen / buchen</span><strong>{money(total)}</strong></button>
+          <button type="button" className="sum pos-total checkout-total-button" disabled={!itemCount} onClick={()=>setPaymentMenu(true)} aria-label={itemCount?`${money(total)} bezahlen oder buchen`:"Keine Artikel im Warenkorb"}>
+            <span>ZU ZAHLEN <small>{itemCount?`${itemCount} Artikel · zum Abschließen antippen`:"Noch keine Artikel"}</small></span>
+            <strong>{money(total)}</strong>
+          </button>
         </div>
       </aside>
       {paid && <div className={`toast ${undoSale?"undo-toast":""}`} role="status">{undoSale?<><div className="undo-copy"><strong>✓ Auf {undoSale.member} gebucht</strong><small>{money(undoSale.total)}{changeToast!==null?` · ${money(changeToast)} Rückgeld`:""}</small></div><button onClick={undoLastSale} disabled={undoBusy}>{undoBusy?"Wird zurückgenommen …":"↶ Rückgängig"}</button><i className="undo-progress" /></>:<>✓ {undoMessage||"Buchung erfasst"}{changeToast!==null?` · ${money(changeToast)} Rückgeld`:""}</>}</div>}
@@ -586,17 +588,18 @@ function RewardWinDialog({reward,onClose}:{reward:RewardWin;onClose:()=>void}){
 function PaymentChoiceDialog({total,operationMode,member,guest,memberPricing,onPricing,onClose,onMemberAccount,onMethod,onChooseMember}:{total:number;operationMode:"club"|"event";member:Member|null;guest:GuestAccount|null;memberPricing:boolean;onPricing:(value:boolean)=>void;onClose:()=>void;onMemberAccount:()=>void;onMethod:(method:string)=>void;onChooseMember:()=>void}){
   return <div className="modal-backdrop payment-choice-backdrop" role="dialog" aria-modal="true" aria-labelledby="payment-choice-title"><div className="identity-card payment-choice-card">
     <button className="modal-close" onClick={onClose} aria-label="Zahlungsfenster schließen">×</button>
-    <p className="eyebrow">BESTELLUNG ABSCHLIESSEN</p>
-    <div className="payment-choice-head"><div><h2 id="payment-choice-title">Wie wird bezahlt?</h2><small>Passende Zahlart oder Aufteilung auswählen</small></div><strong>{money(total)}</strong></div>
+    <p className="eyebrow">SICHERHEITSABFRAGE</p>
+    <div className="payment-choice-head"><div><h2 id="payment-choice-title">Bestellung wirklich abschließen?</h2><small>Bitte Betrag prüfen und anschließend die Zahlungsart auswählen. Erst dann wird gebucht.</small></div><strong>{money(total)}</strong></div>
     <small className="checkout-section-label">Preisgruppe</small>
     <div className="price-mode-switch payment-price-switch" aria-label="Preisart"><button className={memberPricing?"active":""} onClick={()=>onPricing(true)}><span>♥</span><strong>Mitglied</strong><small>Mitgliedspreise</small></button><button className={!memberPricing?"active non-member":""} onClick={()=>onPricing(false)}><span>○</span><strong>Nichtmitglied</strong><small>Normalpreise</small></button></div>
     <div className="payment-choice-grid">
-      {operationMode==="club"&&member&&<button className="payment-choice-option account" onClick={onMemberAccount}><span>✓</span><div><strong>Auf {member.name.split(" ")[0]} anschreiben</strong><small>Zur Monatsabrechnung hinzufügen</small></div></button>}
-      <button className="payment-choice-option cash" onClick={()=>onMethod("Bar")}><IconCashBanknote size={30}/><div><strong>Bar zahlen</strong><small>Mit Rückgeldberechnung</small></div></button>
-      <button className="payment-choice-option guest" onClick={()=>onMethod("Tageskonto")}><IconTicket size={30}/><div><strong>{operationMode==="event"&&guest?`Auf ${guest.name.split(" ")[0]} buchen`:"Gastkonto"}</strong><small>Jetzt anschreiben, später bezahlen</small></div></button>
-      <button className="payment-choice-option split" onClick={()=>onMethod("Mitgliedskonto")}><IconUsersGroup size={30}/><div><strong>Betrag aufteilen</strong><small>Mehrere Mitglieder oder eine Runde</small></div></button>
-      {operationMode==="club"&&!member&&<button className="payment-choice-option member" onClick={onChooseMember}><IconUserCircle size={30}/><div><strong>Auf ein Mitglied buchen</strong><small>Mitglied suchen und komplett anschreiben</small></div></button>}
+      {operationMode==="club"&&member&&<button className="payment-choice-option account" onClick={onMemberAccount}><span>✓</span><div><strong>Ja, auf {member.name.split(" ")[0]} anschreiben</strong><small>Verbindlich zur Monatsabrechnung hinzufügen</small></div></button>}
+      <button className="payment-choice-option cash" onClick={()=>onMethod("Bar")}><IconCashBanknote size={30}/><div><strong>Weiter zur Barzahlung</strong><small>Erhaltenen Betrag und Rückgeld prüfen</small></div></button>
+      <button className="payment-choice-option guest" onClick={()=>onMethod("Tageskonto")}><IconTicket size={30}/><div><strong>{operationMode==="event"&&guest?`Auf ${guest.name.split(" ")[0]} buchen`:"Weiter zum Gastkonto"}</strong><small>Jetzt anschreiben, später bezahlen</small></div></button>
+      <button className="payment-choice-option split" onClick={()=>onMethod("Mitgliedskonto")}><IconUsersGroup size={30}/><div><strong>Weiter zum Aufteilen</strong><small>Mehrere Mitglieder oder eine Runde</small></div></button>
+      {operationMode==="club"&&!member&&<button className="payment-choice-option member" onClick={onChooseMember}><IconUserCircle size={30}/><div><strong>Mitglied auswählen</strong><small>Danach komplett auf das Mitglied buchen</small></div></button>}
     </div>
+    <button className="payment-choice-cancel" onClick={onClose}>Nein, Bestellung weiter bearbeiten</button>
     <button className="payment-choice-paypal" disabled title="Zahlungsanbieter noch nicht verbunden">PayPal · noch nicht verbunden</button>
   </div></div>;
 }

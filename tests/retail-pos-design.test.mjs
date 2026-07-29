@@ -34,11 +34,12 @@ test("pinnt Kassenhinweise an und scrollt nur die Artikel",async()=>{
 
 test("wählt die Zahlungsart in einem platzsparenden Dialog",async()=>{
   const [page,layout,style]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/payment-choice.css")]);
-  for(const fragment of ["PaymentChoiceDialog","Wie wird bezahlt?","Bezahlen / buchen","Bar zahlen","Gastkonto","Betrag aufteilen"])
+  for(const fragment of ["PaymentChoiceDialog","Bestellung wirklich abschließen?","SICHERHEITSABFRAGE","Weiter zur Barzahlung","Weiter zum Gastkonto","Weiter zum Aufteilen","Nein, Bestellung weiter bearbeiten"])
     assert.ok(page.includes(fragment),`Zahlungsdialog enthält ${fragment}`);
   assert.ok(layout.includes('import "./payment-choice.css"'),"Layout bindet den Zahlungsdialog ein");
   assert.ok(style.includes(".payment-choice-grid"),"Zahlungsarten sind als große Touch-Auswahl gestaltet");
-  assert.ok(style.includes(".open-payment-dialog"),"Kassenabschluss bleibt als kompakter Hauptknopf sichtbar");
+  assert.ok(style.includes(".checkout-total-button"),"Die einmalig angezeigte Endsumme ist der klare Bezahlknopf");
+  assert.equal((page.match(/className="sum pos-total checkout-total-button"/g)||[]).length,1,"Die Kasse darf nur einen Endsumme-/Bezahlknopf zeigen");
 });
 
 test("öffnet die Mitgliedsauswahl ohne Bildschirmtastatur",async()=>{
