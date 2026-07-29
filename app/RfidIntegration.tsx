@@ -86,7 +86,7 @@ export function RfidScanner({onSelect}:{members:Member[];onSelect:(member:Member
   </button>;
 }
 
-export function RfidAdminLogin({expectedMemberId,onVerified}:{expectedMemberId?:string;onVerified:(member:Member)=>void}){
+export function RfidAdminLogin({expectedMemberId,requiredRole,onVerified}:{expectedMemberId?:string;requiredRole?:string;onVerified:(member:Member)=>void}){
   const [state,setState]=useState<"checking"|"waiting"|"success"|"unknown"|"forbidden"|"mismatch"|"error">("checking");
   const [message,setMessage]=useState("Verbindung zum RFID-Leser wird geprüft.");
   const finished=useRef(false),holdUntil=useRef(0),onVerifiedRef=useRef(onVerified);
@@ -99,6 +99,7 @@ export function RfidAdminLogin({expectedMemberId,onVerified}:{expectedMemberId?:
       try{
         const query=new URLSearchParams({purpose:"admin"});
         if(expectedMemberId)query.set("memberId",expectedMemberId);
+        if(requiredRole)query.set("requiredRole",requiredRole);
         const response=await fetch(`/api/rfid?${query}`,{cache:"no-store"}),data=await response.json();
         if(!response.ok)throw new Error(data.error||"RFID-Anmeldung ist momentan nicht erreichbar");
         if(stopped)return;
@@ -120,7 +121,7 @@ export function RfidAdminLogin({expectedMemberId,onVerified}:{expectedMemberId?:
     };
     poll();const timer=setInterval(poll,350);
     return()=>{stopped=true;clearInterval(timer)};
-  },[expectedMemberId]);
+  },[expectedMemberId,requiredRole]);
   return <div className={`rfid-admin-login ${state}`} aria-live="polite">
     <span>{state==="success"?<IconCheck size={25}/>:state==="error"||state==="forbidden"||state==="mismatch"?<IconAlertCircle size={25}/>:<IconNfc size={25}/>}</span>
     <div><strong>{state==="success"?"Admin-Chip erkannt":state==="checking"?"Leser wird geprüft":state==="waiting"?"Mit Chip anmelden":state==="unknown"?"Unbekannte Karte":state==="forbidden"?"Keine Adminberechtigung":state==="mismatch"?"Falsche Karte":"Lesefehler"}</strong><small>{message}</small></div>

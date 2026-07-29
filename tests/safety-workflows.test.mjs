@@ -50,10 +50,11 @@ test("zeigt in der Kasse nur Störungen und verwaltet Systemdetails im Adminbere
 });
 
 test("beendet Mitgliedschaften nur mit ausgeglichenem Konto und sperrt Zugänge",async()=>{
-  const [members,schema,page]=await Promise.all([read("app/api/members/route.ts"),read("db/schema.ts"),read("app/page.tsx")]);
+  const [members,schema,page,rfid,rfidApi]=await Promise.all([read("app/api/members/route.ts"),read("db/schema.ts"),read("app/page.tsx"),read("app/RfidIntegration.tsx"),read("app/api/rfid/route.ts")]);
   for(const feature of ["MEMBER_RETIRED","DELETE FROM rfid_cards","DELETE FROM auth_sessions","privacyReviewAt","Konto hat noch"])assert.ok(members.includes(feature),`${feature} fehlt`);
   assert.ok(schema.includes("memberLifecycle"));
-  for(const copy of ["AUSTRITT & DATENSCHUTZ","Austritt sicher abschließen","Buchungen bleiben für Abrechnung und Nachweis erhalten"])assert.ok(page.includes(copy),`${copy} fehlt`);
+  for(const copy of ["MemberLifecycleGate","AUSTRITT & DATENSCHUTZ","Austritt sicher abschließen","Buchungen bleiben für Abrechnung und Nachweis erhalten","Chip oder Admin-Code erforderlich",'allowedRoles={["Vorstand"]}'])assert.ok(page.includes(copy),`${copy} fehlt`);
+  assert.ok(rfid.includes("requiredRole")&&rfidApi.includes('!hasRole(member,requiredRole)'),"RFID schützt den Austrittsbereich nicht auf Vorstandsebene");
 });
 
 test("jedes aktive Mitglied kann die Kasse direkt per RFID-Chip eröffnen",async()=>{
@@ -78,4 +79,5 @@ test("legt Mitglieder schnell an und schützt freiwillige WhatsApp-Kontakte",asy
   assert.ok(!data.includes("whatsappNumber"),"Die normale Kassen-API darf keine WhatsApp-Nummern ausliefern");
   assert.ok(schema.includes("whatsappNumber")&&schema.includes("whatsappConsentAt"));
   assert.ok(migration.includes("whatsapp_number")&&migration.includes("whatsapp_consent_at"));
+  for(const copy of ["WhatsApp & Umfragen","whatsapp-member-admin","Kontakte und Umfragen"])assert.ok(page.includes(copy),`${copy} fehlt im getrennten WhatsApp-Bereich`);
 });

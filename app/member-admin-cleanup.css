@@ -1,0 +1,53 @@
+.member-admin-area{display:grid;gap:14px}
+.member-section-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.member-section-tabs>button{position:relative;display:grid;grid-template-columns:42px 1fr auto;align-items:center;gap:11px;min-height:72px;border:1px solid var(--line);border-radius:13px;padding:11px 14px;background:var(--panel);color:inherit;text-align:left}
+.member-section-tabs>button>svg,.member-section-tabs .whatsapp-tab-icon{display:grid;place-items:center;width:40px;height:40px;border-radius:10px;background:#edf1ee;color:var(--green)}
+.member-section-tabs .whatsapp-tab-icon{background:#e5f6ec;color:#147a47;font-weight:950}
+.member-section-tabs strong,.member-section-tabs small{display:block}
+.member-section-tabs strong{font-size:15px}
+.member-section-tabs small{margin-top:3px;color:#718078;font-size:11px}
+.member-section-tabs>button>b{display:grid;place-items:center;min-width:27px;height:27px;border-radius:999px;background:#e5f6ec;color:#147a47;font-size:11px}
+.member-section-tabs>button.active{border-color:var(--green);box-shadow:inset 4px 0 var(--green),0 7px 18px #173b3212}
+.member-section-tabs>button.active>svg,.member-section-tabs>button.active .whatsapp-tab-icon{background:var(--green);color:#fff}
+.member-directory-toolbar.directory-only{grid-template-columns:minmax(240px,1fr);margin-bottom:10px}
+.member-directory-toolbar.whatsapp-only{grid-template-columns:minmax(240px,1fr) auto}
+.whatsapp-member-admin .panel-head{align-items:center}
+.whatsapp-member-admin .panel-head small{display:block;margin-top:4px;color:#718078}
+.whatsapp-admin-list{display:grid;gap:7px}
+.whatsapp-admin-list>article{display:grid;grid-template-columns:42px minmax(160px,1fr) auto auto;align-items:center;gap:11px;border:1px solid var(--line);border-radius:11px;padding:9px 11px}
+.whatsapp-admin-list>article>span{display:grid;place-items:center;width:40px;height:40px;border-radius:10px;background:var(--green);color:#fff;font-size:12px;font-weight:950}
+.whatsapp-admin-list strong,.whatsapp-admin-list small{display:block}
+.whatsapp-admin-list small{margin-top:3px;color:#718078}
+.whatsapp-admin-list em{border-radius:999px;padding:5px 8px;font-size:10px;font-style:normal;font-weight:900}
+.whatsapp-admin-list em.ready{background:#e2f7eb;color:#1d7549}
+.whatsapp-admin-list em.missing{background:#edf1ee;color:#6d7b74}
+.whatsapp-admin-list button{border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:transparent;color:var(--green);font-weight:900}
+.member-lifecycle-gate{padding:0!important;overflow:hidden}
+.member-lifecycle-toggle{display:grid;width:100%;grid-template-columns:44px 1fr auto;align-items:center;gap:12px;border:0;padding:14px 16px;background:transparent;color:inherit;text-align:left}
+.member-lifecycle-lock{display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:#f5ecea;color:#a24036}
+.member-lifecycle-toggle strong,.member-lifecycle-toggle small{display:block}
+.member-lifecycle-toggle small{margin-top:3px;color:#718078}
+.member-lifecycle-toggle>b{color:var(--green);font-size:12px}
+.member-lifecycle-gate.open .member-lifecycle-toggle{border-bottom:1px solid var(--line);background:#fbfcfb}
+.member-lifecycle-gate .member-lifecycle-panel{margin:0;padding:17px}
+.app.dark .member-section-tabs>button,.app.dark .member-lifecycle-toggle,.app.dark .whatsapp-admin-list>article,.app.dark .whatsapp-admin-list button{background:#181d1b;border-color:#3a433e;color:#f1f4f2}
+.app.dark .member-section-tabs>button.active{border-color:#6ea786}
+.app.dark .member-section-tabs>button>svg,.app.dark .member-section-tabs .whatsapp-tab-icon,.app.dark .whatsapp-admin-list em.ready{background:#203429;color:#9bd6b6}
+.app.dark .member-section-tabs>button.active>svg,.app.dark .member-section-tabs>button.active .whatsapp-tab-icon{background:#43805c;color:#fff}
+.app.dark .member-lifecycle-gate.open .member-lifecycle-toggle{background:#1d2521}
+.app.dark .member-lifecycle-lock{background:#3a2927;color:#f0a198}
+.app.dark .whatsapp-admin-list em.missing{background:#2a302d;color:#a8b3ad}
+@media(max-width:720px){
+  .member-section-tabs{grid-template-columns:1fr}
+  .member-section-tabs>button{min-height:64px}
+  .member-directory-toolbar.whatsapp-only{grid-template-columns:1fr}
+  .whatsapp-admin-list>article{grid-template-columns:42px 1fr auto}
+  .whatsapp-admin-list>article>em{grid-column:2}
+  .whatsapp-admin-list>article>button{grid-column:3;grid-row:1/3}
+}
+@media(max-width:500px){
+  .member-lifecycle-toggle{grid-template-columns:40px 1fr}
+  .member-lifecycle-toggle>b{grid-column:2}
+  .whatsapp-admin-list>article{grid-template-columns:38px 1fr}
+  .whatsapp-admin-list>article>button{grid-column:1/-1;grid-row:auto}
+}

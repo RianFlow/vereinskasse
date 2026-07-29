@@ -96,24 +96,27 @@ test("verwendet tabletfreundliche Zahlenfelder mit großen Schritten und Ziffern
 
 test("zeigt Bestellung, Summe und häufige Bezahlarten wie eine direkte Kasse",async()=>{
   const [page,style,paymentStyle]=await Promise.all([read("app/page.tsx"),read("app/direct-checkout.css"),read("app/payment-choice.css")]);
-  for(const feature of ["AKTUELLER BON","ZU ZAHLEN","Bezahlen / buchen","Bar zahlen","Betrag aufteilen","Gastkonto"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  for(const feature of ["AKTUELLER BON","ZU ZAHLEN","bezahlen oder buchen","Weiter zur Barzahlung","Weiter zum Aufteilen","Weiter zum Gastkonto"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(page.includes('setOperator(activeMember||billingMember||'),"Kassendienst kann nicht ohne zusätzliche Anmeldung fortfahren");
   assert.ok(!page.includes("authorizeCheckout"),"Die alte Kassenberechtigung wird noch abgefragt");
   assert.ok(!page.includes("Weitere Aktionen"),"Häufige Bezahlarten sind noch versteckt");
   for(const feature of ["pos-total","position:sticky","min-height:78px"])assert.ok(style.includes(feature),`${feature} fehlt`);
   assert.ok(paymentStyle.includes(".payment-choice-grid"),"Die Bezahlarten fehlen im kompakten Abschlussdialog");
-  assert.ok(page.includes("Betrag aufteilen")&&page.includes('operationMode==="club"'),"Betrag aufteilen fehlt beim Vereinsabend");
+  assert.ok(page.includes("Weiter zum Aufteilen")&&page.includes('operationMode==="club"'),"Betrag aufteilen fehlt beim Vereinsabend");
 });
 
 test("legt Mitglieder schlank mit kombinierbaren geschützten Funktionen an",async()=>{
-  const [page,route,data,style]=await Promise.all([read("app/page.tsx"),read("app/api/members/route.ts"),read("app/api/data/route.ts"),read("app/members.css")]);
-  for(const feature of ["MemberCreateDialog","Vorname","Nachname","Kassenwart","Systemadministration","Kein Passwort nötig","MemberAccessDialog","Sicheren Code vorschlagen","Später einrichten","Kassendienst darf jeder machen"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  const [page,route,data,style,cleanup]=await Promise.all([read("app/page.tsx"),read("app/api/members/route.ts"),read("app/api/data/route.ts"),read("app/members.css"),read("app/member-admin-cleanup.css")]);
+  for(const feature of ["MemberCreateDialog","Vorname","Nachname","Kassenwart","Systemadministration","Kein Passwort nötig","MemberAccessDialog","Sicheren Code vorschlagen","Später einrichten","Mitgliederliste"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(!page.includes("Kassendienst darf jeder machen"),"Die alte Kassendienst-Erklärung belegt noch Platz");
+  assert.ok(!page.includes("Zentrale Speicherung + zweite Sicherung"),"Die alte Speicher-Erklärung belegt noch Platz");
   assert.ok(!page.includes('prompt("Vor- und Nachname")'),"Mitglieder werden noch über unübersichtliche Eingabefenster angelegt");
   for(const feature of ["firstName","lastName","NOLOGIN-","set_access","MEMBER_ACCESS_SET","hasAccess"])assert.ok(route.includes(feature),`${feature} fehlt in der Mitgliederverwaltung`);
   assert.ok(data.includes('!m.code.startsWith("NOLOGIN-")'),"Zugangsstatus fehlt beim Laden");
   assert.ok(data.includes('body.method==="Vertrauensliste"&&!trusted'),"Vertrauensbuchungen werden serverseitig nicht geprüft");
   assert.ok(!data.includes('["Kassendienst","Vorstand"].includes(session.role)'),"Der Server beschränkt die normale Kasse noch auf alte Rollen");
-  for(const feature of [".member-name-fields",".member-role-choices",".member-row-actions",".cashier-for-everyone"])assert.ok(style.includes(feature),`${feature} fehlt im Mitgliederlayout`);
+  for(const feature of [".member-name-fields",".member-role-choices",".member-row-actions"])assert.ok(style.includes(feature),`${feature} fehlt im Mitgliederlayout`);
+  for(const feature of [".member-section-tabs",".whatsapp-member-admin",".member-lifecycle-toggle"])assert.ok(cleanup.includes(feature),`${feature} fehlt im aufgeräumten Mitgliederlayout`);
 });
 
 test("bietet einen dunklen Kassenstil mit großen Kacheln und orangem Fokus",async()=>{
