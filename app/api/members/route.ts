@@ -9,6 +9,12 @@ const normalizeWhatsappNumber=(value:string)=>{
   const compact=value.trim().replace(/[\s()./-]/g,"").replace(/^00/,"+");
   return /^\+[1-9]\d{7,14}$/.test(compact)?compact:null;
 };
+const safeMemberError=(error:unknown)=>{
+  const message=error instanceof Error?error.message:"";
+  if(message.includes("UNIQUE"))return "Dieser Admin-Code wird bereits verwendet";
+  if(/pbkdf2|derivebits|iteration|crypto/i.test(message))return "Der Admin-Zugang konnte nicht sicher gespeichert werden. Bitte erneut versuchen.";
+  return "Mitglied konnte nicht gespeichert werden";
+};
 const canonicalRole=(requested:string[])=>{
   const roles=[...new Set(requested.map(role=>role.trim()))];
   if(!roles.length||roles.some(role=>!allowedRoles.includes(role)))return null;
@@ -140,7 +146,7 @@ export async function POST(request:Request){
     }
     return Response.json({error:"Unbekannte Aktion"},{status:400});
   }catch(e){
-    const message=e instanceof Error?e.message:"Mitglied konnte nicht gespeichert werden";
-    return Response.json({error:message.includes("UNIQUE")?"Dieser Admin-Code wird bereits verwendet":message},{status:500});
+    console.error("Mitgliederverwaltung fehlgeschlagen",e);
+    return Response.json({error:safeMemberError(e)},{status:500});
   }
 }

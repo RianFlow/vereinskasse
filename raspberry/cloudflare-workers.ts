@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { createPostgresD1Database } from "./postgres-d1";
 
 type SqlValue = string | number | bigint | null | Uint8Array;
 type BoundStatement = LocalD1PreparedStatement;
@@ -32,6 +33,11 @@ const databasePath = resolve(
 const objectDirectory = resolve(
   process.env.VEREINSKASSE_BACKUP_DIR || join(dataDirectory, "backups"),
 );
+const databaseProvider =
+  process.env.VEREINSKASSE_DATABASE_PROVIDER === "postgres" ||
+  Boolean(process.env.DATABASE_URL)
+    ? "postgres"
+    : "sqlite";
 
 mkdirSync(dirname(databasePath), { recursive: true });
 mkdirSync(objectDirectory, { recursive: true });
@@ -101,15 +107,6 @@ function applyMigrations(database: DatabaseSync) {
   }
 }
 
-const database = new DatabaseSync(databasePath, {
-  enableForeignKeyConstraints: true,
-});
-database.exec("PRAGMA journal_mode=WAL");
-database.exec("PRAGMA synchronous=FULL");
-database.exec("PRAGMA busy_timeout=5000");
-database.exec("PRAGMA foreign_keys=ON");
-applyMigrations(database);
-
 class LocalD1PreparedStatement {
   private values: SqlValue[] = [];
 
@@ -174,25 +171,38 @@ class LocalD1PreparedStatement {
 }
 
 class LocalD1Database {
+  private readonly database: DatabaseSync;
+
+  constructor(path: string) {
+    this.database = new DatabaseSync(path, {
+      enableForeignKeyConstraints: true,
+    });
+    this.database.exec("PRAGMA journal_mode=WAL");
+    this.database.exec("PRAGMA synchronous=FULL");
+    this.database.exec("PRAGMA busy_timeout=5000");
+    this.database.exec("PRAGMA foreign_keys=ON");
+    applyMigrations(this.database);
+  }
+
   prepare(sql: string) {
-    return new LocalD1PreparedStatement(database.prepare(sql), sql);
+    return new LocalD1PreparedStatement(this.database.prepare(sql), sql);
   }
 
   async batch(statements: BoundStatement[]) {
-    database.exec("BEGIN IMMEDIATE");
+    this.database.exec("BEGIN IMMEDIATE");
     try {
       const results = [];
       for (const statement of statements) results.push(await statement.run());
-      database.exec("COMMIT");
+      this.database.exec("COMMIT");
       return results;
     } catch (error) {
-      database.exec("ROLLBACK");
+      this.database.exec("ROLLBACK");
       throw error;
     }
   }
 
   async exec(sql: string) {
-    database.exec(sql);
+    this.database.exec(sql);
     return { count: 1, duration: 0 };
   }
 }
@@ -328,9 +338,13 @@ class LocalR2Bucket {
 }
 
 export const env = {
-  DB: new LocalD1Database(),
+  DB:
+    databaseProvider === "postgres"
+      ? createPostgresD1Database(projectRoot)
+      : new LocalD1Database(databasePath),
   BACKUPS: new LocalR2Bucket(),
   VEREINSKASSE_RUNTIME: "raspberry",
+  VEREINSKASSE_DATABASE_PROVIDER: databaseProvider,
   VEREINSKASSE_DATABASE_PATH: databasePath,
   VEREINSKASSE_BACKUP_DIR: objectDirectory,
 };

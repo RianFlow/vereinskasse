@@ -18,8 +18,10 @@ test("trennt Systemadministration und Kassenwart serverseitig und erlaubt kombin
 
 test("speichert geschützte Zugangscodes nicht im Klartext",async()=>{
   const [access,members,identify]=await Promise.all([read("app/api/member-access.ts"),read("app/api/members/route.ts"),read("app/api/identify/route.ts")]);
-  for(const feature of ["PBKDF2","120_000","SHA-256","crypto.getRandomValues","verifyAccessCode"])assert.ok(access.includes(feature),`${feature} fehlt beim Passwortschutz`);
+  for(const feature of ["PBKDF2","100_000","SHA-256","crypto.getRandomValues","verifyAccessCode","rounds>iterations"])assert.ok(access.includes(feature),`${feature} fehlt beim Passwortschutz`);
+  assert.ok(!access.includes("120_000"),"Die Sites-Laufzeit darf nicht mehr als 100.000 PBKDF2-Durchläufe erhalten");
   assert.ok(members.includes("protectAccessCode(code)")&&!members.includes("bind(id,name,code,initials)"),"Ein Zugangscode wird noch direkt gespeichert");
+  assert.ok(members.includes("safeMemberError")&&members.includes("Der Admin-Zugang konnte nicht sicher gespeichert werden"),"Interne Verschlüsselungsfehler werden ungefiltert angezeigt");
   assert.ok(identify.includes("verifyAccessCode")&&identify.includes("if(legacy)")&&identify.includes("safeMember"),"Alte Codes werden nicht sicher geprüft und aktualisiert");
   for(const feature of ["MEMBER_ACCESS_FAILED","MEMBER_ACCESS_LOGIN","15*60*1000",">=5","shortHash(clientAddress)"])assert.ok(identify.includes(feature),`${feature} fehlt beim Schutz vor Login-Versuchen`);
 });

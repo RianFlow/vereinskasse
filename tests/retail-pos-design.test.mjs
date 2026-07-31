@@ -57,3 +57,17 @@ test("gibt der Veranstaltungskasse mehr Platz für Artikel und zeigt ihren Statu
   for(const feature of [".event-pos .title-row{display:none}","minmax(500px,36vw)","grid-template-columns:minmax(0,1fr) 205px"])
     assert.ok(style.includes(feature),`${feature} fehlt im platzsparenden Veranstaltungs-Layout`);
 });
+
+test("hält Vergleichspreise in der Kachel und beschreibt die Artikelposition passend",async()=>{
+  const [page,style]=await Promise.all([read("app/page.tsx"),read("app/retail-pos.css")]);
+  for(const feature of ["empty-cart-hint-side","empty-cart-hint-stacked","Artikel links antippen","Artikel oben antippen"])
+    assert.ok(page.includes(feature),`${feature} fehlt im leeren Bon`);
+  for(const feature of [".product .old-price","overflow:hidden",".product:has(.old-price){min-height:142px}",".empty-cart-hint-side{display:none}",".empty-cart-hint-stacked{display:block}"])
+    assert.ok(style.includes(feature),`${feature} fehlt in der Hochformatkorrektur`);
+});
+
+test("trennt Preisgruppe und Rechnungsbutton in der schmalen Querformatleiste",async()=>{
+  const style=await read("app/balance-check.css");
+  for(const feature of ["@media(min-width:1200px)",".checkout-info-row{grid-template-columns:minmax(0,1fr)",".quick-balance-button{width:100%;justify-content:center}"])
+    assert.ok(style.includes(feature),`${feature} fehlt für die Querformatleiste`);
+});

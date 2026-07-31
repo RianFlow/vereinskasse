@@ -12,6 +12,9 @@ Die microSD ist für den Probebetrieb geeignet. Sie ist noch keine zweite
 Sicherung. Sobald die SSD da ist, werden Datenbank, Belegspeicher und
 Sicherungsziel auf die SSD verschoben.
 
+Die Raspberry-Laufzeit nutzt PostgreSQL. Die bisherige Cloud-Version mit D1
+bleibt während der Tests unverändert und erhält keine Raspberry-Buchungen.
+
 ## Installation
 
 Auf dem Raspberry anmelden und das öffentliche Projekt holen:
@@ -40,6 +43,7 @@ sudo systemctl status vereinskasse
 sudo journalctl -u vereinskasse -n 100 --no-pager
 sudo vereinskasse-backup
 sudo vereinskasse-update
+sudo vereinskasse-db-pruefen
 ```
 
 Täglich um etwa 03:15 Uhr wird automatisch eine konsistente Sicherung
@@ -88,18 +92,34 @@ Erst nach kontrollierter Vorschau wirklich ausführen:
 sudo vereinskasse-restore /var/backups/vereinskasse/DATEI.tar.gz --execute
 ```
 
-Die bestehende Datenbank wird dabei zusätzlich als
-`vereinskasse.sqlite.vor-wiederherstellung-*` aufbewahrt.
+Die bestehende Datenbank wird dabei zusätzlich als separate
+PostgreSQL-Archivdatenbank aufbewahrt. Schlägt eine Rücksicherung fehl, wird
+automatisch wieder der vorherige Datenstand aktiviert.
+
+## Nach dem Probebetrieb sauber starten
+
+Wenn alle Tests abgeschlossen sind, kann eine neue leere Produktivdatenbank
+angelegt werden:
+
+```bash
+sudo vereinskasse-neue-datenbank
+```
+
+Der Assistent erstellt zuerst eine geprüfte Vollsicherung, verlangt eine klare
+Bestätigung und eine neue sechsstellige Start-PIN. Die Testdaten werden nicht
+gelöscht, sondern als getrennte Archivdatenbank behalten. Erst nach der ersten
+Anmeldung werden der Hauptadmin, Mitglieder, Artikel und RFID-Zuordnungen neu
+angelegt.
 
 ## Wenn die SSD angekommen ist
 
 1. SSD anschließen und Zustand prüfen.
 2. Neue Sicherung erstellen und Prüfsumme kontrollieren.
 3. SSD formatieren und dauerhaft unter `/srv/vereinskasse` einhängen.
-4. Anwendung stoppen.
-5. Daten und Sicherungen mit Prüfsummen kopieren.
-6. Die drei Speicherpfade in `/etc/vereinskasse/environment` auf die SSD
-   umstellen.
+4. PostgreSQL-Datenverzeichnis nur mit dem PostgreSQL-eigenen Umzugsverfahren
+   auf die SSD verschieben; nicht im laufenden Betrieb kopieren.
+5. Belegspeicher und Sicherungen mit Prüfsummen kopieren.
+6. Die Speicherpfade in `/etc/vereinskasse/environment` auf die SSD umstellen.
 7. Anwendung starten und Datenbank, Buchungen und Sicherungsabruf prüfen.
 8. SD-Daten erst nach mehreren erfolgreichen Sicherungen unangetastet
    archivieren.

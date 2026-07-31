@@ -19,7 +19,8 @@ const cleanIncludedItems=(parentId:number,items:IncludedItemInput[]|undefined,al
 async function ensureSeed(profileId:string) {
   const db = getDb();
   const existing = await db.select({ id: products.id }).from(products).where(eq(products.profileId,profileId)).limit(1);
-  if (!existing.length&&profileId==="darts") await db.insert(products).values(seedProducts.map(p => ({...p,profileId, updatedAt:new Date().toISOString()})));
+  const runtime=(env as unknown as {VEREINSKASSE_RUNTIME?:string}).VEREINSKASSE_RUNTIME;
+  if (!existing.length&&profileId==="darts"&&runtime!=="raspberry") await db.insert(products).values(seedProducts.map(p => ({...p,profileId, updatedAt:new Date().toISOString()})));
 }
 
 type SaleLine={productId:number;productName:string;quantity:number;unitPrice:number;total:number;countsForConsumption?:boolean};

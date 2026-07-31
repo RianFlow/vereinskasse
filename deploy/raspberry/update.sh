@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+set -a
 source /etc/vereinskasse/environment
+set +a
 
 repository="/opt/vereinskasse/repository.git"
 releases="/opt/vereinskasse/releases"
@@ -26,13 +28,16 @@ npm ci
 npm run check:migrations
 npm run typecheck
 npm run build:raspberry
-chown -R root:root "$release"
-chmod -R a+rX "$release"
-
 if [[ -x /usr/local/sbin/vereinskasse-backup &&
-      -f "${VEREINSKASSE_DATABASE_PATH:-/var/lib/vereinskasse/data/vereinskasse.sqlite}" ]]; then
+      ( "${VEREINSKASSE_DATABASE_PROVIDER:-sqlite}" == "postgres" ||
+        -f "${VEREINSKASSE_DATABASE_PATH:-/var/lib/vereinskasse/data/vereinskasse.sqlite}" ) ]]; then
   /usr/local/sbin/vereinskasse-backup
 fi
+if [[ "${VEREINSKASSE_DATABASE_PROVIDER:-sqlite}" == "postgres" ]]; then
+  node raspberry/postgres-admin.mjs migrate
+fi
+chown -R root:root "$release"
+chmod -R a+rX "$release"
 
 previous="$(readlink -f "$current" 2>/dev/null || true)"
 next_link="/opt/vereinskasse/.current-next"

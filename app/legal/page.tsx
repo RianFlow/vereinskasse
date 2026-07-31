@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import {
   APP_COPYRIGHT_YEAR,
   APP_DEVELOPER,
@@ -17,7 +18,7 @@ export default function LegalPage() {
   return (
     <main className="legal-page">
       <section className="legal-shell">
-        <a className="legal-back" href="/">← Zurück zur Kasse</a>
+        <Link className="legal-back" href="/">← Zurück zur Kasse</Link>
 
         <header className="legal-brand">
           <Image
