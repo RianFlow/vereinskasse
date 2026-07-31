@@ -5,7 +5,7 @@
 ```text
 Tablet im Vereinsheim
         │
-        ├── lokale Kasse ──> Raspberry Pi ──> SQLite auf SSD
+        ├── lokale Kasse ──> Raspberry Pi ──> PostgreSQL auf SSD
         │
 Internet│
         └── Rechnung ansehen

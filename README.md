@@ -41,5 +41,14 @@ Wichtige Befehle:
 - `npm test` – Migrationen, Produktionsbuild und Funktionsprüfungen ausführen
 - `npm run db:generate` – neue Datenbankmigration erzeugen
 - `npm run check:migrations` – Migrationen auf Vollständigkeit und Datenlöschung prüfen
+- `npm run db:postgres:migrate` – PostgreSQL-Schema auf dem Raspberry aktualisieren
+- `npm run db:postgres:check` – PostgreSQL-Verbindung und Tabellenbestand prüfen
 
 Die produktiven Speicherbindungen für Datenbank und Sicherungen werden in `.openai/hosting.json` deklariert. Zugangsdaten gehören niemals in das Repository.
+
+## Datenbank-Laufzeiten
+
+- Die bestehende ChatGPT-Sites-Testversion verwendet weiterhin Cloudflare D1.
+- Der Raspberry verwendet PostgreSQL als eigenständige Hauptdatenbank.
+- Beide Laufzeiten verwenden dieselben Kassen- und API-Funktionen; es gibt keinen dauerhaften Doppel-Schreibbetrieb.
+- Eine spätere Produktivdatenbank wird mit `sudo vereinskasse-neue-datenbank` kontrolliert leer angelegt. Der bisherige Teststand wird davor gesichert und als getrennte Archivdatenbank behalten.
