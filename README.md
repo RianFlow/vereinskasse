@@ -52,3 +52,11 @@ Die produktiven Speicherbindungen für Datenbank und Sicherungen werden in `.ope
 - Der Raspberry verwendet PostgreSQL als eigenständige Hauptdatenbank.
 - Beide Laufzeiten verwenden dieselben Kassen- und API-Funktionen; es gibt keinen dauerhaften Doppel-Schreibbetrieb.
 - Eine spätere Produktivdatenbank wird mit `sudo vereinskasse-neue-datenbank` kontrolliert leer angelegt. Der bisherige Teststand wird davor gesichert und als getrennte Archivdatenbank behalten.
+
+## Docker
+
+PostgreSQL wird zusammen mit pgadmin in einer Docker-Umgebung bereitgestellt. Die Datenbank ist auf Port 5432 erreichbar. pgadmin ist auf Port 5050 erreichbar. Um in pgadmin eine Verbindung mit der Datenbank herzustellen, wird die lokale Adresse / Host 127.0.0.1 oder 172.17.0.1 verwendet.
+
+- `docker compose up` – Docker-Umgebung starten
+- `docker compose down` – Docker-Umgebung stoppen
+- `docker compose pull` – Images neu laden / aktualisieren
