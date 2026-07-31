@@ -1,0 +1,241 @@
+name: clubiq-ledger
+
+x-app-environment: &app-environment
+  VEREINSKASSE_DATABASE_PROVIDER: postgres
+  VEREINSKASSE_APP_DIR: /app
+  VEREINSKASSE_DATA_DIR: /data
+  VEREINSKASSE_BACKUP_DIR: /data/objects
+  PGHOST: ${POSTGRES_HOST:-postgres}
+  PGPORT: ${POSTGRES_PORT:-5432}
+  PGDATABASE: ${POSTGRES_DATABASE:-vereinskasse}
+  PGUSER: ${POSTGRES_USER:-vereinskasse}
+  PGPASSWORD_FILE: /run/secrets/postgres_app_password
+  VEREINSKASSE_POSTGRES_SSL: ${POSTGRES_SSL:-disable}
+  PGSSLMODE: ${POSTGRES_SSL_MODE:-disable}
+  PGSSLROOTCERT: ${POSTGRES_SSL_ROOT_CERT:-system}
+  TZ: ${TZ:-Europe/Berlin}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vereinskasse
+      POSTGRES_USER: clubiq_admin
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+      POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
+      POSTGRES_INITDB_ARGS: --data-checksums --auth-host=scram-sha-256
+      TZ: ${TZ:-Europe/Berlin}
+    secrets:
+      - postgres_admin_password
+      - postgres_app_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/10-clubiq-user.sh:ro
+    shm_size: 256mb
+    command:
+      - postgres
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - max_connections=40
+      - -c
+      - wal_compression=on
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clubiq_admin -d vereinskasse"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  app:
+    image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-test}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *app-environment
+      VEREINSKASSE_INITIAL_PROFILE_PIN_FILE: /run/secrets/initial_profile_pin
+      VEREINSKASSE_POSTGRES_POOL_SIZE: ${POSTGRES_POOL_SIZE:-10}
+      VINEXT_TRUST_PROXY: "1"
+      VINEXT_TRUSTED_HOSTS: ${CLUBIQ_HOSTNAME:-vereinskasse.local}
+    secrets:
+      - postgres_app_password
+      - initial_profile_pin
+    volumes:
+      - app_data:/data
+    expose:
+      - "3000"
+    networks:
+      - database
+      - web
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/profiles').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 45s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      CLUBIQ_HOSTNAME: ${CLUBIQ_HOSTNAME:-vereinskasse.local}
+      TZ: ${TZ:-Europe/Berlin}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  backup:
+    image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-test}
+    restart: unless-stopped
+    entrypoint: ["/usr/bin/tini", "--", "/app/deploy/docker/backup-loop.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *app-environment
+      VEREINSKASSE_OS_BACKUP_DIR: /backups/local
+      VEREINSKASSE_SECONDARY_BACKUP_DIR: /backups/usb
+      VEREINSKASSE_SECONDARY_REQUIRED_MARKER: .clubiq-backup-target
+      VEREINSKASSE_BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-3600}
+      VEREINSKASSE_BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-35}
+      VEREINSKASSE_USB_RETENTION_DAYS: ${USB_RETENTION_DAYS:-400}
+      CLUBIQ_R2_ENABLED: ${CLUBIQ_R2_ENABLED:-false}
+      CLUBIQ_R2_ENDPOINT: ${CLUBIQ_R2_ENDPOINT:-}
+      CLUBIQ_R2_BUCKET: ${CLUBIQ_R2_BUCKET:-}
+      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+      AWS_ACCESS_KEY_ID_FILE: /run/secrets/r2_access_key_id
+      AWS_SECRET_ACCESS_KEY_FILE: /run/secrets/r2_secret_access_key
+      RESTIC_CACHE_DIR: /var/cache/restic
+    secrets:
+      - postgres_app_password
+      - restic_password
+      - r2_access_key_id
+      - r2_secret_access_key
+    volumes:
+      - app_data:/data:ro
+      - backup_cache:/backups/local
+      - ${USB_BACKUP_PATH:-/mnt/vereinskasse-sicherung}:/backups/usb
+      - restic_cache:/var/cache/restic
+    networks:
+      - database
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  tools:
+    image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-test}
+    profiles: ["tools"]
+    entrypoint: ["/usr/bin/tini", "--", "/app/deploy/docker/tool-entrypoint.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *app-environment
+      PGADMINUSER: clubiq_admin
+      PGADMINPASSWORD_FILE: /run/secrets/postgres_admin_password
+      VEREINSKASSE_OS_BACKUP_DIR: /backups/local
+      VEREINSKASSE_SECONDARY_BACKUP_DIR: /backups/usb
+    secrets:
+      - postgres_app_password
+      - postgres_admin_password
+    volumes:
+      - app_data:/data
+      - backup_cache:/backups/local
+      - ${USB_BACKUP_PATH:-/mnt/vereinskasse-sicherung}:/backups/usb
+    networks:
+      - database
+      - web
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  app_data:
+  backup_cache:
+  restic_cache:
+  caddy_data:
+  caddy_config:
+
+networks:
+  database:
+    internal: true
+  web:
+
+secrets:
+  postgres_admin_password:
+    file: ./secrets/postgres_admin_password
+  postgres_app_password:
+    file: ./secrets/postgres_app_password
+  initial_profile_pin:
+    file: ./secrets/initial_profile_pin
+  restic_password:
+    file: ./secrets/restic_password
+  r2_access_key_id:
+    file: ./secrets/r2_access_key_id
+  r2_secret_access_key:
+    file: ./secrets/r2_secret_access_key

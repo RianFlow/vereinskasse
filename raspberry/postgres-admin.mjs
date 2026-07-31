@@ -8,13 +8,14 @@ const command = process.argv[2] || "check";
 const projectRoot = resolve(process.env.VEREINSKASSE_APP_DIR || process.cwd());
 
 function config() {
+  const ssl =
+    process.env.VEREINSKASSE_POSTGRES_SSL === "require"
+      ? { rejectUnauthorized: true }
+      : undefined;
   if (process.env.DATABASE_URL) {
     return {
       connectionString: process.env.DATABASE_URL,
-      ssl:
-        process.env.VEREINSKASSE_POSTGRES_SSL === "require"
-          ? { rejectUnauthorized: true }
-          : undefined,
+      ssl,
     };
   }
   return {
@@ -23,6 +24,7 @@ function config() {
     database: process.env.PGDATABASE || "vereinskasse",
     user: process.env.PGUSER || "vereinskasse",
     password: process.env.PGPASSWORD,
+    ssl,
   };
 }
 
@@ -82,16 +84,16 @@ async function migrate(pool) {
 }
 
 async function bootstrap(pool) {
+  const existing = await pool.query("SELECT COUNT(*)::int count FROM profiles");
+  if (Number(existing.rows[0]?.count || 0) > 0) {
+    console.log("Startprofil bereits vorhanden; keine Änderung vorgenommen.");
+    return;
+  }
   const pin = process.env.VEREINSKASSE_INITIAL_PROFILE_PIN || "";
   if (!/^\d{6}$/.test(pin)) {
     throw new Error(
       "VEREINSKASSE_INITIAL_PROFILE_PIN muss genau sechs Ziffern enthalten.",
     );
-  }
-  const existing = await pool.query("SELECT COUNT(*)::int count FROM profiles");
-  if (Number(existing.rows[0]?.count || 0) > 0) {
-    console.log("Startprofil bereits vorhanden; keine Änderung vorgenommen.");
-    return;
   }
   const salt = randomBytes(16).toString("hex");
   const hash = pbkdf2Sync(pin, salt, 100_000, 32, "sha256").toString("hex");

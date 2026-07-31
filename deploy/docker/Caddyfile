@@ -1,0 +1,29 @@
+{
+  admin off
+  auto_https disable_redirects
+}
+
+http://:8080 {
+  @certificate path /vereinskasse-ca.crt /root.crt
+  rewrite @certificate /root.crt
+  root * /data/caddy/pki/authorities/local
+  file_server
+  header Cache-Control "no-store"
+}
+
+http://{$CLUBIQ_HOSTNAME:vereinskasse.local} {
+  redir https://{$CLUBIQ_HOSTNAME:vereinskasse.local}{uri} permanent
+}
+
+https://{$CLUBIQ_HOSTNAME:vereinskasse.local} {
+  tls internal
+  encode zstd gzip
+  reverse_proxy app:3000
+  header {
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "same-origin"
+    -Server
+  }
+}
+
