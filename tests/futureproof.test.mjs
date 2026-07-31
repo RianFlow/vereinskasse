@@ -82,16 +82,24 @@ test("verwendet das Clubiq-Logo und den Slogan ohne das Kassentheme umzubauen",a
   for(const feature of ["Clubiq Ledger","Mehr als eine Vereinskasse.","APP_NAME","APP_SLOGAN"])assert.ok(`${layout}\n${info}`.includes(feature),`${feature} fehlt`);
   for(const feature of ["/brand/clubiq-ledger-symbol-gold.svg","clubiq-app-brand","clubiq-header-symbol"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok(brand.includes('/brand/clubiq-ledger-primary-dark.svg'),"Logo mit Slogan fehlt an der Profilanmeldung");
-  for(const feature of ["APP_VERSION","APP_DEVELOPER","APP_COPYRIGHT_YEAR","1.2.0","Florian Hümmling"])assert.ok(info.includes(feature),`${feature} fehlt`);
+  for(const feature of ["APP_VERSION","APP_DEVELOPER","APP_COPYRIGHT_YEAR","1.2.1","Florian Hümmling"])assert.ok(info.includes(feature),`${feature} fehlt`);
   for(const feature of ["Impressum","Angaben gemäß § 5 DDG","Sportverein Barver von 1926 e. V.","Amtsgericht Walsrode","VR 100163","Alle Rechte vorbehalten"])assert.ok(legal.includes(feature),`${feature} fehlt`);
   assert.ok(layout.includes("clubiq-legal-shortcut")&&layout.includes("v{APP_VERSION} · Impressum"),"Sichtbarer Versions- und Impressumslink fehlt");
   assert.ok(legalStyle.includes(".legal-brand")&&legalStyle.includes(".legal-version"),"Logo und Version sind auf der Infoseite nicht hervorgehoben");
   for(const feature of ["ClubiqSignature","cart-brand-signature","payment-brand-signature","admin-brand-signature"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok((page.match(/<ClubiqSignature/g)||[]).length===3,"Die dezente Markensignatur soll genau an drei zusätzlichen Stellen erscheinen");
   assert.ok(brand.includes(".clubiq-signature")&&brand.includes("opacity:.62"),"Die zusätzlichen Markenhinweise sind nicht zurückhaltend gestaltet");
-  assert.ok(packageFile.includes('"version": "1.2.0"'),"Paketversion stimmt nicht mit der sichtbaren Version überein");
+  assert.ok(packageFile.includes('"version": "1.2.1"'),"Paketversion stimmt nicht mit der sichtbaren Version überein");
   assert.ok(brand.includes(".theme-toggle{display:none!important}"),"Darkmode ist noch sichtbar");
   assert.ok(page.includes('className="app kiosk-design light"'),"Die App startet nicht fest im hellen Modus");
+});
+
+test("startet mit Clubiq-Splashscreen und sicherer Marken-Anmeldung",async()=>{
+  const [page,layout,style,splash]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/profile-brand-refresh.css"),readFile(new URL("../public/brand/clubiq-ledger-splash.png",import.meta.url))]);
+  for(const feature of ["clubiq-splash","clubiq-ledger-splash.png","splashMinimumMet","splashLeaving","Willkommen zurück","Profil mit Chip öffnen","Mit Profil-PIN anmelden"])assert.ok(page.includes(feature),`${feature} fehlt`);
+  assert.ok(layout.includes('import "./profile-brand-refresh.css"'),"Der neue Anmeldeauftritt wird nicht geladen");
+  for(const feature of ["grid-template-columns:minmax(300px,1fr) minmax(430px,520px)","Vereinsfinanzen.","object-fit:cover","@media(max-width:900px)","prefers-reduced-motion"])assert.ok(style.includes(feature),`${feature} fehlt im responsiven Startbildschirm`);
+  assert.ok(splash.length>10000,"Die freigegebene Splashscreen-Grafik fehlt oder ist unvollständig");
 });
 
 test("startet nach jeder manuellen Buchung ohne den vorherigen Namen",async()=>{

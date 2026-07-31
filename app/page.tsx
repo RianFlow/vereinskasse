@@ -103,7 +103,7 @@ export default function Home() {
   const [selectedGuest,setSelectedGuest]=useState<GuestAccount|null>(null);
   const [guestFinder,setGuestFinder]=useState(false);
   const [events,setEvents]=useState<EventSummary[]>([]);
-  const [profiles,setProfiles]=useState<Profile[]>([]);const [activeProfile,setActiveProfile]=useState<Profile|null>(null);const [profileLoading,setProfileLoading]=useState(true);
+  const [profiles,setProfiles]=useState<Profile[]>([]);const [activeProfile,setActiveProfile]=useState<Profile|null>(null);const [profileLoading,setProfileLoading]=useState(true),[splashMinimumMet,setSplashMinimumMet]=useState(false),[splashVisible,setSplashVisible]=useState(true),[splashLeaving,setSplashLeaving]=useState(false);
   const [needsAdministrator,setNeedsAdministrator]=useState(false);const submittingRef=useRef(false);
   const [shiftPrompt,setShiftPrompt]=useState(false),[shiftOpener,setShiftOpener]=useState<Member|null>(null);
   const [pendingCount,setPendingCount]=useState(0);
@@ -126,6 +126,8 @@ export default function Home() {
       const pending=safeArray<Record<string,unknown>>(localStorage.getItem(`vereinskasse-pending-${profile.id}`));const remaining=await Promise.all(pending.map(async sale=>{try{const result=await fetch("/api/data",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...sale,rewardEligible:false,offlineQueuedAt:sale.offlineQueuedAt||new Date().toISOString()})});return result.ok?null:sale}catch{return sale}}));const open=remaining.filter(Boolean);setPendingCount(open.length);if(open.length)localStorage.setItem(`vereinskasse-pending-${profile.id}`,JSON.stringify(open));else localStorage.removeItem(`vereinskasse-pending-${profile.id}`);if(pending.length!==open.length){loadControl();loadEvents()}
     }).catch(()=>setStorageState("offline")).finally(()=>setProfileLoading(false));
   }, []);
+  useEffect(()=>{const timer=setTimeout(()=>setSplashMinimumMet(true),900);return()=>clearTimeout(timer)},[]);
+  useEffect(()=>{if(profileLoading||!splashMinimumMet||!splashVisible)return;setSplashLeaving(true);const timer=setTimeout(()=>setSplashVisible(false),240);return()=>clearTimeout(timer)},[profileLoading,splashMinimumMet,splashVisible]);
   useEffect(() => { if(activeProfile)localStorage.setItem(`vereinskasse-data-${activeProfile.id}`, JSON.stringify({ products, sales })); }, [products, sales,activeProfile]);
   useEffect(() => { localStorage.setItem("vereinskasse-theme-v2", darkMode ? "dark" : "light"); }, [darkMode]);
   useEffect(() => { localStorage.setItem("vereinskasse-operation-mode",operationMode); }, [operationMode]);
@@ -224,7 +226,7 @@ export default function Home() {
     showUndo({id:sale.id,undoToken:sale.undoToken,total:result.total,member:bookingTarget,roundId:round?.id});submittingRef.current=false;
   };
 
-  if(profileLoading)return <main className="profile-loading"><Image src="/brand/clubiq-ledger-symbol-gold.svg" alt="" width={64} height={64} priority unoptimized/><strong>{APP_NAME} wird vorbereitet</strong></main>;
+  if(splashVisible)return <main className={`profile-loading clubiq-splash ${splashLeaving?"leaving":""}`} aria-label={`${APP_NAME} wird vorbereitet`}><Image src="/brand/clubiq-ledger-splash.png" alt={`${APP_NAME} – ${APP_SLOGAN}`} fill sizes="100vw" priority unoptimized/><strong className="sr-only">{APP_NAME} wird vorbereitet</strong></main>;
   if(!activeProfile)return <ProfileGateSecure profiles={profiles}/>;
   return <MembersContext.Provider value={clubMembers}><main className="app kiosk-design light" style={{"--green":activeProfile.color} as React.CSSProperties}>
     <header>
@@ -409,7 +411,7 @@ function ProfileGateSecure({profiles}:{profiles:Profile[]}){
   const [selected,setSelected]=useState<Profile|null>(profiles[0]||null),[usePin,setUsePin]=useState(false);
   if(usePin)return <ProfileGate profiles={profiles}/>;
   return <main className="profile-gate"><section className="profile-gate-card profile-chip-gate">
-    <div className="profile-gate-brand"><Image src="/sv-barver-darts.png" alt="Logo SV Barver Darts" width={70} height={70} priority unoptimized/><div><p>DORFGEMEINSCHAFTSHAUS</p><h1>Profil mit Chip öffnen</h1><small>Sparte auswählen und den zugeordneten Mitgliedschip auflegen.</small></div></div>
+    <div className="profile-gate-brand"><Image src="/sv-barver-darts.png" alt="Logo SV Barver Darts" width={70} height={70} priority unoptimized/><div><p>PROFILANMELDUNG</p><h1>Willkommen zurück</h1><small>Profil mit Chip öffnen: Sparte auswählen und den zugeordneten Mitgliedschip auflegen.</small></div></div>
     <div className="profile-choices">{profiles.map(profile=><button key={profile.id} className={selected?.id===profile.id?"active":""} onClick={()=>setSelected(profile)} style={{"--choice":profile.color} as React.CSSProperties}>{profile.id==="darts"?<Image src="/sv-barver-darts.png" alt="" width={48} height={48} unoptimized/>:<span>{profile.shortName.slice(0,2).toUpperCase()}</span>}<div><strong>{profile.name}</strong><small>Chip gilt nur für dieses Profil</small></div><b>{selected?.id===profile.id?"✓":"›"}</b></button>)}</div>
     {selected&&<RfidProfileLogin key={selected.id} profile={selected} onVerified={()=>location.reload()}/>}
     <div className="profile-fallback"><span>Leser ausgefallen oder Chip nicht zur Hand?</span><button onClick={()=>setUsePin(true)}>Mit Profil-PIN anmelden</button></div>

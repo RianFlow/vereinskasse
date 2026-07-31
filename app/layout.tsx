@@ -49,6 +49,7 @@ import "./member-admin-cleanup.css";
 import "./event-pos.css";
 import "./clubiq-brand.css";
 import "./legal.css";
+import "./profile-brand-refresh.css";
 import { APP_NAME, APP_SHORT_NAME, APP_SLOGAN, APP_VERSION } from "./app-info";
 
 export const metadata: Metadata = {
