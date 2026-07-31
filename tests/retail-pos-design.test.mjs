@@ -65,3 +65,9 @@ test("hält Vergleichspreise in der Kachel und beschreibt die Artikelposition pa
   for(const feature of [".product .old-price","overflow:hidden",".product:has(.old-price){min-height:142px}",".empty-cart-hint-side{display:none}",".empty-cart-hint-stacked{display:block}"])
     assert.ok(style.includes(feature),`${feature} fehlt in der Hochformatkorrektur`);
 });
+
+test("trennt Preisgruppe und Rechnungsbutton in der schmalen Querformatleiste",async()=>{
+  const style=await read("app/balance-check.css");
+  for(const feature of ["@media(min-width:1200px)",".checkout-info-row{grid-template-columns:minmax(0,1fr)",".quick-balance-button{width:100%;justify-content:center}"])
+    assert.ok(style.includes(feature),`${feature} fehlt für die Querformatleiste`);
+});
