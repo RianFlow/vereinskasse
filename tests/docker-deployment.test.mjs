@@ -49,6 +49,11 @@ test("sichert stündlich auf lokal, freigegebenen USB und optional verschlüssel
   assert.match(backup, /VEREINSKASSE_SECONDARY_REQUIRED_MARKER/);
   assert.match(backup, /sha256sum/);
   assert.match(loop, /\.last-backup\.json/);
+  const backupService = compose.slice(
+    compose.indexOf("\n  backup:"),
+    compose.indexOf("\n  tools:"),
+  );
+  assert.match(backupService, /app:\s*\n\s+condition: service_healthy/);
   assert.match(r2, /restic backup/);
   assert.match(r2, /restic check/);
   assert.match(r2, /RESTIC_PASSWORD_FILE/);

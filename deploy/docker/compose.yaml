@@ -143,6 +143,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      app:
+        condition: service_healthy
     environment:
       <<: *app-environment
       VEREINSKASSE_OS_BACKUP_DIR: /backups/local

@@ -124,10 +124,16 @@ jobs:
           test "$(docker inspect --format '{{.State.Health.Status}}' clubiq-ledger-app-1)" = healthy
           docker compose exec -T app sh -c 'export PGPASSWORD="$(cat "$PGPASSWORD_FILE")"; node raspberry/postgres-admin.mjs check'
           for attempt in $(seq 1 30); do
-            docker compose exec -T backup test -f /backups/local/.last-backup.json && break
+            if docker compose exec -T backup \
+                grep -q '"ok":true' /backups/local/.last-backup.json; then
+              break
+            fi
+            if [ "$attempt" = 30 ]; then
+              docker compose logs backup app postgres
+              exit 1
+            fi
             sleep 2
           done
-          docker compose exec -T backup grep -q '"ok":true' /backups/local/.last-backup.json
 
       - if: always()
         working-directory: deploy/docker
