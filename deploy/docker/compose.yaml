@@ -12,7 +12,9 @@ x-app-environment: &app-environment
   PGPASSWORD_FILE: /run/secrets/postgres_app_password
   VEREINSKASSE_POSTGRES_SSL: ${POSTGRES_SSL:-disable}
   PGSSLMODE: ${POSTGRES_SSL_MODE:-disable}
-  PGSSLROOTCERT: ${POSTGRES_SSL_ROOT_CERT:-system}
+  # Bei der internen Verbindung darf libpq kein systemweites Root-Zertifikat
+  # erzwingen. Externe Hosts setzen diesen Wert zusammen mit verify-full.
+  PGSSLROOTCERT: ${POSTGRES_SSL_ROOT_CERT:-}
   TZ: ${TZ:-Europe/Berlin}
 
 x-default-logging: &default-logging

@@ -14,6 +14,13 @@ test("kapselt PostgreSQL und veröffentlicht nur den HTTPS-Zugang", async () => 
   assert.match(compose, /no-new-privileges:true/);
   assert.match(compose, /read_only: true/);
   assert.match(compose, /max-size: "10m"/);
+  assert.match(compose, /PGSSLMODE: \$\{POSTGRES_SSL_MODE:-disable\}/);
+  assert.match(compose, /PGSSLROOTCERT: \$\{POSTGRES_SSL_ROOT_CERT:-\}/);
+  assert.doesNotMatch(
+    compose,
+    /PGSSLROOTCERT: \$\{POSTGRES_SSL_ROOT_CERT:-system\}/,
+    "Interne Verbindungen mit sslmode=disable dürfen kein systemweites Root-Zertifikat erzwingen",
+  );
 });
 
 test("startet Migration, Bootstrap und Gesundheitsprüfung automatisch", async () => {
