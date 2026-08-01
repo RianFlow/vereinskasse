@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+self="$(readlink -f "${BASH_SOURCE[0]}")"
+base="$(cd "$(dirname "$self")" && pwd)"
+compose=(docker compose --project-directory "$base" --env-file "$base/.env" -f "$base/compose.yaml")
+
+require_installation() {
+  [[ -f "$base/.env" && -d "$base/secrets" ]] || {
+    echo "Clubiq Ledger ist noch nicht eingerichtet. Zuerst install.sh ausführen." >&2
+    exit 1
+  }
+  command -v docker >/dev/null || { echo "Docker ist nicht installiert." >&2; exit 1; }
+}
+
+wait_for_app() {
+  local attempt
+  for attempt in $(seq 1 60); do
+    if curl --insecure --fail --silent --max-time 3 https://127.0.0.1/api/profiles >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+backup_path() {
+  local value="$1"
+  local usb_host
+  usb_host="$(sed -n 's/^USB_BACKUP_PATH=//p' "$base/.env" | tail -n 1)"
+  usb_host="${usb_host:-/mnt/vereinskasse-sicherung}"
+  case "$value" in
+    /backups/local/*|/backups/usb/*) printf '%s\n' "$value" ;;
+    "$usb_host"/*) printf '/backups/usb/%s\n' "${value#"$usb_host"/}" ;;
+    /*) echo "Pfad liegt außerhalb der eingebundenen Sicherungsziele." >&2; return 1 ;;
+    *) printf '/backups/local/%s\n' "$value" ;;
+  esac
+}
+
+set_setting() {
+  local key="$1" value="$2" temporary
+  temporary="$(mktemp)"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { found=0 }
+    $0 ~ "^" key "=" { print key "=" value; found=1; next }
+    { print }
+    END { if (!found) print key "=" value }
+  ' "$base/.env" > "$temporary"
+  install -m 600 "$temporary" "$base/.env"
+  rm -f "$temporary"
+}
+
+show_help() {
+  cat <<'HELP'
+Clubiq Ledger auf dem Raspberry verwalten
+
+  clubiq starten                 Kasse starten
+  clubiq stoppen                 Kasse kontrolliert stoppen
+  clubiq status                  Zustand und letzte Sicherung anzeigen
+  clubiq protokoll               Laufende Meldungen anzeigen
+  clubiq sichern                 Sofort eine geprüfte Sicherung erstellen
+  clubiq sicherungen             Vorhandene Sicherungen auflisten
+  clubiq pruefen                 Datenbank und Anwendung prüfen
+  clubiq aktualisieren           Sicherung, Update und automatischer Rückfall
+  clubiq wiederherstellen DATEI  Sicherung erst prüfen, dann zurückspielen
+  clubiq neue-datenbank          Nach Tests sauber und leer beginnen
+  clubiq usb-freigeben [PFAD]    Bereits eingehängten USB-Datenträger freigeben
+  clubiq r2-einrichten           Verschlüsselte Cloudflare-R2-Kopie einrichten
+  clubiq r2-pruefen              R2-Sicherung sofort testen
+  clubiq r2-laden [SNAPSHOT]     Letztes R2-Archiv lokal bereitstellen
+  clubiq zertifikat              Adresse des Tablet-Zertifikats anzeigen
+HELP
+}
+
+require_installation
+command="${1:-hilfe}"
+
+case "$command" in
+  hilfe|help|-h|--help)
+    show_help
+    ;;
+  starten|start)
+    "${compose[@]}" up -d --remove-orphans
+    wait_for_app || { echo "Die Kasse wurde gestartet, ist aber noch nicht erreichbar." >&2; exit 1; }
+    echo "Clubiq Ledger ist erreichbar."
+    ;;
+  stoppen|stop)
+    "${compose[@]}" stop
+    ;;
+  status)
+    "${compose[@]}" ps
+    echo
+    echo "Speicherplatz:"
+    df -h "$base" | tail -n 1
+    usb_path="$(sed -n 's/^USB_BACKUP_PATH=//p' "$base/.env" | tail -n 1)"
+    if [[ -n "$usb_path" ]] && findmnt --mountpoint "$usb_path" >/dev/null 2>&1; then
+      echo "USB-Ziel: eingehängt ($usb_path)"
+      df -h "$usb_path" | tail -n 1
+    else
+      echo "USB-Ziel: noch nicht als eigener Datenträger eingehängt"
+    fi
+    echo
+    echo "Letzte lokale Sicherung:"
+    "${compose[@]}" exec -T backup sh -c 'cat /backups/local/.last-backup.json 2>/dev/null || echo "noch keine"'
+    echo "Letzte R2-Sicherung:"
+    "${compose[@]}" exec -T backup sh -c 'cat /backups/local/.last-r2-backup.json 2>/dev/null || echo "nicht eingerichtet"'
+    ;;
+  protokoll|logs)
+    "${compose[@]}" logs --tail=200 -f app postgres proxy backup
+    ;;
+  sichern|backup)
+    "${compose[@]}" exec -T backup /app/deploy/raspberry/backup.sh
+    ;;
+  sicherungen|backups)
+    "${compose[@]}" exec -T backup sh -c \
+      'find /backups/local /backups/usb -maxdepth 1 -type f -name "vereinskasse-*.tar.gz" -printf "%TY-%Tm-%Td %TH:%TM  %10s  %p\n" 2>/dev/null | sort -r'
+    ;;
+  pruefen|check)
+    "${compose[@]}" run --rm tools node raspberry/postgres-admin.mjs check
+    latest_archive="$("${compose[@]}" exec -T backup sh -c \
+      "find /backups/local -maxdepth 1 -type f -name 'vereinskasse-*.tar.gz' -printf '%T@ %p\\n' | sort -nr | head -n 1 | cut -d' ' -f2-")"
+    if [[ -n "$latest_archive" ]]; then
+      "${compose[@]}" run --rm tools /app/deploy/docker/restore.sh "$latest_archive" --preview
+    else
+      echo "Noch keine Sicherung zum Rücksicherungstest vorhanden." >&2
+    fi
+    wait_for_app
+    echo "Datenbank, Anwendung und jüngste Sicherung sind geprüft."
+    ;;
+  aktualisieren|update)
+    "${compose[@]}" exec -T backup /app/deploy/raspberry/backup.sh
+    container_id="$("${compose[@]}" ps -q app)"
+    [[ -n "$container_id" ]] || { echo "App-Container wurde nicht gefunden." >&2; exit 1; }
+    image_ref="$(docker inspect --format '{{.Config.Image}}' "$container_id")"
+    old_image="$(docker inspect --format '{{.Image}}' "$container_id")"
+    rollback_ref="${image_ref}-rollback"
+    docker tag "$old_image" "$rollback_ref"
+    "${compose[@]}" pull app backup tools proxy postgres
+    "${compose[@]}" up -d --remove-orphans
+    if wait_for_app; then
+      echo "Update erfolgreich; Datenbank und Sicherungen sind erhalten."
+    else
+      echo "Neue Version ist nicht gesund. Vorherige App-Version wird wiederhergestellt." >&2
+      docker tag "$rollback_ref" "$image_ref"
+      "${compose[@]}" up -d --force-recreate app backup
+      wait_for_app || { echo "Automatischer Rückfall fehlgeschlagen; Protokoll prüfen." >&2; exit 1; }
+      exit 1
+    fi
+    ;;
+  wiederherstellen|restore)
+    [[ -n "${2:-}" ]] || { echo "Bitte eine Sicherungsdatei angeben." >&2; exit 2; }
+    archive="$(backup_path "$2")"
+    "${compose[@]}" run --rm tools /app/deploy/docker/restore.sh "$archive" --preview
+    read -r -p "Soll dieser geprüfte Stand wirklich aktiviert werden? Exakt WIEDERHERSTELLEN eingeben: " confirmation
+    [[ "$confirmation" == "WIEDERHERSTELLEN" ]] || { echo "Abgebrochen."; exit 1; }
+    "${compose[@]}" exec -T backup /app/deploy/raspberry/backup.sh
+    "${compose[@]}" stop app backup
+    restart_after_restore() { "${compose[@]}" up -d app backup proxy >/dev/null 2>&1 || true; }
+    trap restart_after_restore EXIT
+    "${compose[@]}" run --rm -e CLUBIQ_RESTORE_CONFIRMED=WIEDERHERSTELLEN tools \
+      /app/deploy/docker/restore.sh "$archive" --execute
+    "${compose[@]}" up -d app backup proxy
+    trap - EXIT
+    wait_for_app
+    echo "Wiederherstellung abgeschlossen und Anwendung geprüft."
+    ;;
+  neue-datenbank|new-database)
+    "${compose[@]}" exec -T backup /app/deploy/raspberry/backup.sh
+    "${compose[@]}" stop app backup
+    restart_after_reset() { "${compose[@]}" up -d app backup proxy >/dev/null 2>&1 || true; }
+    trap restart_after_reset EXIT
+    "${compose[@]}" run --rm tools /app/deploy/docker/new-database.sh
+    "${compose[@]}" up -d app backup proxy
+    trap - EXIT
+    wait_for_app
+    ;;
+  usb-freigeben|usb-enable)
+    target="${2:-$(sed -n 's/^USB_BACKUP_PATH=//p' "$base/.env" | tail -n 1)}"
+    target="${target:-/mnt/vereinskasse-sicherung}"
+    [[ -d "$target" ]] || { echo "Verzeichnis $target existiert nicht." >&2; exit 1; }
+    mount_target="$(findmnt --noheadings --output TARGET --target "$target" | head -n 1)"
+    [[ "$(realpath "$mount_target")" == "$(realpath "$target")" && "$mount_target" != "/" ]] || {
+      echo "$target ist kein eigenständig eingehängter Datenträger. Aus Sicherheitsgründen nicht freigegeben." >&2
+      exit 1
+    }
+    touch "$target/.clubiq-backup-target"
+    chmod 600 "$target/.clubiq-backup-target" 2>/dev/null || true
+    set_setting USB_BACKUP_PATH "$target"
+    "${compose[@]}" up -d --force-recreate backup
+    echo "USB-Sicherungsziel freigegeben: $target"
+    ;;
+  r2-einrichten|r2-setup)
+    read -r -p "R2-Endpunkt (https://...r2.cloudflarestorage.com): " endpoint
+    read -r -p "Privater R2-Bucket: " bucket
+    read -r -p "Access Key ID: " access_key
+    read -r -s -p "Secret Access Key: " secret_key
+    echo
+    [[ "$endpoint" =~ ^https://[A-Za-z0-9.-]+\.r2\.cloudflarestorage\.com$ ]] || { echo "Ungültiger R2-Endpunkt." >&2; exit 1; }
+    [[ "$bucket" =~ ^[A-Za-z0-9._-]{3,63}$ && -n "$access_key" && -n "$secret_key" ]] || { echo "Bucket oder Zugangsdaten sind ungültig." >&2; exit 1; }
+    printf '%s' "$access_key" > "$base/secrets/r2_access_key_id"
+    printf '%s' "$secret_key" > "$base/secrets/r2_secret_access_key"
+    chmod 600 "$base/secrets/r2_access_key_id" "$base/secrets/r2_secret_access_key"
+    set_setting CLUBIQ_R2_ENDPOINT "$endpoint"
+    set_setting CLUBIQ_R2_BUCKET "$bucket"
+    set_setting CLUBIQ_R2_ENABLED true
+    "${compose[@]}" up -d --force-recreate backup
+    echo "R2 ist eingerichtet. Der Inhalt wird mit dem separaten Restic-Schlüssel verschlüsselt."
+    echo "Diesen Schlüssel zusätzlich offline verwahren: $base/secrets/restic_password"
+    ;;
+  r2-pruefen|r2-check)
+    "${compose[@]}" exec -T backup /app/deploy/docker/r2-backup.sh
+    ;;
+  r2-laden|r2-restore)
+    "${compose[@]}" exec -T backup /app/deploy/docker/r2-restore-latest.sh "${2:-latest}"
+    ;;
+  zertifikat|certificate)
+    ip="$(hostname -I | awk '{print $1}')"
+    echo "Tablet-Zertifikat: http://${ip:-RASPBERRY-IP}:8080/vereinskasse-ca.crt"
+    echo "Kasse: https://$(sed -n 's/^CLUBIQ_HOSTNAME=//p' "$base/.env" | tail -n 1)"
+    ;;
+  *)
+    echo "Unbekannter Befehl: $command" >&2
+    show_help
+    exit 2
+    ;;
+esac

@@ -22,13 +22,14 @@ function checksum(value: string) {
 }
 
 function postgresConfig() {
+  const ssl =
+    process.env.VEREINSKASSE_POSTGRES_SSL === "require"
+      ? { rejectUnauthorized: true }
+      : undefined;
   if (process.env.DATABASE_URL) {
     return {
       connectionString: process.env.DATABASE_URL,
-      ssl:
-        process.env.VEREINSKASSE_POSTGRES_SSL === "require"
-          ? { rejectUnauthorized: true }
-          : undefined,
+      ssl,
     };
   }
   return {
@@ -37,6 +38,7 @@ function postgresConfig() {
     database: process.env.PGDATABASE || "vereinskasse",
     user: process.env.PGUSER || "vereinskasse",
     password: process.env.PGPASSWORD,
+    ssl,
   };
 }
 

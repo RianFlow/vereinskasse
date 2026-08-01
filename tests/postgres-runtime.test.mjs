@@ -82,6 +82,8 @@ test("migriert PostgreSQL versioniert und führt D1-Batches als Transaktion aus"
     'client.query("COMMIT")',
     'client.query("ROLLBACK")',
     "ON CONFLICT DO NOTHING",
+    "VEREINSKASSE_POSTGRES_SSL",
+    "rejectUnauthorized: true",
   ]) {
     const sources = `${runtime}\n${await read("raspberry/postgres-sql.mjs")}`;
     assert.ok(sources.includes(safeguard), `${safeguard} fehlt`);

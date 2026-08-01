@@ -1,5 +1,9 @@
 # Vereinskasse auf dem Raspberry Pi 4B
 
+> Für neue Installationen wird die abgeschottete Docker-Ausgabe unter
+> [`../docker/README.md`](../docker/README.md) empfohlen. Dieser Ordner bleibt
+> als ältere direkte Systeminstallation erhalten.
+
 ## Vor dem ersten Start
 
 - Raspberry Pi OS Lite 64-Bit auf die microSD schreiben.

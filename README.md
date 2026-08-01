@@ -1,5 +1,12 @@
 # Vereinskasse
 
+## Raspberry-Pi-Testbetrieb
+
+Die vollständige Docker-Ausgabe mit PostgreSQL, lokalem HTTPS, stündlichen
+Sicherungen, USB-Zweitziel, optional verschlüsseltem Cloudflare-R2-Backup und
+kontrollierter Wiederherstellung steht unter
+[`deploy/docker/README.md`](deploy/docker/README.md).
+
 Tabletfreundliches Kassensystem für den SV Barver Darts und weitere Sparten im Dorfgemeinschaftshaus.
 
 ## Datensicherheit

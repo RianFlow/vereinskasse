@@ -1,6 +1,6 @@
 {
   "name": "vereinskasse-sv-barver",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -10,12 +10,12 @@
     "build": "vinext build",
     "start": "vinext start",
     "build:raspberry": "node raspberry/run-with-runtime.mjs build",
-    "start:raspberry": "node raspberry/run-with-runtime.mjs start",
+    "start:raspberry": "node raspberry/start-production.mjs",
     "check:raspberry": "node raspberry/check-local-runtime.mjs",
     "db:postgres:migrate": "node raspberry/postgres-admin.mjs migrate",
     "db:postgres:bootstrap": "node raspberry/postgres-admin.mjs bootstrap",
     "db:postgres:check": "node raspberry/postgres-admin.mjs check",
-    "test": "npm run check:migrations && npm run typecheck && npm run build && node --test tests/rendered-html.test.mjs tests/event-dialog.test.mjs tests/bundles.test.mjs tests/futureproof.test.mjs tests/allocation.test.mjs tests/i2c-display.test.mjs tests/safety-workflows.test.mjs tests/rfid-resilience.test.mjs tests/retail-pos-design.test.mjs tests/raspberry-hosting.test.mjs tests/postgres-runtime.test.mjs",
+    "test": "npm run check:migrations && npm run typecheck && npm run build && node --test tests/rendered-html.test.mjs tests/event-dialog.test.mjs tests/bundles.test.mjs tests/futureproof.test.mjs tests/allocation.test.mjs tests/i2c-display.test.mjs tests/safety-workflows.test.mjs tests/rfid-resilience.test.mjs tests/retail-pos-design.test.mjs tests/raspberry-hosting.test.mjs tests/postgres-runtime.test.mjs tests/docker-deployment.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work",
     "check:migrations": "node scripts/check-migrations.mjs",
