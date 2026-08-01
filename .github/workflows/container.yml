@@ -121,7 +121,11 @@ jobs:
             [ "$state" = unhealthy ] && docker compose logs app postgres && exit 1
             sleep 2
           done
-          test "$(docker inspect --format '{{.State.Health.Status}}' clubiq-ledger-app-1)" = healthy
+          if [ "$(docker inspect --format '{{.State.Health.Status}}' clubiq-ledger-app-1)" != healthy ]; then
+            docker inspect --format '{{json .State}}' clubiq-ledger-app-1
+            docker compose logs app postgres
+            exit 1
+          fi
           docker compose exec -T app sh -c 'export PGPASSWORD="$(cat "$PGPASSWORD_FILE")"; node raspberry/postgres-admin.mjs check'
           USB_BACKUP_PATH=/tmp/clubiq-usb docker compose up -d backup
           for attempt in $(seq 1 30); do

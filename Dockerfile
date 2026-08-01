@@ -22,7 +22,7 @@ LABEL org.opencontainers.image.source="https://github.com/RianFlow/vereinskasse"
       org.opencontainers.image.description="Vereinskasse für Raspberry Pi und PostgreSQL"
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates curl gnupg \
+    && apt-get install --yes --no-install-recommends ca-certificates curl \
     && install -d -m 0755 /usr/share/postgresql-common/pgdg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
       -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
@@ -31,7 +31,6 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install --yes --no-install-recommends \
       gosu jq postgresql-client-17 restic tini \
-    && apt-get purge --auto-remove --yes gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -92,6 +92,7 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(dockerfile, /BUILDPLATFORM/);
   assert.match(dockerfile, /TARGETPLATFORM/);
   assert.match(dockerfile, /postgresql-client-17 restic tini/);
+  assert.doesNotMatch(dockerfile, /purge --auto-remove/);
   assert.match(compose, /\n\s+init: true/);
   assert.match(install, /Raspberry Pi OS 64-Bit/);
   assert.match(install, /download\.docker\.com\/linux\/debian/);
