@@ -127,18 +127,27 @@ async function check(pool) {
   );
 }
 
-if (!["migrate", "bootstrap", "check"].includes(command)) {
+async function waitForConnection(pool) {
+  await pool.query("SELECT 1");
+  console.log("PostgreSQL-Verbindung bereit.");
+}
+
+if (!["migrate", "bootstrap", "check", "wait"].includes(command)) {
   console.error(
-    "Verwendung: node raspberry/postgres-admin.mjs migrate|bootstrap|check",
+    "Verwendung: node raspberry/postgres-admin.mjs migrate|bootstrap|check|wait",
   );
   process.exit(2);
 }
 
 const pool = new Pool({ ...config(), connectionTimeoutMillis: 5_000, max: 2 });
 try {
-  if (command === "migrate" || command === "bootstrap") await migrate(pool);
-  if (command === "bootstrap") await bootstrap(pool);
-  await check(pool);
+  if (command === "wait") {
+    await waitForConnection(pool);
+  } else {
+    if (command === "migrate" || command === "bootstrap") await migrate(pool);
+    if (command === "bootstrap") await bootstrap(pool);
+    await check(pool);
+  }
 } finally {
   await pool.end();
 }

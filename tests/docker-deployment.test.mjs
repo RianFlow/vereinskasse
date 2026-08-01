@@ -22,7 +22,7 @@ test("startet Migration, Bootstrap und Gesundheitsprüfung automatisch", async (
     read("raspberry/postgres-admin.mjs"),
     read("deploy/docker/compose.yaml"),
   ]);
-  assert.match(entrypoint, /pg_isready/);
+  assert.match(entrypoint, /postgres-admin\.mjs wait/);
   assert.match(entrypoint, /postgres-admin\.mjs migrate/);
   assert.match(entrypoint, /postgres-admin\.mjs bootstrap/);
   assert.match(entrypoint, /gosu node/);
