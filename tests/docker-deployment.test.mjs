@@ -86,11 +86,13 @@ test("prüft eine Rücksicherung in einer temporären Datenbank und behält den 
 });
 
 test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
-  const [workflow, dockerfile, install, compose] = await Promise.all([
+  const [workflow, dockerfile, install, compose, environment, readme] = await Promise.all([
     read(".github/workflows/container.yml"),
     read("Dockerfile"),
     read("deploy/docker/install.sh"),
     read("deploy/docker/compose.yaml"),
+    read("deploy/docker/.env.example"),
+    read("deploy/docker/README.md"),
   ]);
   assert.match(workflow, /linux\/amd64,linux\/arm64/);
   assert.match(workflow, /ghcr\.io\/rianflow\/vereinskasse/);
@@ -102,6 +104,12 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(dockerfile, /postgresql-client-17 restic tini/);
   assert.doesNotMatch(dockerfile, /purge --auto-remove/);
   assert.match(compose, /\n\s+init: true/);
+  assert.match(compose, /CLUBIQ_IMAGE_TAG:-latest/);
+  assert.doesNotMatch(compose, /CLUBIQ_IMAGE_TAG:-test/);
+  assert.match(environment, /^CLUBIQ_IMAGE_TAG=latest$/m);
+  assert.doesNotMatch(environment, /^CLUBIQ_IMAGE_TAG=test$/m);
+  assert.match(readme, /git clone --branch main/);
+  assert.doesNotMatch(readme, /git clone --branch codex\/raspberry-docker/);
   assert.match(install, /Raspberry Pi OS 64-Bit/);
   assert.match(install, /download\.docker\.com\/linux\/debian/);
 });

@@ -48,7 +48,7 @@ Danach am Raspberry anmelden und ausführen:
 ```bash
 sudo mkdir -p /opt
 cd /opt
-sudo git clone --branch codex/raspberry-docker \
+sudo git clone --branch main \
   https://github.com/RianFlow/vereinskasse.git clubiq-ledger
 cd /opt/clubiq-ledger
 sudo ./deploy/docker/install.sh

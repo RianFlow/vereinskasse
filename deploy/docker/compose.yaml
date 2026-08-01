@@ -64,7 +64,7 @@ services:
     logging: *default-logging
 
   app:
-    image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-test}
+    image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-latest}
     build:
       context: ../..
       dockerfile: Dockerfile
@@ -139,7 +139,7 @@ services:
     logging: *default-logging
 
   backup:
-    image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-test}
+    image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-latest}
     restart: unless-stopped
     entrypoint: ["/usr/bin/tini", "--", "/app/deploy/docker/backup-loop.sh"]
     depends_on:
@@ -184,7 +184,7 @@ services:
     logging: *default-logging
 
   tools:
-    image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-test}
+    image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-latest}
     profiles: ["tools"]
     entrypoint: ["/usr/bin/tini", "--", "/app/deploy/docker/tool-entrypoint.sh"]
     depends_on:
