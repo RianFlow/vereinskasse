@@ -114,7 +114,7 @@ jobs:
           printf '246802' > secrets/initial_profile_pin
           : > secrets/r2_access_key_id
           : > secrets/r2_secret_access_key
-          USB_BACKUP_PATH=/tmp/clubiq-usb docker compose up -d postgres app backup
+          USB_BACKUP_PATH=/tmp/clubiq-usb docker compose up -d postgres app
           for attempt in $(seq 1 60); do
             state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' clubiq-ledger-app-1)
             [ "$state" = healthy ] && break
@@ -123,6 +123,7 @@ jobs:
           done
           test "$(docker inspect --format '{{.State.Health.Status}}' clubiq-ledger-app-1)" = healthy
           docker compose exec -T app sh -c 'export PGPASSWORD="$(cat "$PGPASSWORD_FILE")"; node raspberry/postgres-admin.mjs check'
+          USB_BACKUP_PATH=/tmp/clubiq-usb docker compose up -d backup
           for attempt in $(seq 1 30); do
             if docker compose exec -T backup \
                 grep -q '"ok":true' /backups/local/.last-backup.json; then

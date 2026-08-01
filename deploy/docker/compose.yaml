@@ -67,6 +67,7 @@ services:
       context: ../..
       dockerfile: Dockerfile
     restart: unless-stopped
+    init: true
     depends_on:
       postgres:
         condition: service_healthy
