@@ -53,6 +53,7 @@ test("sichert stündlich auf lokal, freigegebenen USB und optional verschlüssel
   assert.match(compose, /BACKUP_INTERVAL_SECONDS:-3600/);
   assert.match(backup, /pg_dump --format=custom/);
   assert.match(backup, /pg_restore --list/);
+  assert.match(backup, /cp -a --no-preserve=ownership/);
   assert.match(backup, /VEREINSKASSE_SECONDARY_REQUIRED_MARKER/);
   assert.match(backup, /sha256sum/);
   assert.match(loop, /\.last-backup\.json/);

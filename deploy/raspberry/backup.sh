@@ -101,7 +101,10 @@ else
 fi
 
 if [[ -d "$objects" ]]; then
-  cp -a "$objects" "$work/data/backups"
+  # Container-Sicherungen laufen absichtlich ohne CHOWN-Recht. Die Inhalte und
+  # Metadaten bleiben erhalten; Benutzer-/Gruppenbesitz wird beim Restore neu
+  # und passend zum Ziel gesetzt.
+  cp -a --no-preserve=ownership "$objects" "$work/data/backups"
 fi
 printf '{"createdAt":"%s","hostname":"%s","provider":"%s","databaseCheck":"%s","sales":%s,"members":%s}\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(hostname)" "$provider" "$database_check" \
