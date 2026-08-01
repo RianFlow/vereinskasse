@@ -78,10 +78,11 @@ test("prüft eine Rücksicherung in einer temporären Datenbank und behält den 
 });
 
 test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
-  const [workflow, dockerfile, install] = await Promise.all([
+  const [workflow, dockerfile, install, compose] = await Promise.all([
     read(".github/workflows/container.yml"),
     read("Dockerfile"),
     read("deploy/docker/install.sh"),
+    read("deploy/docker/compose.yaml"),
   ]);
   assert.match(workflow, /linux\/amd64,linux\/arm64/);
   assert.match(workflow, /ghcr\.io\/rianflow\/vereinskasse/);
@@ -90,7 +91,8 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(dockerfile, /npm ci --omit=dev/);
   assert.match(dockerfile, /BUILDPLATFORM/);
   assert.match(dockerfile, /TARGETPLATFORM/);
-  assert.match(dockerfile, /postgresql-client restic tini/);
+  assert.match(dockerfile, /postgresql-client-17 restic tini/);
+  assert.doesNotMatch(compose, /\n\s+init: true/);
   assert.match(install, /Raspberry Pi OS 64-Bit/);
   assert.match(install, /download\.docker\.com\/linux\/debian/);
 });
