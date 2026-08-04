@@ -7,6 +7,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
+#include <ESP8266httpUpdate.h>
 #include <WiFiClientSecureBearSSL.h>
 #include <osapi.h>
 #include <MFRC522.h>
@@ -81,7 +82,8 @@ enum class StatusLedMode {
   Error,
   WriteWaiting,
   Writing,
-  Pairing
+  Pairing,
+  Updating
 };
 
 StatusLedMode statusLedMode = StatusLedMode::Starting;
@@ -397,6 +399,7 @@ void setStatusLed(StatusLedMode mode, unsigned long durationMs = 0) {
     case StatusLedMode::WriteWaiting: showStatusDisplay("Schreiben", "Karte erneut auflegen"); break;
     case StatusLedMode::Writing: showStatusDisplay("Schreiben", "Karte liegen lassen"); break;
     case StatusLedMode::Pairing: showStatusDisplay("Kopplung", "Code in App bestaetigen"); break;
+    case StatusLedMode::Updating: showStatusDisplay("Firmwareupdate", "Strom nicht trennen"); break;
   }
 }
 
@@ -481,6 +484,7 @@ void renderStatusLed() {
     case StatusLedMode::WriteWaiting: fillStatusPixels(pulse, 0, pulse); break;
     case StatusLedMode::Writing: fillStatusPixels(185, 0, 255); break;
     case StatusLedMode::Pairing: fillStatusPixels(255, pulse / 2, 0); break;
+    case StatusLedMode::Updating: fillStatusPixels(0, pulse, pulse); break;
   }
 }
 
@@ -653,6 +657,7 @@ void handleStatus() {
                  "\",\"pairingCode\":\"" + jsonEscape(pairingCode) +
                  "\",\"pairingMessage\":\"" + jsonEscape(pairingMessage) +
                  "\",\"hardwareId\":\"ESP8266-" + macSuffix() + "\"" +
+                 ",\"firmwareVersion\":\"" + String(FIRMWARE_VERSION) + "\"" +
                  ",\"clockReady\":" + String(clockReady() ? "true" : "false") +
                 ",\"pendingScan\":" + String(pendingUidReady ? "true" : "false") +
                 ",\"lastUid\":\"" + jsonEscape(lastPushedUid) +
@@ -1291,6 +1296,29 @@ String commandApiUrl() {
   return vereinskasseApiUrl + "/commands";
 }
 
+String firmwareDownloadUrl(const String &path) {
+  const int apiMarker = vereinskasseApiUrl.indexOf("/api/rfid");
+  if (apiMarker < 0 || !path.startsWith("/")) return "";
+  return vereinskasseApiUrl.substring(0, apiMarker) + path;
+}
+
+bool reportDeviceCommandResult(const String &commandId, const String &uid,
+                               const String &value, bool success,
+                               const String &error) {
+  if (!beginVereinskasseRequest(commandApiUrl())) return false;
+  vereinskasseHttps.addHeader("Content-Type", "application/json");
+  vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
+  vereinskasseHttps.addHeader("X-RFID-Firmware-Version", FIRMWARE_VERSION);
+  const String body = "{\"id\":\"" + jsonEscape(commandId) +
+                      "\",\"success\":" + String(success ? "true" : "false") +
+                      ",\"uid\":\"" + jsonEscape(uid) +
+                      "\",\"hex\":\"" + jsonEscape(value) +
+                      "\",\"error\":\"" + jsonEscape(error) + "\"}";
+  const int status = vereinskasseHttps.POST(body);
+  vereinskasseHttps.end();
+  return status >= 200 && status < 300;
+}
+
 bool reportWriteResult() {
   if (!writeResultReady) return false;
   if (!beginVereinskasseRequest(commandApiUrl())) return false;
@@ -1321,15 +1349,8 @@ bool reportWriteResult() {
 }
 
 void performRemoteRestart(const String &commandId) {
-  if (!beginVereinskasseRequest(commandApiUrl())) return;
-  vereinskasseHttps.addHeader("Content-Type", "application/json");
-  vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
-  const String body = "{\"id\":\"" + jsonEscape(commandId) +
-                      "\",\"success\":true,\"uid\":\"DEVICE-RESTART\",\"hex\":\"\",\"error\":\"\"}";
-  const int status = vereinskasseHttps.POST(body);
-  vereinskasseHttps.end();
-  if (status < 200 || status >= 300) {
-    lastPushState = "Neustart konnte nicht bestätigt werden (HTTP " + String(status) + ").";
+  if (!reportDeviceCommandResult(commandId, "DEVICE-RESTART", "", true, "")) {
+    lastPushState = "Neustart konnte nicht bestätigt werden.";
     setStatusLed(StatusLedMode::Error, 1800);
     return;
   }
@@ -1339,6 +1360,52 @@ void performRemoteRestart(const String &commandId) {
   renderStatusLed();
   Serial.println(lastPushState);
   delay(350);
+  ESP.restart();
+}
+
+void performFirmwareUpdate(const String &commandId, const String &targetVersion,
+                           const String &path) {
+  const String url = firmwareDownloadUrl(path);
+  if (!url.length() || !targetVersion.length() || writeCommandActive || pendingUidReady) {
+    reportDeviceCommandResult(commandId, "DEVICE-FIRMWARE", targetVersion, false,
+                              "Update ist momentan nicht sicher ausführbar.");
+    return;
+  }
+  vereinskasseHttps.end();
+  vereinskasseTls.stop();
+  vereinskasseTls.setTrustAnchors(vereinskasseTrustAnchor);
+  vereinskasseTls.setTimeout(15000);
+  ESPhttpUpdate.rebootOnUpdate(false);
+  ESPhttpUpdate.onStart([] {
+    lastPushState = "Firmware wird sicher geladen und installiert.";
+    setStatusLed(StatusLedMode::Updating);
+    showStatusDisplay("Firmwareupdate", "Strom nicht trennen");
+    renderStatusLed();
+  });
+  ESPhttpUpdate.onProgress([](int current, int total) {
+    ESP.wdtFeed();
+    if (total > 0) lastPushState = "Firmwareupdate: " + String((current * 100) / total) + "%";
+    renderStatusLed();
+  });
+  ESPhttpUpdate.onError([](int error) {
+    lastPushState = "Firmwareupdate fehlgeschlagen: " + String(error) + ".";
+  });
+  const t_httpUpdate_return result = ESPhttpUpdate.update(vereinskasseTls, url, FIRMWARE_VERSION);
+  vereinskasseTls.stop();
+  if (result != HTTP_UPDATE_OK) {
+    const String error = result == HTTP_UPDATE_NO_UPDATES
+        ? "Firmware ist bereits aktuell."
+        : String(ESPhttpUpdate.getLastErrorString().c_str());
+    reportDeviceCommandResult(commandId, "DEVICE-FIRMWARE", targetVersion, false, error);
+    setStatusLed(StatusLedMode::Error, 2400);
+    return;
+  }
+  if (!reportDeviceCommandResult(commandId, "DEVICE-FIRMWARE", targetVersion, true, ""))
+    lastPushState = "Firmware installiert; Bestätigung folgt nach dem Neustart.";
+  setStatusLed(StatusLedMode::Success, 700);
+  showStatusDisplay("Update fertig", "Leser startet neu");
+  renderStatusLed();
+  delay(500);
   ESP.restart();
 }
 
@@ -1356,6 +1423,7 @@ void pollWriteCommand() {
 
   if (!beginVereinskasseRequest(commandApiUrl())) return;
   vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
+  vereinskasseHttps.addHeader("X-RFID-Firmware-Version", FIRMWARE_VERSION);
   if (lastDisplayRevision.length())
     vereinskasseHttps.addHeader("X-Display-Revision", lastDisplayRevision);
   const int status = vereinskasseHttps.GET();
@@ -1401,6 +1469,11 @@ void pollWriteCommand() {
   }
   if (id.length() && action == "restart") {
     performRemoteRestart(id);
+    return;
+  }
+  if (id.length() && action == "firmware") {
+    performFirmwareUpdate(id, jsonStringField(response, "version"),
+                          jsonStringField(response, "firmwareUrl"));
     return;
   }
   const String uid = jsonStringField(response, "uid");
@@ -1538,6 +1611,7 @@ void setup() {
   server.begin();
 
   Serial.println("\n=== NodeMCU V3 NFC/RFID ===");
+  Serial.printf("Firmware: %s\n", FIRMWARE_VERSION);
   Serial.printf("RC522 Version: 0x%02X\n", rfid.PCD_ReadRegister(MFRC522::VersionReg));
   Serial.printf("WLAN: %s\nWLAN-Kennwort: %s\n", apSsid.c_str(), apPassword.c_str());
   Serial.printf("Adresse: http://%s\nWeb-Benutzer: %s\nWeb-Kennwort: %s\n",

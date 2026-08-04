@@ -1,5 +1,7 @@
 #pragma once
 
+constexpr char FIRMWARE_VERSION[] = "1.6.0";
+
 // NodeMCU V3 / ESP8266: Hardware-SPI plus sichere freie Pins.
 // D-Bezeichnungen stehen nur auf der Platine; hier werden GPIO-Nummern verwendet.
 constexpr int PIN_RC522_SS = 4;    // D2
