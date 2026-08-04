@@ -1,0 +1,39 @@
+.theme-toggle{width:42px;height:42px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;font-size:19px;display:grid;place-items:center}
+
+.app.dark{--ink:#f3f5f3;--green:#70c9a7;--mint:#202824;--cream:#101312;--orange:#ff8560;--line:#303632;background:#101312;color:#edf1ee;color-scheme:dark}
+.app.dark header{background:#151917;border-color:var(--line)}
+.app.dark .crest{width:43px;height:43px;border:1px solid #70c9a7;border-radius:11px;background:#203b32;color:#8cdbbd}
+.app.dark .brand small,.app.dark .date,.app.dark .admin-title>div>p:last-child{color:#929d97}
+.app.dark .status{background:#1b2b24;color:#91cfb6;border-radius:9px;font-weight:600}
+.app.dark .mode,.app.dark .theme-toggle{background:#1b201e;border-color:#343b37;color:#e9edea}
+.app.dark .catalog,.app.dark .admin{background:#101312}
+.app.dark h1,.app.dark h2{font-family:Arial,Helvetica,sans-serif;letter-spacing:-.025em}
+.app.dark .eyebrow{color:#7f9188}
+.app.dark .filters button{background:#1b201e;color:#9ba59f;border-radius:9px}
+.app.dark .filters button.active{background:#d9eee5;color:#17362c}
+.app.dark .product{background:#181c1a;border:1px solid #292f2c;border-radius:11px;box-shadow:none;color:#edf1ee}
+.app.dark .product:before{height:3px;border-radius:11px 11px 0 0;opacity:.75}
+.app.dark .product-icon{background:#232925;border-radius:9px}
+.app.dark .price{color:#82d1b2}
+.app.dark .cart{background:#151917;border-color:var(--line)}
+.app.dark .cart-head,.app.dark .checkout{border-color:var(--line)}
+.app.dark .empty,.app.dark .line small,.app.dark .sum small{color:#89948e}
+.app.dark .line,.app.dark .edit-row{border-color:#29302c}
+.app.dark .mini,.app.dark .stepper{background:#222825}
+.app.dark .stepper button{color:#e8ece9}
+.app.dark .clear,.app.dark .delete{color:#ff9a7d}
+.app.dark .pay{border-radius:9px}
+.app.dark .cash{background:#72c9a8;color:#10271f}
+.app.dark .paypal{background:#e9b93e;color:#162c49}
+.app.dark .stats article,.app.dark .panel{background:#181c1a;border-color:#2b312e;border-radius:11px}
+.app.dark .stats span,.app.dark .stats small,.app.dark .panel-head span{color:#929d97}
+.app.dark .stats strong{font-family:Arial,Helvetica,sans-serif;color:#83d0b3}
+.app.dark input,.app.dark select,.app.dark textarea{background:#111513!important;color:#edf1ee!important;border-color:#343b37!important}
+.app.dark .cat,.app.dark .integration{background:#222825;color:#a9b2ad}
+.app.dark .modal-backdrop{background:#080a09e8}
+.app.dark .identity-card,.app.dark .allocation-card,.app.dark .control-card{background:#181c1a!important;color:#edf1ee;border:1px solid #303632;box-shadow:none}
+.app.dark .identity-card button,.app.dark .allocation-card button,.app.dark .control-card button{border-color:#343b37}
+.app.dark .identity-sub,.app.dark .hint{color:#9aa49e}
+.app.dark .toast{background:#d9eee5;color:#17362c;box-shadow:none}
+
+@media(max-width:800px){.theme-toggle{width:39px;height:39px}.app.dark header{height:70px}.app.dark .brand small{display:none}.app.dark .crest{width:38px;height:38px}.app.dark .mode{padding:10px 12px}.app.dark .pos{min-height:calc(100vh - 70px)}}

@@ -1,0 +1,92 @@
+:root{
+  --clubiq-ink:#111318;
+  --clubiq-gold:#b99656;
+}
+.clubiq-app-brand{min-width:236px}
+.clubiq-header-symbol{
+  width:46px;
+  height:46px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  overflow:hidden;
+  border-radius:12px;
+  background:var(--clubiq-ink);
+  padding:7px;
+}
+.clubiq-header-symbol img{width:100%;height:100%;object-fit:contain}
+.clubiq-app-brand>div>strong{font-size:19px;letter-spacing:-.02em}
+.clubiq-header-slogan{
+  display:block;
+  margin-top:1px;
+  color:var(--clubiq-gold);
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.025em;
+  line-height:1.1;
+}
+.clubiq-app-brand .profile-switch{margin-top:2px}
+.clubiq-signature{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:var(--clubiq-ink);
+  opacity:.62;
+  pointer-events:none;
+  user-select:none;
+}
+.clubiq-signature>img{
+  width:22px;
+  height:22px;
+  flex:0 0 22px;
+  padding:3px;
+  border-radius:6px;
+  background:var(--clubiq-ink);
+}
+.clubiq-signature>div{min-width:0;text-align:left}
+.clubiq-signature strong{
+  display:block;
+  margin:0;
+  font-size:10px;
+  line-height:1.05;
+  letter-spacing:.01em;
+  white-space:nowrap;
+}
+.clubiq-signature small{
+  display:block;
+  margin-top:2px;
+  color:#765e36;
+  font-size:8px;
+  font-weight:750;
+  line-height:1.05;
+  white-space:nowrap;
+}
+.cart-brand-signature{margin-bottom:18px}
+.empty .cart-brand-signature strong{margin:0}
+.payment-brand-signature{
+  justify-content:center;
+  width:100%;
+  margin-top:15px;
+  opacity:.5;
+}
+.admin-brand-signature{
+  margin-right:5px;
+  opacity:.48;
+}
+.profile-loading img{width:64px;height:64px;margin:auto}
+.profile-gate-card:before{
+  content:"";
+  display:block;
+  width:min(470px,82vw);
+  height:174px;
+  margin:-18px auto 18px;
+  background:url("/brand/clubiq-ledger-primary-dark.svg") center/contain no-repeat;
+}
+.theme-toggle{display:none!important}
+@media(max-width:800px){
+  .clubiq-app-brand{min-width:0}
+  .clubiq-header-symbol{width:42px;height:42px}
+  .clubiq-header-slogan{display:none}
+  .admin-brand-signature{display:none}
+  .profile-gate-card:before{width:min(330px,86vw);height:122px;margin:-10px auto 14px}
+}

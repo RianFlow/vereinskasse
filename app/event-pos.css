@@ -1,0 +1,58 @@
+.app.kiosk-design .event-pos .title-row{display:none}
+.app.kiosk-design .event-pos .active-event-banner{
+  min-height:45px;
+  margin:7px 0 9px;
+  padding:7px 10px;
+  gap:9px;
+  border-radius:5px;
+}
+.app.kiosk-design .event-pos .active-event-banner .event-live-mark{
+  width:27px;
+  height:27px;
+  flex:0 0 27px;
+}
+.app.kiosk-design .event-pos .active-event-banner .event-live-mark i{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:#fff;
+  box-shadow:0 0 0 4px #ffffff38;
+}
+.app.kiosk-design .event-pos .active-event-banner small{font-size:9px;letter-spacing:1px}
+.app.kiosk-design .event-pos .active-event-banner strong{margin-top:1px;font-size:14px}
+.app.kiosk-design .event-pos .active-event-banner>em{
+  flex:0 0 auto;
+  color:#587168;
+  font-size:11px;
+  font-style:normal;
+  font-weight:750;
+}
+.app.kiosk-design.dark .event-pos .active-event-banner>em{color:#a6bbb2}
+.app.kiosk-design .event-pos .active-event-banner button{padding:7px 10px}
+
+@media(min-width:1200px){
+  .app.kiosk-design.light .pos.event-pos,
+  .app.kiosk-design.dark .pos.event-pos{
+    grid-template-columns:minmax(0,1fr) minmax(500px,36vw);
+  }
+  .app.kiosk-design.light .event-pos .cart,
+  .app.kiosk-design.dark .event-pos .cart{
+    grid-template-columns:minmax(0,1fr) 205px;
+  }
+  .app.kiosk-design .event-pos .checkout{padding-left:11px;padding-right:11px}
+}
+
+@media(min-width:801px) and (max-width:1199px){
+  .app.kiosk-design.light .pos.event-pos,
+  .app.kiosk-design.dark .pos.event-pos{
+    grid-template-columns:minmax(0,1fr) minmax(350px,37vw);
+  }
+}
+
+@media(max-width:800px){
+  .app.kiosk-design .event-pos .active-event-banner{position:sticky;top:0;z-index:5}
+}
+
+@media(max-width:520px){
+  .app.kiosk-design .event-pos .active-event-banner>em{display:none}
+}

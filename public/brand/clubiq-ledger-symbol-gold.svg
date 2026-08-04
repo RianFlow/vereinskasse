@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+
+<g fill="none" stroke="#B99656" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="244.0" cy="242.0" r="166.0" stroke-width="24.0"/>
+  <circle cx="244.0" cy="242.0" r="134.0" stroke-width="8.0"/>
+  <circle cx="244.0" cy="242.0" r="84.0" stroke-width="8.0"/>
+  <circle cx="244.0" cy="242.0" r="38.0" stroke-width="8.0"/>
+  <path d="M 244.0 108.0 V 158.0 M 244.0 326.0 V 376.0
+           M 110.0 242.0 H 160.0 M 328.0 242.0 H 378.0
+           M 149.0 147.0 L 184.0 182.0 M 304.0 302.0 L 339.0 337.0
+           M 149.0 337.0 L 184.0 302.0 M 304.0 182.0 L 339.0 147.0" stroke-width="6.0" opacity=".78"/>
+  <circle cx="244.0" cy="92.0" r="7.0" fill="#B99656" stroke="none"/>
+  <circle cx="394.0" cy="242.0" r="7.0" fill="#B99656" stroke="none"/>
+  <circle cx="244.0" cy="392.0" r="7.0" fill="#B99656" stroke="none"/>
+  <circle cx="94.0" cy="242.0" r="7.0" fill="#B99656" stroke="none"/>
+  <path d="M 344.0 365.0 L 398.0 419.0" stroke-width="24.0"/>
+  <circle cx="244.0" cy="228.0" r="10.0" fill="#B99656" stroke="none"/>
+  <path d="M 244.0 238.0 v 28.0" stroke-width="10.0"/>
+</g>
+</svg>

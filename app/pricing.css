@@ -1,0 +1,14 @@
+.pricing-panel{margin-bottom:16px}
+.pricing-panel .panel-head button{border:0;background:var(--green);color:#fff;border-radius:9px;padding:9px 12px;font-weight:800}
+.member-prices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.member-prices label{display:grid;grid-template-columns:minmax(120px,1fr) 150px;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px}
+.member-prices small{display:block;color:#7c8b84;margin-top:3px}
+.member-prices>label>input,.discount-rules>div>input{min-width:0;width:100%;border:1px solid var(--line);border-radius:8px;padding:10px}
+.discount-rules{display:grid;gap:8px}
+.discount-rules>div{display:grid;grid-template-columns:minmax(160px,1fr) 160px 76px;align-items:center;gap:8px}
+.discount-rules button{border:0;border-radius:8px;padding:11px 8px}
+.discount-rules button.on{background:var(--green);color:#fff}
+.discount-chip{align-self:center;background:#fff0d8;color:#8c5a1c;border-radius:20px;padding:8px 11px;font-weight:800;font-size:12px}
+.old-price{display:block;color:#88938e;text-decoration:line-through;margin-top:3px}
+@media(max-width:900px){.member-prices{grid-template-columns:1fr}}
+@media(max-width:600px){.member-prices label{grid-template-columns:1fr}.discount-rules>div{grid-template-columns:1fr 150px 76px}.discount-rules>div>input{grid-column:1/4}}

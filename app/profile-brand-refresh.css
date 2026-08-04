@@ -1,0 +1,232 @@
+/* Clubiq-Start und profilbasierte Anmeldung im freigegebenen Markenauftritt. */
+.profile-loading.clubiq-splash{
+  position:fixed;
+  inset:0;
+  z-index:3000;
+  min-height:100dvh;
+  display:block;
+  overflow:hidden;
+  background:#111318;
+  opacity:1;
+  transition:opacity .24s ease;
+}
+.profile-loading.clubiq-splash.leaving{opacity:0}
+.profile-loading.clubiq-splash img{
+  width:100%!important;
+  height:100%!important;
+  margin:0!important;
+  object-fit:cover;
+  object-position:center;
+}
+.profile-gate{
+  position:relative;
+  isolation:isolate;
+  min-height:100dvh;
+  display:grid;
+  grid-template-columns:minmax(300px,1fr) minmax(430px,520px);
+  grid-template-rows:minmax(0,1fr);
+  place-items:stretch;
+  align-items:center;
+  gap:clamp(36px,7vw,110px);
+  padding:clamp(28px,5vw,72px);
+  overflow:auto;
+  background:#111318;
+  color:#f4f1ea;
+}
+.profile-gate::before{
+  content:"";
+  grid-column:1;
+  grid-row:1;
+  align-self:start;
+  width:min(430px,90%);
+  height:160px;
+  margin-top:clamp(18px,7vh,78px);
+  background:url("/brand/clubiq-ledger-horizontal-transparent.svg") left center/contain no-repeat;
+}
+.profile-gate::after{
+  content:"Vereinsfinanzen.\A Klar geführt.";
+  grid-column:1;
+  grid-row:1;
+  align-self:end;
+  white-space:pre-line;
+  margin-bottom:clamp(44px,10vh,110px);
+  color:#f4f1ea;
+  font-size:clamp(38px,4.5vw,64px);
+  font-weight:650;
+  letter-spacing:-.045em;
+  line-height:1.16;
+}
+.profile-gate-card{
+  grid-column:2;
+  grid-row:1;
+  width:100%;
+  max-height:calc(100dvh - clamp(56px,10vw,144px));
+  overflow:auto;
+  padding:clamp(26px,3vw,48px);
+  border:1px solid #ded8cc;
+  border-radius:28px;
+  background:#f4f1ea;
+  color:#111318;
+  box-shadow:0 30px 90px #0007;
+  scrollbar-width:thin;
+}
+.profile-gate-card:before{display:none}
+.profile-gate-brand{display:block}
+.profile-gate-brand>img{display:none}
+.profile-gate-brand p{
+  margin:0 0 8px;
+  color:#9b793d;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.18em;
+}
+.profile-gate-brand h1{
+  margin:0;
+  color:#111318;
+  font-size:clamp(30px,3vw,40px);
+  letter-spacing:-.035em;
+}
+.profile-gate-brand small{
+  display:block;
+  max-width:430px;
+  margin-top:9px;
+  color:#74777e;
+  font-size:13px;
+  line-height:1.5;
+}
+.profile-choices{
+  grid-template-columns:1fr;
+  gap:9px;
+  margin:24px 0 18px;
+}
+.profile-choices button{
+  min-height:68px;
+  border:1px solid #d9d3c8;
+  background:#fff;
+  color:#111318;
+  box-shadow:none;
+}
+.profile-choices button:hover,
+.profile-choices button:focus-visible{
+  border-color:#b99656;
+  background:#fbf8f2;
+  outline:3px solid #b9965633;
+}
+.profile-choices button.active{
+  border-color:#b99656;
+  background:#fbf8f2;
+  box-shadow:inset 4px 0 #b99656;
+}
+.profile-choices button small{color:#767a80}
+.profile-choices button b{color:#9b793d}
+.profile-chip-gate .rfid-admin-login{
+  margin-top:8px;
+  border-color:#d9c9a7;
+  background:#fffaf0;
+  color:#5f4a27;
+}
+.profile-chip-gate .rfid-admin-login>span{background:#eee2c8;color:#7f612c}
+.profile-chip-gate .rfid-admin-login small{color:#786f60}
+.profile-fallback{
+  margin-top:16px;
+  padding-top:16px;
+  border-top:1px solid #d9d3c8;
+  color:#74777e;
+}
+.profile-fallback button{
+  min-height:44px;
+  border:1px solid #b6afa3;
+  background:transparent;
+  color:#111318;
+}
+.profile-fallback button:hover,
+.profile-fallback button:focus-visible{
+  border-color:#111318;
+  background:#fff;
+  outline:2px solid #11131822;
+}
+.profile-gate footer{
+  margin-top:20px;
+  color:#74777e;
+}
+.profile-pin{border-top-color:#d9d3c8}
+.profile-pin label,
+.first-pin label{color:#4e5055}
+.profile-pin input,
+.first-pin input,
+.recovery-form input{
+  border-color:#d2cbc0;
+  background:#fff;
+  color:#111318;
+}
+.profile-pin button,
+.first-pin button,
+.recover-submit{
+  background:#b99656;
+  color:#111318;
+}
+.profile-pin .forgot-pin{
+  grid-column:1/-1;
+  justify-self:start;
+  padding:4px 0;
+  background:transparent;
+  color:#6d552c;
+}
+.recovery-rule{background:#e8dfcf;color:#513f23}
+.profile-error{background:#f8ded8;color:#8c3223}
+.profile-notice{background:#deeee6;color:#235f48}
+@media(max-width:900px){
+  .profile-gate{
+    grid-template-columns:1fr;
+    grid-template-rows:150px auto;
+    gap:18px;
+    padding:20px;
+    align-content:start;
+  }
+  .profile-gate::before{
+    grid-column:1;
+    grid-row:1;
+    align-self:center;
+    justify-self:start;
+    width:min(310px,52vw);
+    height:116px;
+    margin:0;
+  }
+  .profile-gate::after{
+    grid-column:1;
+    grid-row:1;
+    align-self:center;
+    justify-self:end;
+    margin:0;
+    text-align:right;
+    font-size:clamp(23px,4.2vw,36px);
+  }
+  .profile-gate-card{
+    grid-column:1;
+    grid-row:2;
+    max-height:none;
+  }
+}
+@media(max-width:600px){
+  .profile-gate{
+    grid-template-rows:105px auto;
+    padding:12px;
+  }
+  .profile-gate::before{
+    justify-self:center;
+    width:min(310px,82vw);
+    height:96px;
+    background-position:center;
+  }
+  .profile-gate::after{display:none}
+  .profile-gate-card{
+    padding:24px 18px;
+    border-radius:22px;
+  }
+  .profile-gate-brand h1{font-size:30px}
+  .profile-fallback{align-items:stretch;flex-direction:column}
+  .profile-fallback button{width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+  .profile-loading.clubiq-splash{transition:none}
+}

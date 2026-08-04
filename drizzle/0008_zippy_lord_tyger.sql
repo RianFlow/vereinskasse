@@ -1,0 +1,1 @@
+ALTER TABLE `guest_accounts` ADD `parent_id` text;

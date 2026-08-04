@@ -1,0 +1,1 @@
+ALTER TABLE `rfid_display_states` ADD `items_text` text;

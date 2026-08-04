@@ -1,0 +1,1 @@
+.brand-logo{position:relative;width:52px;height:52px;overflow:hidden;display:grid;place-items:center;border-radius:12px;background:#0c0f0e}.brand-logo img{width:100%;height:100%;object-fit:contain;transform:scale(1.7)}.app.light .brand-logo{background:#f4f5f2}.app.dark .brand-logo{background:#0c0f0e}@media(max-width:800px){.brand-logo{width:42px;height:42px}}

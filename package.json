@@ -1,0 +1,58 @@
+{
+  "name": "vereinskasse-sv-barver",
+  "version": "1.5.1",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "vinext dev",
+    "build": "vinext build",
+    "start": "vinext start",
+    "build:raspberry": "node raspberry/run-with-runtime.mjs build",
+    "start:raspberry": "node raspberry/start-production.mjs",
+    "check:raspberry": "node raspberry/check-local-runtime.mjs",
+    "db:postgres:migrate": "node raspberry/postgres-admin.mjs migrate",
+    "db:postgres:bootstrap": "node raspberry/postgres-admin.mjs bootstrap",
+    "db:postgres:check": "node raspberry/postgres-admin.mjs check",
+    "test": "npm run check:migrations && npm run typecheck && npm run build && node --test tests/rendered-html.test.mjs tests/event-dialog.test.mjs tests/bundles.test.mjs tests/futureproof.test.mjs tests/allocation.test.mjs tests/i2c-display.test.mjs tests/safety-workflows.test.mjs tests/rfid-resilience.test.mjs tests/retail-pos-design.test.mjs tests/raspberry-hosting.test.mjs tests/postgres-runtime.test.mjs tests/docker-deployment.test.mjs",
+    "typecheck": "tsc --noEmit --incremental false",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work",
+    "check:migrations": "node scripts/check-migrations.mjs",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@tabler/icons-react": "^3.45.0",
+    "drizzle-orm": "0.45.2",
+    "ipaddr.js": "2.4.0",
+    "next": "16.2.11",
+    "pg": "^8.16.3",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.46.0",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/pg": "^8.15.5",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "pg-mem": "^3.0.5",
+    "react-server-dom-webpack": "19.2.6",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vinext": "0.0.50",
+    "vite": "8.1.5",
+    "wrangler": "4.113.0"
+  },
+  "overrides": {
+    "postcss": "8.5.22",
+    "sharp": "0.35.3"
+  },
+  "type": "module"
+}

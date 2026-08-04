@@ -1,0 +1,37 @@
+name: Vereinskasse prüfen
+
+on:
+  push:
+    branches: [main, "agent/**", "codex/**"]
+  pull_request:
+
+concurrency:
+  group: vereinskasse-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Docker-Konfiguration prüfen
+        run: |
+          bash -n deploy/docker/*.sh deploy/docker/clubiq deploy/raspberry/backup.sh
+          cp deploy/docker/.env.example deploy/docker/.env
+          mkdir -p deploy/docker/secrets /tmp/clubiq-usb
+          touch deploy/docker/secrets/postgres_admin_password
+          touch deploy/docker/secrets/postgres_app_password
+          touch deploy/docker/secrets/initial_profile_pin
+          touch deploy/docker/secrets/restic_password
+          touch deploy/docker/secrets/r2_access_key_id
+          touch deploy/docker/secrets/r2_secret_access_key
+          docker compose --project-directory deploy/docker --env-file deploy/docker/.env \
+            -f deploy/docker/compose.yaml config --quiet
+      - run: npm run lint
+      - run: npm test
