@@ -7,6 +7,9 @@
 constexpr char CLUB_WIFI_SSID[] = "";
 constexpr char CLUB_WIFI_PASSWORD[] = "";
 
+// Sichere Rückfallwerte für den ersten Start. Nach dem ersten Flashen können
+// Serveradresse, Token und Root-CA geschützt unter http://192.168.4.1 geändert
+// werden; die gespeicherten Werte haben dann Vorrang.
 // In der Vereinskasse unter Admin > Sicherheit > RFID-Leser anlegen.
 // Nur den dort einmalig angezeigten Geräte-Token hier eintragen.
 constexpr char RFID_DEVICE_TOKEN[] = "";

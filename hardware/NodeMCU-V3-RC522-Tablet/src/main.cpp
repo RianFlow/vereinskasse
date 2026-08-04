@@ -8,6 +8,7 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
+#include <osapi.h>
 #include <MFRC522.h>
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_GFX.h>
@@ -22,10 +23,17 @@ Adafruit_SSD1306 statusDisplay(
     STATUS_DISPLAY_WIDTH, STATUS_DISPLAY_HEIGHT, &Wire, -1);
 BearSSL::WiFiClientSecure vereinskasseTls;
 HTTPClient vereinskasseHttps;
-BearSSL::X509List vereinskasseTrustAnchor(VEREINSKASSE_ROOT_CA);
+BearSSL::X509List *vereinskasseTrustAnchor = nullptr;
 String apSsid, apPassword, webUser, webPassword;
 String clubWifiSsid, clubWifiPassword, wifiCsrfToken;
+String vereinskasseApiUrl, rfidDeviceToken, vereinskasseRootCa;
+String pairingRequestId, pairingSecret, pairingCode;
+String pairingState = "idle";
+String pairingMessage = "Noch keine Kopplung gestartet.";
+bool pairingActive = false;
+unsigned long lastPairingPollAt = 0;
 bool wifiSettingsStored = false;
+bool serverSettingsStored = false;
 bool stationReconnectPending = false;
 unsigned long stationReconnectAt = 0;
 String lastPushState = "Noch keine Karte übertragen.";
@@ -72,7 +80,8 @@ enum class StatusLedMode {
   Success,
   Error,
   WriteWaiting,
-  Writing
+  Writing,
+  Pairing
 };
 
 StatusLedMode statusLedMode = StatusLedMode::Starting;
@@ -83,6 +92,9 @@ unsigned long statusLedTestStartedAt = 0;
 
 bool clockReady();
 String jsonStringField(const String &body, const String &name);
+String commandApiUrl();
+String pairingApiUrl();
+String macSuffix();
 void maintainStationWifi();
 
 struct WifiSettings {
@@ -93,6 +105,17 @@ struct WifiSettings {
   uint32_t checksum;
 };
 
+struct ServerSettings {
+  char magic[8];
+  uint8_t version;
+  char apiUrl[SERVER_API_URL_MAX_BYTES + 1];
+  char deviceToken[SERVER_DEVICE_TOKEN_MAX_BYTES + 1];
+  char rootCa[SERVER_ROOT_CA_MAX_BYTES + 1];
+  uint32_t checksum;
+};
+
+ServerSettings serverSettingsBuffer{};
+
 uint32_t wifiSettingsChecksum(const WifiSettings &settings) {
   const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&settings);
   uint32_t checksum = 2166136261UL;
@@ -101,6 +124,89 @@ uint32_t wifiSettingsChecksum(const WifiSettings &settings) {
     checksum *= 16777619UL;
   }
   return checksum;
+}
+
+uint32_t serverSettingsChecksum(const ServerSettings &settings) {
+  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&settings);
+  uint32_t checksum = 2166136261UL;
+  for (size_t i = 0; i < offsetof(ServerSettings, checksum); ++i) {
+    checksum ^= bytes[i];
+    checksum *= 16777619UL;
+  }
+  return checksum;
+}
+
+String stringFromProgmem(const char *value) {
+  String result;
+  const size_t length = strlen_P(value);
+  result.reserve(length);
+  for (size_t i = 0; i < length; ++i) {
+    result += static_cast<char>(pgm_read_byte(value + i));
+  }
+  return result;
+}
+
+void rebuildVereinskasseTrustAnchor() {
+  if (vereinskasseTrustAnchor) {
+    delete vereinskasseTrustAnchor;
+    vereinskasseTrustAnchor = nullptr;
+  }
+  if (vereinskasseRootCa.length() > 100) {
+    vereinskasseTrustAnchor = new BearSSL::X509List(vereinskasseRootCa.c_str());
+  }
+}
+
+void applyCompileTimeServerSettings() {
+  vereinskasseApiUrl = VEREINSKASSE_API_URL;
+  rfidDeviceToken = RFID_DEVICE_TOKEN;
+  vereinskasseRootCa = stringFromProgmem(VEREINSKASSE_ROOT_CA);
+  serverSettingsStored = false;
+  rebuildVereinskasseTrustAnchor();
+}
+
+bool validStoredServerSettings(const ServerSettings &settings) {
+  return memcmp(settings.magic, "VK-SRV1", 7) == 0 &&
+         settings.version == 1 &&
+         settings.apiUrl[sizeof(settings.apiUrl) - 1] == '\0' &&
+         settings.deviceToken[sizeof(settings.deviceToken) - 1] == '\0' &&
+         settings.rootCa[sizeof(settings.rootCa) - 1] == '\0' &&
+         settings.checksum == serverSettingsChecksum(settings);
+}
+
+void loadServerSettings() {
+  memset(&serverSettingsBuffer, 0, sizeof(serverSettingsBuffer));
+  EEPROM.get(SERVER_SETTINGS_EEPROM_ADDRESS, serverSettingsBuffer);
+  if (!validStoredServerSettings(serverSettingsBuffer)) {
+    applyCompileTimeServerSettings();
+    return;
+  }
+  vereinskasseApiUrl = serverSettingsBuffer.apiUrl;
+  rfidDeviceToken = serverSettingsBuffer.deviceToken;
+  vereinskasseRootCa = serverSettingsBuffer.rootCa;
+  serverSettingsStored = true;
+  rebuildVereinskasseTrustAnchor();
+}
+
+bool saveServerSettings(const String &apiUrl, const String &deviceToken,
+                        const String &rootCa) {
+  memset(&serverSettingsBuffer, 0, sizeof(serverSettingsBuffer));
+  memcpy(serverSettingsBuffer.magic, "VK-SRV1", 7);
+  serverSettingsBuffer.version = 1;
+  apiUrl.toCharArray(serverSettingsBuffer.apiUrl, sizeof(serverSettingsBuffer.apiUrl));
+  deviceToken.toCharArray(serverSettingsBuffer.deviceToken,
+                          sizeof(serverSettingsBuffer.deviceToken));
+  rootCa.toCharArray(serverSettingsBuffer.rootCa, sizeof(serverSettingsBuffer.rootCa));
+  serverSettingsBuffer.checksum = serverSettingsChecksum(serverSettingsBuffer);
+  EEPROM.put(SERVER_SETTINGS_EEPROM_ADDRESS, serverSettingsBuffer);
+  if (!EEPROM.commit()) return false;
+  vereinskasseHttps.end();
+  vereinskasseTls.stop();
+  vereinskasseApiUrl = apiUrl;
+  rfidDeviceToken = deviceToken;
+  vereinskasseRootCa = rootCa;
+  serverSettingsStored = true;
+  rebuildVereinskasseTrustAnchor();
+  return vereinskasseTrustAnchor != nullptr;
 }
 
 void applyCompileTimeWifi() {
@@ -290,6 +396,7 @@ void setStatusLed(StatusLedMode mode, unsigned long durationMs = 0) {
     case StatusLedMode::Error: showStatusDisplay("Fehler", "Status in der App pruefen"); break;
     case StatusLedMode::WriteWaiting: showStatusDisplay("Schreiben", "Karte erneut auflegen"); break;
     case StatusLedMode::Writing: showStatusDisplay("Schreiben", "Karte liegen lassen"); break;
+    case StatusLedMode::Pairing: showStatusDisplay("Kopplung", "Code in App bestaetigen"); break;
   }
 }
 
@@ -373,6 +480,7 @@ void renderStatusLed() {
     case StatusLedMode::Error: fillStatusPixels(flash ? 255 : 12, 0, 0); break;
     case StatusLedMode::WriteWaiting: fillStatusPixels(pulse, 0, pulse); break;
     case StatusLedMode::Writing: fillStatusPixels(185, 0, 255); break;
+    case StatusLedMode::Pairing: fillStatusPixels(255, pulse / 2, 0); break;
   }
 }
 
@@ -382,9 +490,15 @@ bool stationConfigured() {
 
 bool pushConfigured() {
   return stationConfigured() &&
-         strlen(RFID_DEVICE_TOKEN) >= 24 &&
-         strlen(VEREINSKASSE_API_URL) > 12 &&
-         strlen_P(VEREINSKASSE_ROOT_CA) > 100;
+         rfidDeviceToken.length() >= 24 &&
+         vereinskasseApiUrl.startsWith("https://") &&
+         vereinskasseTrustAnchor != nullptr;
+}
+
+bool pairingConfigured() {
+  return stationConfigured() &&
+         vereinskasseApiUrl.startsWith("https://") &&
+         vereinskasseTrustAnchor != nullptr;
 }
 
 String jsonEscape(const String &s) {
@@ -448,7 +562,8 @@ bool clockReady() {
 }
 
 bool beginVereinskasseRequest(const String &url) {
-  vereinskasseTls.setTrustAnchors(&vereinskasseTrustAnchor);
+  if (!vereinskasseTrustAnchor) return false;
+  vereinskasseTls.setTrustAnchors(vereinskasseTrustAnchor);
   vereinskasseTls.setTimeout(HTTPS_TIMEOUT_MS);
   vereinskasseHttps.setTimeout(HTTPS_TIMEOUT_MS);
   vereinskasseHttps.setReuse(true);
@@ -477,13 +592,13 @@ bool pushUidToVereinskasse(const String &uid, const String &type, int blocks) {
     return false;
   }
 
-  if (!beginVereinskasseRequest(VEREINSKASSE_API_URL)) {
+  if (!beginVereinskasseRequest(vereinskasseApiUrl)) {
     lastPushState = "HTTPS-Verbindung konnte nicht vorbereitet werden.";
     return false;
   }
 
   vereinskasseHttps.addHeader("Content-Type", "application/json");
-  vereinskasseHttps.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
   const String body = "{\"uid\":\"" + jsonEscape(uid) +
                       "\",\"type\":\"" + jsonEscape(type) +
                       "\",\"blocks\":" + String(blocks) + "}";
@@ -530,9 +645,15 @@ void handleStatus() {
                 ",\"stationSsid\":\"" + jsonEscape(clubWifiSsid) +
                 "\",\"wifiSettingsStored\":" + String(wifiSettingsStored ? "true" : "false") +
                 ",\"stationIp\":\"" +
-                (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("")) +
-                "\",\"pushConfigured\":" + String(pushConfigured() ? "true" : "false") +
-                ",\"clockReady\":" + String(clockReady() ? "true" : "false") +
+                 (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("")) +
+                 "\",\"serverUrl\":\"" + jsonEscape(vereinskasseApiUrl) +
+                 "\",\"serverSettingsStored\":" + String(serverSettingsStored ? "true" : "false") +
+                 ",\"pushConfigured\":" + String(pushConfigured() ? "true" : "false") +
+                 ",\"pairingState\":\"" + jsonEscape(pairingState) +
+                 "\",\"pairingCode\":\"" + jsonEscape(pairingCode) +
+                 "\",\"pairingMessage\":\"" + jsonEscape(pairingMessage) +
+                 "\",\"hardwareId\":\"ESP8266-" + macSuffix() + "\"" +
+                 ",\"clockReady\":" + String(clockReady() ? "true" : "false") +
                 ",\"pendingScan\":" + String(pendingUidReady ? "true" : "false") +
                 ",\"lastUid\":\"" + jsonEscape(lastPushedUid) +
                 "\",\"ledPin\":\"D8 / GPIO 15\"" +
@@ -545,6 +666,264 @@ void handleStatus() {
 
 bool validWifiCsrf() {
   return server.hasArg("_csrf") && server.arg("_csrf") == wifiCsrfToken;
+}
+
+bool validVereinskasseApiUrl(const String &url) {
+  return url.startsWith("https://") &&
+         url.endsWith("/api/rfid") &&
+         url.indexOf('?') < 0 &&
+         url.indexOf('#') < 0 &&
+         url.length() <= SERVER_API_URL_MAX_BYTES;
+}
+
+bool validRootCertificate(const String &rootCa) {
+  return rootCa.length() > 100 &&
+         rootCa.length() <= SERVER_ROOT_CA_MAX_BYTES &&
+         rootCa.indexOf("-----BEGIN CERTIFICATE-----") >= 0 &&
+         rootCa.indexOf("-----END CERTIFICATE-----") >= 0;
+}
+
+void handleServerSettingsGet() {
+  if (!authorized()) return;
+  const String body =
+      "{\"apiUrl\":\"" + jsonEscape(vereinskasseApiUrl) +
+      "\",\"deviceTokenConfigured\":" +
+      String(rfidDeviceToken.length() >= 24 ? "true" : "false") +
+      ",\"rootCa\":\"" + jsonEscape(vereinskasseRootCa) +
+      "\",\"stored\":" + String(serverSettingsStored ? "true" : "false") + "}";
+  json(200, body);
+}
+
+void handleServerSettingsSave() {
+  if (!authorized()) return;
+  if (!validWifiCsrf()) {
+    json(403, "{\"error\":\"Sicherheitspruefung fehlgeschlagen. Seite neu laden.\"}");
+    return;
+  }
+  if (server.arg("confirm") != "VERBINDEN") {
+    json(400, "{\"error\":\"Bestaetigung VERBINDEN fehlt.\"}");
+    return;
+  }
+
+  String apiUrl = server.arg("apiUrl");
+  apiUrl.trim();
+  while (apiUrl.endsWith("/")) apiUrl.remove(apiUrl.length() - 1);
+  if (!validVereinskasseApiUrl(apiUrl)) {
+    json(400, "{\"error\":\"Die Adresse muss mit https:// beginnen und auf /api/rfid enden.\"}");
+    return;
+  }
+
+  String deviceToken = server.arg("deviceToken");
+  deviceToken.trim();
+  if (!deviceToken.length()) deviceToken = rfidDeviceToken;
+  if (deviceToken.length() &&
+      (deviceToken.length() < 24 || deviceToken.length() > SERVER_DEVICE_TOKEN_MAX_BYTES)) {
+    json(400, "{\"error\":\"Der Geraete-Token hat eine ungueltige Laenge.\"}");
+    return;
+  }
+
+  String rootCa = server.arg("rootCa");
+  rootCa.trim();
+  if (!rootCa.length()) rootCa = vereinskasseRootCa;
+  rootCa.replace("\r\n", "\n");
+  rootCa.trim();
+  rootCa += '\n';
+  if (!validRootCertificate(rootCa)) {
+    json(400, "{\"error\":\"Das Root-Zertifikat fehlt oder ist kein gueltiges PEM-Zertifikat.\"}");
+    return;
+  }
+
+  if (!saveServerSettings(apiUrl, deviceToken, rootCa)) {
+    json(500, "{\"error\":\"Die Servereinstellung konnte nicht dauerhaft gespeichert werden.\"}");
+    return;
+  }
+  lastPushState = deviceToken.length()
+      ? "Kassenserver gespeichert. Verbindung kann jetzt getestet werden."
+      : "Kassenserver gespeichert. Jetzt Kopplung per Einmalcode starten.";
+  serverFailureSince = 0;
+  json(200, "{\"saved\":true,\"apiUrl\":\"" + jsonEscape(vereinskasseApiUrl) + "\"}");
+}
+
+void handleServerConnectionTest() {
+  if (!authorized()) return;
+  if (!validWifiCsrf()) {
+    json(403, "{\"error\":\"Sicherheitspruefung fehlgeschlagen. Seite neu laden.\"}");
+    return;
+  }
+  if (server.arg("confirm") != "TESTEN") {
+    json(400, "{\"error\":\"Bestaetigung TESTEN fehlt.\"}");
+    return;
+  }
+  if (!pushConfigured()) {
+    json(409, "{\"error\":\"WLAN, Serveradresse, Geraete-Token oder Zertifikat fehlt.\"}");
+    return;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    json(409, "{\"error\":\"Der Leser ist nicht mit dem Vereins-WLAN verbunden.\"}");
+    return;
+  }
+  if (!clockReady()) {
+    beginClockSync();
+    json(409, "{\"error\":\"Die sichere Uhrzeit ist noch nicht verfuegbar. Bitte kurz warten.\"}");
+    return;
+  }
+  if (!beginVereinskasseRequest(commandApiUrl())) {
+    json(502, "{\"error\":\"Die HTTPS-Verbindung konnte nicht vorbereitet werden.\"}");
+    return;
+  }
+  vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
+  const int status = vereinskasseHttps.GET();
+  vereinskasseHttps.end();
+  if (status >= 200 && status < 300) {
+    serverFailureSince = 0;
+    lastPushState = "Kassenserver erfolgreich getestet.";
+    setStatusLed(StatusLedMode::Success, 900);
+    json(200, "{\"ok\":true,\"status\":" + String(status) + "}");
+    return;
+  }
+  lastPushState = status < 0
+      ? "Server-Test: Netzwerk-/TLS-Fehler."
+      : "Server-Test: HTTP " + String(status) + ".";
+  setStatusLed(StatusLedMode::Error, 1800);
+  json(502, "{\"error\":\"Kassenserver nicht erreichbar oder Token abgelehnt.\",\"status\":" +
+            String(status) + "}");
+}
+
+String pairingApiUrl() {
+  return vereinskasseApiUrl + "/pair";
+}
+
+String secureRandomHex(size_t bytes) {
+  static const char hexDigits[] = "0123456789ABCDEF";
+  String result;
+  result.reserve(bytes * 2);
+  uint32_t randomValue = 0;
+  for (size_t i = 0; i < bytes; ++i) {
+    if ((i % 4) == 0) randomValue = os_random();
+    const uint8_t value = (randomValue >> ((i % 4) * 8)) & 0xFF;
+    result += hexDigits[value >> 4];
+    result += hexDigits[value & 0x0F];
+  }
+  return result;
+}
+
+bool sendPairingRequest() {
+  if (!beginVereinskasseRequest(pairingApiUrl())) return false;
+  vereinskasseHttps.addHeader("Content-Type", "application/json");
+  const String hardwareId = "ESP8266-" + macSuffix();
+  const String body = "{\"hardwareId\":\"" + hardwareId +
+                      "\",\"code\":\"" + pairingCode +
+                      "\",\"secret\":\"" + pairingSecret +
+                      "\",\"name\":\"RFID-Leser " + macSuffix() + "\"}";
+  const int status = vereinskasseHttps.POST(body);
+  const String response = vereinskasseHttps.getString();
+  vereinskasseHttps.end();
+  if (status < 200 || status >= 300) {
+    pairingMessage = status < 0
+        ? "Netzwerk- oder TLS-Fehler beim Koppeln."
+        : "Kassenserver lehnt die Kopplung ab (HTTP " + String(status) + ").";
+    return false;
+  }
+  pairingRequestId = jsonStringField(response, "id");
+  if (!pairingRequestId.length()) {
+    pairingMessage = "Kassenserver hat keine Kopplungsnummer geliefert.";
+    return false;
+  }
+  pairingState = "pending";
+  pairingMessage = "Code " + pairingCode + " jetzt in Clubiq Ledger freigeben.";
+  pairingActive = true;
+  lastPairingPollAt = 0;
+  setStatusLed(StatusLedMode::Pairing);
+  showStatusDisplay("Kopplungscode", pairingCode);
+  return true;
+}
+
+void handlePairingStart() {
+  if (!authorized()) return;
+  if (!validWifiCsrf()) {
+    json(403, "{\"error\":\"Sicherheitspruefung fehlgeschlagen. Seite neu laden.\"}");
+    return;
+  }
+  if (server.arg("confirm") != "KOPPELN") {
+    json(400, "{\"error\":\"Bestaetigung KOPPELN fehlt.\"}");
+    return;
+  }
+  if (!pairingConfigured()) {
+    json(409, "{\"error\":\"WLAN, Serveradresse oder Root-Zertifikat fehlt.\"}");
+    return;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    json(409, "{\"error\":\"Der Leser ist noch nicht mit dem Vereins-WLAN verbunden.\"}");
+    return;
+  }
+  if (!clockReady()) {
+    beginClockSync();
+    json(409, "{\"error\":\"Die sichere Uhrzeit wird noch geladen. Bitte kurz warten.\"}");
+    return;
+  }
+  pairingSecret = secureRandomHex(32);
+  char codeBuffer[7];
+  snprintf(codeBuffer, sizeof(codeBuffer), "%06lu", os_random() % 1000000UL);
+  pairingCode = codeBuffer;
+  pairingRequestId = "";
+  pairingState = "requesting";
+  pairingMessage = "Kopplungsanfrage wird gesendet.";
+  pairingActive = false;
+  if (!sendPairingRequest()) {
+    pairingState = "error";
+    setStatusLed(StatusLedMode::Error, 1800);
+    json(502, "{\"error\":\"" + jsonEscape(pairingMessage) + "\"}");
+    return;
+  }
+  json(202, "{\"state\":\"pending\",\"hardwareId\":\"ESP8266-" + macSuffix() +
+            "\",\"code\":\"" + pairingCode + "\"}");
+}
+
+void pollPairingApproval() {
+  if (!pairingActive || WiFi.status() != WL_CONNECTED || !clockReady()) return;
+  const unsigned long now = millis();
+  if (lastPairingPollAt && now - lastPairingPollAt < RFID_PAIRING_POLL_INTERVAL_MS) return;
+  lastPairingPollAt = now;
+  if (!beginVereinskasseRequest(pairingApiUrl() + "?id=" + pairingRequestId)) return;
+  vereinskasseHttps.addHeader("X-RFID-Pairing-Secret", pairingSecret);
+  const int status = vereinskasseHttps.GET();
+  const String response = vereinskasseHttps.getString();
+  vereinskasseHttps.end();
+  const String state = jsonStringField(response, "state");
+  if (status == 200 && state == "approved") {
+    if (!saveServerSettings(vereinskasseApiUrl, pairingSecret, vereinskasseRootCa)) {
+      pairingState = "error";
+      pairingMessage = "Freigabe erhalten, aber Anmeldung konnte nicht gespeichert werden.";
+      pairingActive = false;
+      setStatusLed(StatusLedMode::Error, 1800);
+      return;
+    }
+    pairingState = "approved";
+    pairingMessage = "Sicher gekoppelt. Kartenscans sind jetzt bereit.";
+    pairingActive = false;
+    pairingSecret = "";
+    pairingCode = "";
+    pairingRequestId = "";
+    serverFailureSince = 0;
+    lastPushState = pairingMessage;
+    setStatusLed(StatusLedMode::Success, 1400);
+    showStatusDisplay("Gekoppelt", "RFID bereit");
+    return;
+  }
+  if ((status == 200 && (state == "rejected" || state == "expired")) || status == 410) {
+    pairingState = state.length() ? state : "expired";
+    pairingMessage = pairingState == "rejected"
+        ? "Kopplung wurde in Clubiq Ledger verworfen."
+        : "Kopplungscode ist abgelaufen. Bitte neu starten.";
+    pairingActive = false;
+    pairingSecret = "";
+    pairingCode = "";
+    pairingRequestId = "";
+    setStatusLed(StatusLedMode::Error, 1800);
+    showStatusDisplay("Kopplung", "Erneut starten");
+    return;
+  }
+  if (status != 200) pairingMessage = "Warte auf Kassenserver; Kopplung bleibt offen.";
 }
 
 void handleLedTest() {
@@ -909,14 +1288,14 @@ int jsonIntField(const String &body, const String &name) {
 }
 
 String commandApiUrl() {
-  return String(VEREINSKASSE_API_URL) + "/commands";
+  return vereinskasseApiUrl + "/commands";
 }
 
 bool reportWriteResult() {
   if (!writeResultReady) return false;
   if (!beginVereinskasseRequest(commandApiUrl())) return false;
   vereinskasseHttps.addHeader("Content-Type", "application/json");
-  vereinskasseHttps.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
   const String body = "{\"id\":\"" + jsonEscape(writeCommandId) +
                       "\",\"success\":" + String(writeResultSuccess ? "true" : "false") +
                       ",\"uid\":\"" + jsonEscape(writeCommandUid) +
@@ -944,7 +1323,7 @@ bool reportWriteResult() {
 void performRemoteRestart(const String &commandId) {
   if (!beginVereinskasseRequest(commandApiUrl())) return;
   vereinskasseHttps.addHeader("Content-Type", "application/json");
-  vereinskasseHttps.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
   const String body = "{\"id\":\"" + jsonEscape(commandId) +
                       "\",\"success\":true,\"uid\":\"DEVICE-RESTART\",\"hex\":\"\",\"error\":\"\"}";
   const int status = vereinskasseHttps.POST(body);
@@ -976,7 +1355,7 @@ void pollWriteCommand() {
   lastCommandPollAt = now;
 
   if (!beginVereinskasseRequest(commandApiUrl())) return;
-  vereinskasseHttps.addHeader("X-RFID-Token", RFID_DEVICE_TOKEN);
+  vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
   if (lastDisplayRevision.length())
     vereinskasseHttps.addHeader("X-Display-Revision", lastDisplayRevision);
   const int status = vereinskasseHttps.GET();
@@ -1125,6 +1504,7 @@ void setup() {
   webPassword = strlen(CUSTOM_WEB_PASSWORD) ? CUSTOM_WEB_PASSWORD : "Web-" + id + "-Login!";
   wifiCsrfToken = id + "-" + String(ESP.getCycleCount(), HEX) + "-" + String(micros(), HEX);
   loadWifiSettings();
+  loadServerSettings();
 
   // Der Wartungs-AP bleibt immer erreichbar. Parallel verbindet sich der
   // ESP8266 als Station mit dem Vereins-WLAN und sendet Scans per HTTPS.
@@ -1148,6 +1528,10 @@ void setup() {
   server.on("/api/wifi", HTTP_POST, handleWifiSave);
   server.on("/api/wifi", HTTP_DELETE, handleWifiDelete);
   server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
+  server.on("/api/server", HTTP_GET, handleServerSettingsGet);
+  server.on("/api/server", HTTP_POST, handleServerSettingsSave);
+  server.on("/api/server/test", HTTP_POST, handleServerConnectionTest);
+  server.on("/api/pair/start", HTTP_POST, handlePairingStart);
   server.on("/api/read", HTTP_POST, handleRead);
   server.on("/api/write", HTTP_POST, handleWrite);
   server.onNotFound([] { if (authorized()) json(404, "{\"error\":\"Nicht gefunden.\"}"); });
@@ -1164,6 +1548,7 @@ void setup() {
     Serial.println("Vereinskasse: WLAN eingetragen, aber Token oder Root-CA fehlt.");
   } else {
     Serial.println("Vereinskasse: sichere UID-Übertragung ist eingerichtet.");
+    Serial.printf("Kassenserver: %s\n", vereinskasseApiUrl.c_str());
   }
 }
 
@@ -1177,6 +1562,7 @@ void loop() {
   automaticUidScan();
   retryPendingUid();
   maintainRfidReader();
+  pollPairingApproval();
   pollWriteCommand();
   processWriteCommand();
   selfRecoverIfStalled();

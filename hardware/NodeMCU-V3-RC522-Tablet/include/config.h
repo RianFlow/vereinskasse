@@ -48,6 +48,7 @@ constexpr unsigned long RFID_REPEAT_GUARD_MS = 1500;
 // Karten-Schreibaufträge sind selten. Eine häufigere HTTPS-Abfrage würde den
 // wichtigeren UID-Scan unnötig blockieren.
 constexpr unsigned long RFID_COMMAND_POLL_INTERVAL_MS = 5000;
+constexpr unsigned long RFID_PAIRING_POLL_INTERVAL_MS = 1200;
 // Solange die lokale Wartungsseite benutzt wird, pausieren langsamere
 // HTTPS-Hintergrundabfragen. Dadurch reagiert die Oberfläche sofort.
 constexpr unsigned long MAINTENANCE_PRIORITY_MS = 4500;
@@ -61,7 +62,13 @@ constexpr unsigned long UID_RETRY_MAX_MS = 30000;
 constexpr unsigned long RFID_HEALTHCHECK_INTERVAL_MS = 30000;
 constexpr unsigned long SELF_RECOVERY_RESTART_MS = 5UL * 60UL * 1000UL;
 
-// Das Vereins-WLAN wird im EEPROM gespeichert und bleibt dadurch bei normalen
-// Firmware-Updates erhalten. Ein kompletter Flash-Erase löscht es weiterhin.
-constexpr size_t WIFI_SETTINGS_EEPROM_SIZE = 256;
+// WLAN und Kassenserver werden im EEPROM gespeichert und bleiben dadurch bei
+// normalen Firmware-Updates erhalten. Die ersten 256 Byte bleiben mit dem
+// bisherigen WLAN-Layout kompatibel; die Serverdaten beginnen danach.
+// Ein kompletter Flash-Erase löscht weiterhin alle Einstellungen.
+constexpr size_t WIFI_SETTINGS_EEPROM_SIZE = 4096;
 constexpr int WIFI_SETTINGS_EEPROM_ADDRESS = 0;
+constexpr int SERVER_SETTINGS_EEPROM_ADDRESS = 256;
+constexpr size_t SERVER_API_URL_MAX_BYTES = 192;
+constexpr size_t SERVER_DEVICE_TOKEN_MAX_BYTES = 160;
+constexpr size_t SERVER_ROOT_CA_MAX_BYTES = 2048;

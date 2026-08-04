@@ -29,9 +29,17 @@ export const memberLifecycle=sqliteTable("member_lifecycle",{
 
 export const rfidDevices=sqliteTable("rfid_devices",{
   id:text("id").primaryKey(),profileId:text("profile_id").notNull(),name:text("name").notNull(),
+  hardwareId:text("hardware_id"),
   tokenHash:text("token_hash").notNull(),active:integer("active",{mode:"boolean"}).notNull().default(true),
   lastSeenAt:text("last_seen_at"),createdBy:text("created_by").notNull(),createdAt:text("created_at").notNull(),
-},table=>[uniqueIndex("rfid_devices_token_hash_unique").on(table.tokenHash),index("rfid_devices_profile_active_idx").on(table.profileId,table.active)]);
+},table=>[uniqueIndex("rfid_devices_token_hash_unique").on(table.tokenHash),uniqueIndex("rfid_devices_hardware_id_unique").on(table.hardwareId),index("rfid_devices_profile_active_idx").on(table.profileId,table.active)]);
+
+export const rfidPairingRequests=sqliteTable("rfid_pairing_requests",{
+  id:text("id").primaryKey(),hardwareId:text("hardware_id").notNull(),name:text("name").notNull(),
+  codeHash:text("code_hash").notNull(),tokenHash:text("token_hash").notNull(),status:text("status").notNull().default("pending"),
+  deviceId:text("device_id"),failedAttempts:integer("failed_attempts").notNull().default(0),createdAt:text("created_at").notNull(),
+  expiresAt:text("expires_at").notNull(),approvedAt:text("approved_at"),consumedAt:text("consumed_at"),
+},table=>[uniqueIndex("rfid_pairing_requests_hardware_unique").on(table.hardwareId),index("rfid_pairing_requests_status_expiry_idx").on(table.status,table.expiresAt)]);
 
 export const rfidCards=sqliteTable("rfid_cards",{
   id:text("id").primaryKey(),profileId:text("profile_id").notNull(),uid:text("uid").notNull(),

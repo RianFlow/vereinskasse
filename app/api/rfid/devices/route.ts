@@ -9,7 +9,7 @@ export async function GET(request:Request){
   const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);
   if(!admin||!profile)return Response.json({error:"Nur Vorstand oder Systemadministration dürfen RFID-Leser verwalten"},{status:403,headers:noStore});
   const [rows,cards]=await Promise.all([
-    env.DB.prepare("SELECT id,name,active,last_seen_at lastSeenAt,created_at createdAt FROM rfid_devices WHERE profile_id=? ORDER BY active DESC,name").bind(profile.id).all(),
+    env.DB.prepare("SELECT id,name,hardware_id hardwareId,active,last_seen_at lastSeenAt,created_at createdAt FROM rfid_devices WHERE profile_id=? ORDER BY active DESC,name").bind(profile.id).all(),
     env.DB.prepare("SELECT c.uid,c.member_id memberId,m.name memberName,c.updated_at updatedAt FROM rfid_cards c JOIN members m ON m.id=c.member_id WHERE c.profile_id=? ORDER BY m.name,c.uid").bind(profile.id).all()
   ]);
   return Response.json({devices:rows.results,cards:cards.results},{headers:noStore});
@@ -24,7 +24,7 @@ export async function POST(request:Request){
     if(name.length<3)return Response.json({error:"Bitte einen eindeutigen Gerätenamen eingeben"},{status:400,headers:noStore});
     const id=`RFID-${crypto.randomUUID()}`,token=`vrfid_${crypto.randomUUID().replaceAll("-","")}${crypto.randomUUID().replaceAll("-","")}`,now=new Date().toISOString();
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO rfid_devices (id,profile_id,name,token_hash,active,last_seen_at,created_by,created_at) VALUES (?,?,?,?,1,NULL,?,?)").bind(id,profile.id,name,await hex(token),admin.id,now),
+      env.DB.prepare("INSERT INTO rfid_devices (id,profile_id,name,hardware_id,token_hash,active,last_seen_at,created_by,created_at) VALUES (?,?,?,NULL,?,1,NULL,?,?)").bind(id,profile.id,name,await hex(token),admin.id,now),
       env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_DEVICE_CREATED","rfid_device",id,admin.id,JSON.stringify({profileId:profile.id,name}),now)
     ]);
     return Response.json({ok:true,device:{id,name,active:true,lastSeenAt:null,createdAt:now},token},{status:201,headers:noStore});

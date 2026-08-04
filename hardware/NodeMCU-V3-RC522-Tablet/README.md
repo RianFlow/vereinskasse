@@ -144,19 +144,49 @@ eintragen.
 
 ## 4. Verbindung mit der Vereinskasse
 
-1. In der Vereinskasse als Administrator **Admin → Sicherheit → RFID-Leser**
-   öffnen und einen Leser anlegen.
-2. Den einmal angezeigten Geräte-Token sicher kopieren.
-3. `include/secrets.example.h` als `include/secrets.h` kopieren.
-4. In `secrets.h` Vereins-WLAN und Geräte-Token eintragen. Die zur aktuellen
-   `*.floh510.chatgpt.site`-Zertifikatskette passende Root-CA ist bereits enthalten.
-   Bei einem anderen Host muss sie ersetzt werden.
-5. Firmware erneut hochladen und den seriellen Monitor öffnen.
+1. Diese Firmware einmalig per USB aufspielen. Danach ist für die normale
+   Einrichtung kein PC und kein PlatformIO mehr nötig.
+2. Mit dem Wartungs-WLAN des Lesers verbinden und `http://192.168.4.1` öffnen.
+3. Unter **Kassenserver einrichten** Serveradresse und passende Root-CA
+   speichern.
+4. **Mit Clubiq Ledger koppeln** wählen und den angezeigten sechsstelligen Code
+   merken.
+5. Das Tablet wieder mit dem Vereins-WLAN verbinden und in Clubiq Ledger
+   **Admin → Sicherheit → RFID-Leser** öffnen.
+6. Den wartenden Leser anhand des Codes **Freigeben**. Der sichere Geräte-Token
+   wird vom Leser selbst erzeugt und automatisch übernommen.
+
+Serveradresse, Geräte-Token, Root-CA und Vereins-WLAN werden im Gerätespeicher
+abgelegt. Sie bleiben bei normalen Firmware-Updates erhalten und können später
+über die Wartungsseite geändert werden, ohne den Programmcode erneut anzupassen.
+Der Geräte-Token wird nach dem Speichern nicht wieder angezeigt. Ein leeres
+Tokenfeld behält den vorhandenen Wert.
+
+### Lokaler Raspberry
+
+Für die lokale Docker-Installation gelten folgende Werte:
+
+1. Tablet beziehungsweise PC mit demselben Netz wie den Raspberry verbinden.
+2. `http://vereinskasse.local:8080/vereinskasse-ca.crt` herunterladen und den
+   vollständigen PEM-Inhalt mit `BEGIN CERTIFICATE` und `END CERTIFICATE`
+   bereithalten.
+3. Wartungs-WLAN `NFC-Reader-xxxxxx` öffnen und `http://192.168.4.1` aufrufen.
+4. Als Serveradresse `https://vereinskasse.local/api/rfid` eintragen.
+5. Die heruntergeladene Root-CA einfügen und den Server speichern.
+6. **Kopplung starten**, anschließend in Clubiq Ledger den sechsstelligen Code
+   beim wartenden Leser bestätigen.
+
+Beim Umzug vom Heimnetz in das Vereinsheim muss danach nur das Vereins-WLAN auf
+der Wartungsseite geändert werden. Solange derselbe Raspberry mit demselben
+Hostnamen verwendet wird, bleiben Serveradresse, Zertifikat, RFID-Zuordnungen
+und Datenbank unverändert. Das Vereins-WLAN muss direkte Verbindungen zwischen
+Raspberry und Leser erlauben; ein isoliertes Gastnetz ist ungeeignet.
 
 `include/secrets.h` wird durch `.gitignore` nicht in Git gespeichert. Der
 Geräte-Token und das WLAN-Kennwort werden nicht im seriellen Monitor ausgegeben.
 Ohne Root-CA sendet die Firmware absichtlich nichts; unsicheres TLS ist nicht
-vorgesehen.
+vorgesehen. Eine gespeicherte Einstellung hat Vorrang vor den Rückfallwerten in
+`secrets.h`.
 
 Wichtig: Eine als **privat** geschützte Vorschau-Webseite kann der ESP8266 nicht
 anmelden. Für den echten Leser muss die Vereinskasse öffentlich erreichbar sein

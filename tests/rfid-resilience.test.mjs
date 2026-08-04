@@ -39,3 +39,51 @@ test("RFID-WLAN kann geschützt eingerichtet und dauerhaft gespeichert werden",a
   }
   assert.ok(!firmware.includes('",\\"stationPassword\\":'),"Das WLAN-Kennwort darf nicht über den Status ausgeliefert werden");
 });
+
+test("RFID-Kassenserver kann ohne neuen Firmware-Build sicher umgestellt werden",async()=>{
+  const [firmware,config,ui,example]=await Promise.all([
+    read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/include/config.h"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/include/secrets.example.h")
+  ]);
+  for(const fragment of ["struct ServerSettings","loadServerSettings()","saveServerSettings","validVereinskasseApiUrl","validRootCertificate","/api/server","/api/server/test","serverSettingsStored","rebuildVereinskasseTrustAnchor"]){
+    assert.ok(firmware.includes(fragment),`Dauerhafte Servereinrichtung fehlt: ${fragment}`);
+  }
+  for(const fragment of ["SERVER_SETTINGS_EEPROM_ADDRESS","SERVER_API_URL_MAX_BYTES","SERVER_DEVICE_TOKEN_MAX_BYTES","SERVER_ROOT_CA_MAX_BYTES"]){
+    assert.ok(config.includes(fragment),`Server-Speichergrenze fehlt: ${fragment}`);
+  }
+  for(const fragment of ["Kassenserver einrichten","https://vereinskasse.local/api/rfid","Geräte-Token","Root-CA-Zertifikat","Server sicher speichern","Verbindung testen"]){
+    assert.ok(ui.includes(fragment),`Server-Oberfläche fehlt: ${fragment}`);
+  }
+  assert.ok(firmware.includes('url.startsWith("https://")'),"Unsichere Serveradressen dürfen nicht gespeichert werden");
+  assert.ok(!firmware.includes("setInsecure()"),"Die TLS-Zertifikatsprüfung darf nicht deaktiviert werden");
+  assert.ok(!firmware.includes('",\\"deviceToken\\":'),"Der Geräte-Token darf nicht über die Status-API ausgeliefert werden");
+  assert.ok(example.includes("VEREINSKASSE_ROOT_CA"),"Ein sicherer Firmware-Rückfallwert für die Root-CA fehlt");
+});
+
+test("RFID-Leser koppelt sich ohne PC per kurzlebigem Einmalcode",async()=>{
+  const [route,component,firmware,readerUi,schema,d1Migration,postgresMigration]=await Promise.all([
+    read("app/api/rfid/pair/route.ts"),
+    read("app/RfidIntegration.tsx"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h"),
+    read("db/schema.ts"),
+    read("drizzle/0025_mixed_captain_universe.sql"),
+    read("postgres/migrations/0002_rfid_pairing.sql")
+  ]);
+  for(const fragment of ["x-rfid-pairing-secret","await hash(secret)","failed_attempts","expires_at<=?","RFID_DEVICE_PAIRED","RFID_DEVICE_REPAIRED","requireRole"]){
+    assert.ok(route.includes(fragment),`Sichere Kopplungsprüfung fehlt: ${fragment}`);
+  }
+  for(const fragment of ["secureRandomHex(32)","os_random()","/api/pair/start","X-RFID-Pairing-Secret","pollPairingApproval()","saveServerSettings(vereinskasseApiUrl, pairingSecret"]){
+    assert.ok(firmware.includes(fragment),`Leser-Kopplung fehlt: ${fragment}`);
+  }
+  for(const fragment of ["Ohne PC koppeln",'autoComplete="one-time-code"',"/api/rfid/pair","Freigeben","Notfallweg mit manuellem Geräte-Token"]){
+    assert.ok(component.includes(fragment),`Tablet-Kopplungsassistent fehlt: ${fragment}`);
+  }
+  assert.ok(readerUi.includes("Mit Clubiq Ledger koppeln")&&readerUi.includes("/api/pair/start"),"Kopplungsstart fehlt auf der Wartungsseite");
+  for(const source of [schema,d1Migration,postgresMigration]){
+    assert.ok(source.includes("rfid_pairing_requests")&&source.includes("hardware_id"),"Kopplungsdatenmodell ist nicht vollständig migriert");
+  }
+  assert.ok(!firmware.includes("setInsecure()"),"Auch die Kopplung muss das TLS-Zertifikat prüfen");
+});

@@ -13,7 +13,8 @@ Der Browser ruft den Leser **nicht** über `http://192.168.4.1` auf. Stattdessen
 2. Der MFRC522 liest ausschließlich die UID.
 3. Der ESP8266 sendet die UID per HTTPS an `https://<vereinskasse>/api/rfid`.
 4. Die Kassenoberfläche fragt neue Scans beim Vereinskassen-Server ab.
-5. Die Zuordnung UID → Mitglied liegt in D1.
+5. Die Zuordnung UID → Mitglied liegt in der aktiven Vereinskassen-Datenbank
+   (auf dem Raspberry in PostgreSQL), niemals auf der Karte.
 
 Die bestehende Access-Point- und Basic-Auth-Oberfläche kann als lokale
 Wartungsfunktion erhalten bleiben. Für den Kassenbetrieb ist der
@@ -21,12 +22,24 @@ gleichzeitige Station-Modus erforderlich.
 
 ## Einmalige Einrichtung
 
-Im Adminbereich unter **Sicherheit → Externer Kartenleser** einen Leser
-anlegen. Die dort einmalig angezeigte Gerätekennung in der Firmware
-hinterlegen.
+Nach dem einmaligen Aufspielen dieser Firmware ist für die Einrichtung kein PC
+und kein PlatformIO mehr nötig:
 
-Die Gerätekennung niemals in Git oder in öffentlich sichtbaren Dateien
-speichern.
+1. Das Tablet mit `NFC-Reader-xxxxxx` verbinden und `http://192.168.4.1`
+   öffnen.
+2. Vereins-WLAN, Serveradresse und Root-CA speichern.
+3. **Mit Clubiq Ledger koppeln** wählen. Der Leser erzeugt einen sechsstelligen
+   Einmalcode und ein eigenes zufälliges Gerätegeheimnis.
+4. Das Tablet wieder mit dem Vereins-WLAN verbinden und in Clubiq Ledger
+   **Admin → Sicherheit → RFID-Leser** öffnen.
+5. Beim wartenden Leser den auf OLED beziehungsweise Wartungsseite angezeigten
+   Code eingeben und **Freigeben** wählen.
+
+Der Leser fragt die Freigabe selbstständig ab und speichert anschließend sein
+Gerätegeheimnis. Es muss weder kopiert noch in den Quellcode geschrieben
+werden. Der Code läuft nach zehn Minuten ab und wird nach fünf falschen
+Versuchen gesperrt. Der bisherige manuelle Geräte-Token bleibt eingeklappt als
+Notfallweg erhalten.
 
 ## Scan an die Vereinskasse senden
 
@@ -64,13 +77,26 @@ Der ESP8266 muss das TLS-Zertifikat der Vereinskassen-Domain prüfen.
 Root-CA wird in der Firmware als Trust Anchor hinterlegt und bei einem
 Zertifikatswechsel aktualisiert.
 
-Die Vereinskasse ist für den Gerätebetrieb öffentlich erreichbar. Die
-Geräte-API bleibt unabhängig davon durch ihre eigene, lange Gerätekennung
-geschützt. Wird die Seite später wieder privat gestellt, benötigt der Leser
-einen lokalen Vermittlungsserver.
+Die Geräte-API bleibt durch ihre eigene, lange Gerätekennung geschützt. Als
+Server kann entweder eine öffentlich erreichbare HTTPS-Installation oder der
+lokale Raspberry verwendet werden. Für den Raspberry wird
+`https://vereinskasse.local/api/rfid` zusammen mit der unter
+`http://vereinskasse.local:8080/vereinskasse-ca.crt` bereitgestellten Root-CA
+auf der Wartungsseite gespeichert. `setInsecure()` bleibt auch im lokalen
+Betrieb verboten.
+
+Beim Wechsel vom Heimnetz ins Vereinsheim wird nur das gespeicherte WLAN des
+Lesers geändert. Serveradresse und Zertifikat bleiben gültig, solange derselbe
+Raspberry und Hostname verwendet werden. Das Zielnetz darf keine Client- oder
+Gastnetz-Isolierung zwischen Leser und Raspberry aktivieren.
 
 Die Vereinskasse selbst akzeptiert einen Scan nur mit einer aktiven,
 serverseitig gehashten Gerätekennung.
+
+Bei der Kopplung wird das lange Gerätegeheimnis vom ESP8266 selbst erzeugt und
+über die bereits geprüfte HTTPS-Verbindung angemeldet. Der Server speichert nur
+den SHA-256-Hash. Die App bestätigt lediglich, dass der am echten Leser
+angezeigte Einmalcode übereinstimmt.
 
 ## Karte einem Mitglied zuordnen und beschriften
 

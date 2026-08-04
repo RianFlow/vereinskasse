@@ -31,6 +31,7 @@ test("übersetzt die bestehende D1-Abfrageschnittstelle sicher nach PostgreSQL",
 
 test("legt ein vollständiges leeres PostgreSQL-Schema mit exakten Geldwerten an", async () => {
   const schema = await read("postgres/migrations/0001_baseline.sql");
+  const rfidPairing = await read("postgres/migrations/0002_rfid_pairing.sql");
   const tables = [...schema.matchAll(/CREATE TABLE ([a-z_]+)/g)].map(
     (match) => match[1],
   );
@@ -57,6 +58,7 @@ test("legt ein vollständiges leeres PostgreSQL-Schema mit exakten Geldwerten an
   const pool = new Pool();
   try {
     await pool.query(schema);
+    await pool.query(rfidPairing);
     await pool.query(
       "INSERT INTO members (id,name,role,code,initials,active) VALUES ($1,$2,$3,$4,$5,1)",
       ["M-1", "Test Mitglied", "Mitglied", "NOLOGIN-M-1", "TM"],
@@ -68,6 +70,12 @@ test("legt ein vollständiges leeres PostgreSQL-Schema mit exakten Geldwerten an
     assert.deepEqual(selected.rows, []);
     const counted = await pool.query("SELECT COUNT(*)::int count FROM members");
     assert.equal(counted.rows[0].count, 1);
+    await pool.query(
+      "INSERT INTO rfid_pairing_requests (id,hardware_id,name,code_hash,token_hash,status,created_at,expires_at) VALUES ($1,$2,$3,$4,$5,'pending',$6,$7)",
+      ["PAIR-1", "ESP8266-123ABC", "Leser Test", "code-hash", "token-hash", new Date().toISOString(), new Date(Date.now()+60000).toISOString()],
+    );
+    const pairing = await pool.query("SELECT hardware_id,status FROM rfid_pairing_requests WHERE id=$1",["PAIR-1"]);
+    assert.deepEqual(pairing.rows,[{hardware_id:"ESP8266-123ABC",status:"pending"}]);
   } finally {
     await pool.end();
   }
