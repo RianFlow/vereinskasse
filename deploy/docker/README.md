@@ -6,7 +6,7 @@ Diese Ausgabe ist für Raspberry Pi OS 64-Bit auf einem Raspberry Pi 4B mit
 
 ## Was automatisch läuft
 
-- **App:** Clubiq Ledger Version 1.4.0 als ARM64-Container
+- **App:** Clubiq Ledger Version 1.5.1 als ARM64-Container
 - **Datenbank:** PostgreSQL 17 in einem nur intern erreichbaren Docker-Netz
 - **HTTPS:** Caddy mit lokalem Zertifikat für Tablet, PWA und Kioskmodus
 - **Start nach Stromausfall:** alle dauerhaften Dienste starten selbst wieder
@@ -69,11 +69,19 @@ lokale CA-Zertifikat laden, zum Beispiel:
 http://192.168.1.50:8080/vereinskasse-ca.crt
 ```
 
-Das Zertifikat als vertrauenswürdiges WLAN-/VPN-Zertifikat installieren.
+Das Zertifikat als vertrauenswürdiges **CA-Zertifikat** installieren.
 Danach die Kasse über den angezeigten Namen öffnen, typischerweise:
 
 ```text
 https://vereinskasse.local
+```
+
+Falls ein Tablet keine `.local`-Namen auflöst, funktioniert die zusätzlich
+angezeigte HTTPS-Adresse mit der aktuellen Raspberry-IP. Nach einem Umzug in
+ein anderes Netzwerk wird diese Adresse einmalig aktualisiert:
+
+```bash
+sudo clubiq netzwerk-aktualisieren
 ```
 
 Über den Browser kann die PWA dann zum Startbildschirm hinzugefügt und im

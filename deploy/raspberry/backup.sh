@@ -7,6 +7,18 @@ if [[ -r /etc/vereinskasse/environment ]]; then
   set +a
 fi
 
+read_secret_if_present() {
+  local target="$1"
+  local file_variable="${target}_FILE"
+  local file="${!file_variable:-}"
+  if [[ -n "$file" && -r "$file" ]]; then
+    printf -v "$target" '%s' "$(<"$file")"
+    export "$target"
+  fi
+}
+
+read_secret_if_present PGPASSWORD
+
 provider="${VEREINSKASSE_DATABASE_PROVIDER:-sqlite}"
 database="${VEREINSKASSE_DATABASE_PATH:-/var/lib/vereinskasse/data/vereinskasse.sqlite}"
 objects="${VEREINSKASSE_BACKUP_DIR:-/var/lib/vereinskasse/data/backups}"
@@ -77,12 +89,16 @@ stamp="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 mkdir -p "$work/data"
 
 if [[ "$provider" == "postgres" ]]; then
-  pg_dump --format=custom --compress="$compression" --no-owner --no-acl \
+  [[ -n "${PGPASSWORD:-}" ]] || {
+    echo "PostgreSQL-App-Kennwort fehlt; Sicherung wurde nicht gestartet." >&2
+    exit 1
+  }
+  pg_dump --no-password --format=custom --compress="$compression" --no-owner --no-acl \
     --file="$work/data/vereinskasse.pgdump" "$PGDATABASE"
   pg_restore --list "$work/data/vereinskasse.pgdump" >/dev/null
-  if [[ "$(psql --tuples-only --no-align --command="SELECT COALESCE(to_regclass('public.sales')::text,'')")" == "sales" ]]; then
-    sales_count="$(psql --tuples-only --no-align --command='SELECT COUNT(*) FROM sales')"
-    members_count="$(psql --tuples-only --no-align --command='SELECT COUNT(*) FROM members')"
+  if [[ "$(psql --no-password --tuples-only --no-align --command="SELECT COALESCE(to_regclass('public.sales')::text,'')")" == "sales" ]]; then
+    sales_count="$(psql --no-password --tuples-only --no-align --command='SELECT COUNT(*) FROM sales')"
+    members_count="$(psql --no-password --tuples-only --no-align --command='SELECT COUNT(*) FROM members')"
   else
     sales_count=0
     members_count=0

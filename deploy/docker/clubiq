@@ -14,9 +14,13 @@ require_installation() {
 }
 
 wait_for_app() {
-  local attempt
+  local attempt hostname_setting
+  hostname_setting="$(sed -n 's/^CLUBIQ_HOSTNAME=//p' "$base/.env" | tail -n 1)"
+  hostname_setting="${hostname_setting:-vereinskasse.local}"
   for attempt in $(seq 1 60); do
-    if curl --insecure --fail --silent --max-time 3 https://127.0.0.1/api/profiles >/dev/null; then
+    if curl --insecure --fail --silent --max-time 3 \
+      --resolve "${hostname_setting}:443:127.0.0.1" \
+      "https://${hostname_setting}/api/profiles" >/dev/null; then
       return 0
     fi
     sleep 2
@@ -50,6 +54,10 @@ set_setting() {
   rm -f "$temporary"
 }
 
+current_lan_ip() {
+  hostname -I | tr ' ' '\n' | awk '/^[0-9]+\./ && $0 !~ /^127\./ { print; exit }'
+}
+
 show_help() {
   cat <<'HELP'
 Clubiq Ledger auf dem Raspberry verwalten
@@ -64,6 +72,7 @@ Clubiq Ledger auf dem Raspberry verwalten
   clubiq aktualisieren           Sicherung, Update und automatischer Rückfall
   clubiq wiederherstellen DATEI  Sicherung erst prüfen, dann zurückspielen
   clubiq neue-datenbank          Nach Tests sauber und leer beginnen
+  clubiq netzwerk-aktualisieren  Aktuelle LAN-IP für Tablet-Zugriff übernehmen
   clubiq usb-freigeben [PFAD]    Bereits eingehängten USB-Datenträger freigeben
   clubiq r2-einrichten           Verschlüsselte Cloudflare-R2-Kopie einrichten
   clubiq r2-pruefen              R2-Sicherung sofort testen
@@ -174,6 +183,15 @@ case "$command" in
     trap - EXIT
     wait_for_app
     ;;
+  netzwerk-aktualisieren|network-refresh)
+    lan_ip="$(current_lan_ip)"
+    [[ -n "$lan_ip" ]] || { echo "Keine lokale IPv4-Adresse gefunden." >&2; exit 1; }
+    set_setting CLUBIQ_LAN_IP "$lan_ip"
+    "${compose[@]}" up -d --force-recreate app proxy
+    wait_for_app || { echo "Die Kasse wurde aktualisiert, ist aber noch nicht erreichbar." >&2; exit 1; }
+    echo "Aktuelle LAN-IP übernommen: $lan_ip"
+    echo "Kasse per IP: https://$lan_ip"
+    ;;
   usb-freigeben|usb-enable)
     target="${2:-$(sed -n 's/^USB_BACKUP_PATH=//p' "$base/.env" | tail -n 1)}"
     target="${target:-/mnt/vereinskasse-sicherung}"
@@ -217,6 +235,7 @@ case "$command" in
     ip="$(hostname -I | awk '{print $1}')"
     echo "Tablet-Zertifikat: http://${ip:-RASPBERRY-IP}:8080/vereinskasse-ca.crt"
     echo "Kasse: https://$(sed -n 's/^CLUBIQ_HOSTNAME=//p' "$base/.env" | tail -n 1)"
+    echo "Kasse per IP: https://$(sed -n 's/^CLUBIQ_LAN_IP=//p' "$base/.env" | tail -n 1)"
     ;;
   *)
     echo "Unbekannter Befehl: $command" >&2

@@ -63,22 +63,51 @@ services:
       - no-new-privileges:true
     logging: *default-logging
 
+  database-setup:
+    image: postgres:17-bookworm
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGADMINUSER: clubiq_admin
+      PGADMINPASSWORD_FILE: /run/secrets/postgres_admin_password
+      POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app_password
+      TZ: ${TZ:-Europe/Berlin}
+    secrets:
+      - postgres_admin_password
+      - postgres_app_password
+    volumes:
+      - ./postgres-reconcile.sh:/usr/local/bin/postgres-reconcile.sh:ro
+    entrypoint: ["/bin/bash", "/usr/local/bin/postgres-reconcile.sh"]
+    networks:
+      - database
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
   app:
     image: ${CLUBIQ_IMAGE:-ghcr.io/rianflow/vereinskasse}:${CLUBIQ_IMAGE_TAG:-latest}
     build:
       context: ../..
       dockerfile: Dockerfile
     restart: unless-stopped
-    init: true
     depends_on:
-      postgres:
-        condition: service_healthy
+      database-setup:
+        condition: service_completed_successfully
     environment:
       <<: *app-environment
       VEREINSKASSE_INITIAL_PROFILE_PIN_FILE: /run/secrets/initial_profile_pin
       VEREINSKASSE_POSTGRES_POOL_SIZE: ${POSTGRES_POOL_SIZE:-10}
       VINEXT_TRUST_PROXY: "1"
-      VINEXT_TRUSTED_HOSTS: ${CLUBIQ_HOSTNAME:-vereinskasse.local}
+      VINEXT_TRUSTED_HOSTS: ${CLUBIQ_HOSTNAME:-vereinskasse.local},${CLUBIQ_LAN_IP:-127.0.0.1}
     secrets:
       - postgres_app_password
       - initial_profile_pin
@@ -116,6 +145,7 @@ services:
         condition: service_healthy
     environment:
       CLUBIQ_HOSTNAME: ${CLUBIQ_HOSTNAME:-vereinskasse.local}
+      CLUBIQ_LAN_IP: ${CLUBIQ_LAN_IP:-127.0.0.1}
       TZ: ${TZ:-Europe/Berlin}
     ports:
       - "80:80"
@@ -188,8 +218,8 @@ services:
     profiles: ["tools"]
     entrypoint: ["/usr/bin/tini", "--", "/app/deploy/docker/tool-entrypoint.sh"]
     depends_on:
-      postgres:
-        condition: service_healthy
+      database-setup:
+        condition: service_completed_successfully
     environment:
       <<: *app-environment
       PGADMINUSER: clubiq_admin

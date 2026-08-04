@@ -5,7 +5,10 @@ import test from "node:test";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("kapselt PostgreSQL und veröffentlicht nur den HTTPS-Zugang", async () => {
-  const compose = await read("deploy/docker/compose.yaml");
+  const [compose, caddy] = await Promise.all([
+    read("deploy/docker/compose.yaml"),
+    read("deploy/docker/Caddyfile"),
+  ]);
   assert.match(compose, /postgres:17-bookworm/);
   assert.match(compose, /POSTGRES_PASSWORD_FILE/);
   assert.match(compose, /PGPASSWORD_FILE/);
@@ -21,13 +24,21 @@ test("kapselt PostgreSQL und veröffentlicht nur den HTTPS-Zugang", async () => 
     /PGSSLROOTCERT: \$\{POSTGRES_SSL_ROOT_CERT:-system\}/,
     "Interne Verbindungen mit sslmode=disable dürfen kein systemweites Root-Zertifikat erzwingen",
   );
+  assert.match(caddy, /Content-Type application\/x-x509-ca-cert/);
+  assert.match(caddy, /Content-Disposition "attachment; filename=clubiq-ledger-ca\.crt"/);
+  assert.match(caddy, /https:\/\/\{\$CLUBIQ_LAN_IP:127\.0\.0\.1\}/);
+  assert.match(caddy, /default_sni \{\$CLUBIQ_LAN_IP:127\.0\.0\.1\}/);
+  assert.match(compose, /VINEXT_TRUSTED_HOSTS: .*CLUBIQ_LAN_IP/);
 });
 
-test("startet Migration, Bootstrap und Gesundheitsprüfung automatisch", async () => {
-  const [entrypoint, admin, compose] = await Promise.all([
+test("startet Datenbankabgleich, Migration, Bootstrap und Gesundheitsprüfung automatisch", async () => {
+  const [entrypoint, admin, compose, reconcile, install, manager] = await Promise.all([
     read("deploy/docker/app-entrypoint.sh"),
     read("raspberry/postgres-admin.mjs"),
     read("deploy/docker/compose.yaml"),
+    read("deploy/docker/postgres-reconcile.sh"),
+    read("deploy/docker/install.sh"),
+    read("deploy/docker/clubiq"),
   ]);
   assert.match(entrypoint, /postgres-admin\.mjs wait/);
   assert.match(entrypoint, /postgres-admin\.mjs migrate/);
@@ -40,6 +51,16 @@ test("startet Migration, Bootstrap und Gesundheitsprüfung automatisch", async (
   );
   assert.match(compose, /healthcheck:/);
   assert.match(compose, /restart: unless-stopped/);
+  assert.match(compose, /database-setup:/);
+  assert.match(compose, /condition: service_completed_successfully/);
+  assert.match(reconcile, /WHERE NOT EXISTS \(SELECT 1 FROM pg_roles/);
+  assert.match(reconcile, /ALTER ROLE vereinskasse WITH LOGIN PASSWORD/);
+  assert.match(reconcile, /ALTER SCHEMA public OWNER TO vereinskasse/);
+  assert.match(install, /--resolve "\$\{hostname_setting\}:443:127\.0\.0\.1"/);
+  assert.match(manager, /--resolve "\$\{hostname_setting\}:443:127\.0\.0\.1"/);
+  assert.match(manager, /netzwerk-aktualisieren\|network-refresh/);
+  assert.doesNotMatch(install, /https:\/\/127\.0\.0\.1\/api\/profiles/);
+  assert.doesNotMatch(manager, /https:\/\/127\.0\.0\.1\/api\/profiles/);
 });
 
 test("sichert stündlich auf lokal, freigegebenen USB und optional verschlüsselt nach R2", async () => {
@@ -51,7 +72,9 @@ test("sichert stündlich auf lokal, freigegebenen USB und optional verschlüssel
     read("deploy/docker/r2-restore-latest.sh"),
   ]);
   assert.match(compose, /BACKUP_INTERVAL_SECONDS:-3600/);
-  assert.match(backup, /pg_dump --format=custom/);
+  assert.match(backup, /read_secret_if_present PGPASSWORD/);
+  assert.match(backup, /pg_dump --no-password/);
+  assert.match(backup, /pg_dump .*--format=custom/);
   assert.match(backup, /pg_restore --list/);
   assert.match(backup, /cp -a --no-preserve=ownership/);
   assert.match(backup, /VEREINSKASSE_SECONDARY_REQUIRED_MARKER/);
@@ -103,13 +126,17 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(dockerfile, /TARGETPLATFORM/);
   assert.match(dockerfile, /postgresql-client-17 restic tini/);
   assert.doesNotMatch(dockerfile, /purge --auto-remove/);
-  assert.match(compose, /\n\s+init: true/);
+  assert.doesNotMatch(compose, /\n\s+init: true/);
+  assert.match(dockerfile, /ENTRYPOINT \["\/usr\/bin\/tini"/);
   assert.match(compose, /CLUBIQ_IMAGE_TAG:-latest/);
   assert.doesNotMatch(compose, /CLUBIQ_IMAGE_TAG:-test/);
   assert.match(environment, /^CLUBIQ_IMAGE_TAG=latest$/m);
+  assert.match(environment, /^CLUBIQ_LAN_IP=127\.0\.0\.1$/m);
   assert.doesNotMatch(environment, /^CLUBIQ_IMAGE_TAG=test$/m);
   assert.match(readme, /git clone --branch main/);
   assert.doesNotMatch(readme, /git clone --branch codex\/raspberry-docker/);
   assert.match(install, /Raspberry Pi OS 64-Bit/);
   assert.match(install, /download\.docker\.com\/linux\/debian/);
+  assert.match(install, /CLUBIQ_LAN_IP/);
+  assert.match(readme, /clubiq netzwerk-aktualisieren/);
 });

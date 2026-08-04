@@ -59,7 +59,9 @@ mkdir -p "$base/secrets" /mnt/vereinskasse-sicherung
 if [[ ! -f "$base/.env" ]]; then
   install -m 600 "$base/.env.example" "$base/.env"
   host_name="$(hostname | tr -cd 'A-Za-z0-9.-')"
+  lan_ip="$(hostname -I | tr ' ' '\n' | awk '/^[0-9]+\./ && $0 !~ /^127\./ { print; exit }')"
   sed -i "s/^CLUBIQ_HOSTNAME=.*/CLUBIQ_HOSTNAME=${host_name:-vereinskasse}.local/" "$base/.env"
+  sed -i "s/^CLUBIQ_LAN_IP=.*/CLUBIQ_LAN_IP=${lan_ip:-127.0.0.1}/" "$base/.env"
 fi
 
 create_random_secret() {
@@ -92,6 +94,8 @@ fi
 ln -sfn "$base/clubiq" /usr/local/sbin/clubiq
 
 cd "$base"
+hostname_setting="$(sed -n 's/^CLUBIQ_HOSTNAME=//p' "$base/.env" | tail -n 1)"
+hostname_setting="${hostname_setting:-vereinskasse.local}"
 if ! docker compose --env-file .env -f compose.yaml pull; then
   echo "Das fertige GitHub-Image ist noch nicht abrufbar; es wird einmalig lokal gebaut."
   docker compose --env-file .env -f compose.yaml build app
@@ -99,13 +103,15 @@ fi
 docker compose --env-file .env -f compose.yaml up -d --remove-orphans
 
 for attempt in $(seq 1 90); do
-  if curl --insecure --fail --silent --max-time 3 https://127.0.0.1/api/profiles >/dev/null; then
+  if curl --insecure --fail --silent --max-time 3 \
+    --resolve "${hostname_setting}:443:127.0.0.1" \
+    "https://${hostname_setting}/api/profiles" >/dev/null; then
     : > "$base/secrets/initial_profile_pin"
     ip="$(hostname -I | awk '{print $1}')"
-    hostname_setting="$(sed -n 's/^CLUBIQ_HOSTNAME=//p' "$base/.env")"
     echo
     echo "Clubiq Ledger ist eingerichtet."
     echo "Kasse: https://${hostname_setting}"
+    echo "Kasse ohne .local: https://${ip:-127.0.0.1}"
     echo "Tablet-Zertifikat: http://${ip:-RASPBERRY-IP}:8080/vereinskasse-ca.crt"
     echo "Status: sudo clubiq status"
     echo "USB später freigeben: sudo clubiq usb-freigeben /mnt/vereinskasse-sicherung"
@@ -116,4 +122,3 @@ done
 
 echo "Die Container laufen, aber die Kasse wurde noch nicht gesund. Diagnose: sudo clubiq protokoll" >&2
 exit 1
-
