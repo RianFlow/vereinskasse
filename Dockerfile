@@ -1,5 +1,13 @@
 # syntax=docker/dockerfile:1.7
 
+FROM --platform=$BUILDPLATFORM python:3.12-bookworm AS firmware-builder
+WORKDIR /firmware
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir platformio==6.1.18
+COPY hardware/NodeMCU-V3-RC522-Tablet ./
+RUN platformio run \
+    && test -s .pio/build/nodemcuv2/firmware.bin
+
 FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -37,6 +45,8 @@ WORKDIR /app
 COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=builder /app/node_modules/vinext ./node_modules/vinext
 COPY --from=builder /app/dist ./dist
+COPY --from=firmware-builder /firmware/.pio/build/nodemcuv2/firmware.bin \
+  ./dist/client/firmware/clubiq-rfid.bin
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/postgres ./postgres
 COPY --from=builder /app/raspberry ./raspberry

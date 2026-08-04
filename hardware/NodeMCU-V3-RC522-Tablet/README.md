@@ -144,6 +144,13 @@ eintragen.
 
 ## 4. Verbindung mit der Vereinskasse
 
+Version 1.6.0 führt auf einer kurzen Startseite durch die Einrichtung:
+Vereins-WLAN auswählen, Kennwort eingeben, die zuvor heruntergeladene
+`vereinskasse-ca.crt` auswählen und **Leser verbinden** drücken. Serveradresse,
+Zertifikatsspeicherung und Kopplungsstart erledigt der Assistent. Die bisherigen
+Lese-, Schreib- und manuellen Serverfunktionen stehen unter **Erweiterte
+Einstellungen und Kartentest** bereit.
+
 1. Diese Firmware einmalig per USB aufspielen. Danach ist für die normale
    Einrichtung kein PC und kein PlatformIO mehr nötig.
 2. Mit dem Wartungs-WLAN des Lesers verbinden und `http://192.168.4.1` öffnen.
@@ -224,6 +231,19 @@ Kartenschreibauftrag wird dabei nicht unterbrochen. Der Leser bestätigt den
 Auftrag zuerst am Kassenserver, startet anschließend neu und verbindet sich
 selbstständig wieder mit dem Vereins-WLAN. Dafür muss diese Firmware-Version
 einmal per USB auf den NodeMCU übertragen worden sein.
+
+### Firmware später ohne USB aktualisieren
+
+Ab Version 1.6.0 meldet der Leser seinen Firmwarestand an ClubIQ. Unter
+**Admin → Sicherheit → RFID-Leser** erscheint bei einer neueren, im
+ClubIQ-Container enthaltenen Firmware die Schaltfläche **Firmware
+aktualisieren**. Der Leser lädt die Binärdatei ausschließlich über seine bereits
+geprüfte HTTPS-Verbindung, installiert sie in den OTA-Bereich und startet neu.
+WLAN, Serveradresse, Root-CA und Geräte-Token bleiben im EEPROM erhalten.
+
+Die erste OTA-fähige Version 1.6.0 muss einmal per USB installiert werden.
+Während eines Kartenauftrags oder eines noch nicht übertragenen Scans wird kein
+Update gestartet. Während der Installation die Stromversorgung nicht trennen.
 
 ### Arduino IDE
 

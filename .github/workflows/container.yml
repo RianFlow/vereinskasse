@@ -6,6 +6,7 @@ on:
     tags: ["v*"]
     paths:
       - "app/**"
+      - "hardware/NodeMCU-V3-RC522-Tablet/**"
       - "build/**"
       - "deploy/docker/**"
       - "deploy/raspberry/backup.sh"
@@ -21,6 +22,7 @@ on:
   pull_request:
     paths:
       - "app/**"
+      - "hardware/NodeMCU-V3-RC522-Tablet/**"
       - "build/**"
       - "deploy/docker/**"
       - "deploy/raspberry/backup.sh"
@@ -68,7 +70,7 @@ jobs:
           tags: |
             type=raw,value=test,enable=${{ github.ref == 'refs/heads/codex/raspberry-docker' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=1.5.0,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=1.6.0,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=sha,prefix=sha-
 
