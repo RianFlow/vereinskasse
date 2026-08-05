@@ -1,9 +1,11 @@
-# NodeMCU V3 (ESP8266) + MFRC522 NFC/RFID-Webgerät
+# ClubIQ RFID-Leser mit ESP32-WROOM-32 oder NodeMCU V3
 
 Ein WLAN-Leser/-Schreiber für **MIFARE Classic** mit direkter Anbindung an die
-Vereinskasse. Der ESP8266 behält sein eigenes Wartungs-WLAN unter
-`http://192.168.4.1` und verbindet sich gleichzeitig mit dem Vereins-WLAN. Neue
-Kartenscans werden als UID verschlüsselt an die Vereinskasse übertragen.
+Vereinskasse. Für neue Geräte wird ein **ESP32-WROOM-32** empfohlen: Er lässt
+sich in Chrome auf einem Android-Tablet direkt aus ClubIQ per Bluetooth finden
+und vollständig einrichten. Der NodeMCU V3 (ESP8266) bleibt als kompatibler
+Rückfall erhalten. Beide Varianten übertragen Kartenscans verschlüsselt an
+ClubIQ und bieten ein eigenes Wartungs-WLAN unter `http://192.168.4.1`.
 
 Kontostände, Beträge, Namen und Berechtigungen liegen ausschließlich in der
 Kassendatenbank. Die beschreibbaren Kartendaten werden dafür nicht vertraut.
@@ -12,7 +14,8 @@ Kassendatenbank. Die beschreibbaren Kartendaten werden dafür nicht vertraut.
 
 | Menge | Bauteil | Spezifikation / Hinweis |
 |---:|---|---|
-| 1 | NodeMCU V3 | ESP8266/ESP-12E oder ESP-12F, 3,3-V-Logik |
+| 1 | ESP32-WROOM-32 DevKit | empfohlen; Bluetooth und WLAN, 3,3-V-Logik |
+| alternativ | NodeMCU V3 | ESP8266/ESP-12E oder ESP-12F, 3,3-V-Logik |
 | 1 | MFRC522/RC522-Modul | SPI, **nur mit 3,3 V versorgen** |
 | 1 | WS2812B-Streifen/-Modul | 5 V, drei Anschlüsse `5V`, `DIN`, `GND` |
 | optional | I²C-OLED | SSD1306, 128 × 64 Pixel, Adresse `0x3C`, 3,3-V-tauglich |
@@ -41,6 +44,26 @@ Vor dem Verdrahten USB/Strom abziehen.
 | MISO | D6 (GPIO 12) | SPI-Daten zum ESP8266 |
 | RST | D1 (GPIO 5) | Reset |
 | IRQ | nicht verbinden | nicht benötigt |
+
+### Empfohlene Verdrahtung am ESP32-WROOM-32 DevKit
+
+Die Bezeichnung `ESP32-WROOM-32` beschreibt das Funkmodul. In PlatformIO wird
+für die verbreitete DevKit-Platine trotzdem das Board `esp32dev` verwendet.
+
+| MFRC522 | ESP32 DevKit | Bedeutung |
+|---|---:|---|
+| 3.3V | 3V3 | Versorgung (niemals 5 V) |
+| GND | GND | Masse |
+| SDA / SS | GPIO 5 | SPI Chip Select |
+| SCK | GPIO 18 | SPI-Takt |
+| MOSI | GPIO 23 | SPI-Daten zum Leser |
+| MISO | GPIO 19 | SPI-Daten zum ESP32 |
+| RST | GPIO 27 | Reset |
+| IRQ | nicht verbinden | nicht benötigt |
+
+Die optionale WS2812B-Statusanzeige liegt beim ESP32 auf **GPIO 13**. Für das
+OLED werden **GPIO 21 (SDA)** und **GPIO 22 (SCL)** verwendet. Masseleitungen
+aller Baugruppen müssen verbunden sein.
 
 ### WS2812B-Statusanzeige
 
@@ -126,42 +149,43 @@ Tablet ))) WLAN ))) NodeMCU ── SPI ── MFRC522 ))) Karte
                          3,3 V ────────┘
 ```
 
-## 3. Flashen mit PlatformIO (empfohlen)
+## 3. Einmalig mit PlatformIO flashen
 
 1. VS Code und die Erweiterung **PlatformIO IDE** installieren.
 2. Diesen Ordner öffnen.
-3. NodeMCU per USB-Datenkabel anschließen.
-4. In PlatformIO „Upload“ wählen. Alternativ im Terminal:
-   `pio run -t upload`
-5. Danach den seriellen Monitor mit 115200 Baud öffnen:
+3. ESP32 oder NodeMCU per USB-Datenkabel anschließen.
+4. Für den ESP32 in PlatformIO die Umgebung **`esp32dev`** wählen und „Upload“
+   drücken. Alternativ im Terminal: `pio run -e esp32dev -t upload`.
+5. Für einen bisherigen NodeMCU V3 stattdessen **`nodemcuv2`** wählen oder
+   `pio run -e nodemcuv2 -t upload` ausführen.
+6. Danach den seriellen Monitor mit 115200 Baud öffnen:
    `pio device monitor`
-6. Dort stehen WLAN-Name, WLAN-Kennwort, Web-Benutzer und Web-Kennwort.
+7. Dort stehen Wartungs-WLAN, Web-Benutzer und Web-Kennwort.
 
-Die Kennwörter werden deterministisch aus der eindeutigen ESP8266-Chip-ID
+Die Kennwörter werden deterministisch aus der eindeutigen Chip-ID
 gebildet. Sie sind daher pro Gerät verschieden und bleiben nach Neustarts gleich.
 Für ein höheres Schutzniveau eigene lange Kennwörter in `include/config.h`
 eintragen.
 
-## 4. Verbindung mit der Vereinskasse
+## 4. ESP32 direkt in ClubIQ verbinden (Android)
 
-Version 1.6.0 führt auf einer kurzen Startseite durch die Einrichtung:
-Vereins-WLAN auswählen, Kennwort eingeben, die zuvor heruntergeladene
-`vereinskasse-ca.crt` auswählen und **Leser verbinden** drücken. Serveradresse,
-Zertifikatsspeicherung und Kopplungsstart erledigt der Assistent. Die bisherigen
-Lese-, Schreib- und manuellen Serverfunktionen stehen unter **Erweiterte
-Einstellungen und Kartentest** bereit.
+Ab Version 1.7.0 erledigt die ClubIQ-App die gesamte Ersteinrichtung des ESP32.
+Voraussetzungen sind Chrome auf einem Android-Tablet, eingeschaltetes Bluetooth,
+die geöffnete sichere ClubIQ-Adresse und ein noch nicht eingerichteter ESP32.
 
-1. Diese Firmware einmalig per USB aufspielen. Danach ist für die normale
-   Einrichtung kein PC und kein PlatformIO mehr nötig.
-2. Mit dem Wartungs-WLAN des Lesers verbinden und `http://192.168.4.1` öffnen.
-3. Unter **Kassenserver einrichten** Serveradresse und passende Root-CA
-   speichern.
-4. **Mit Clubiq Ledger koppeln** wählen und den angezeigten sechsstelligen Code
-   merken.
-5. Das Tablet wieder mit dem Vereins-WLAN verbinden und in Clubiq Ledger
-   **Admin → Sicherheit → RFID-Leser** öffnen.
-6. Den wartenden Leser anhand des Codes **Freigeben**. Der sichere Geräte-Token
-   wird vom Leser selbst erzeugt und automatisch übernommen.
+1. Firmware 1.7.0 einmal per USB mit der Umgebung `esp32dev` aufspielen.
+2. Tablet mit dem Vereins-WLAN verbinden und ClubIQ öffnen.
+3. **Admin → Sicherheit → RFID-Leser** öffnen.
+4. Lesername, 2,4-GHz-WLAN und WLAN-Kennwort eintragen.
+5. **Leser suchen und verbinden** drücken und `ClubIQ-RFID-xxxxxx` auswählen.
+6. Android bestätigt bei Bedarf die geschützte Bluetooth-Verbindung. ClubIQ
+   überträgt WLAN, Serveradresse und Root-CA und gibt den Einmalcode automatisch
+   frei. Bei **Leser ist verbunden und einsatzbereit** ist die Einrichtung fertig.
+
+Das Tablet bleibt dabei durchgehend im Vereins-WLAN. Ein Wechsel zum
+Wartungs-WLAN, ein Zertifikats-Upload und das Abtippen eines Codes entfallen.
+Bluetooth wird nur zur Einrichtung verwendet; der normale Betrieb läuft danach
+über HTTPS im Vereins-WLAN.
 
 Serveradresse, Geräte-Token, Root-CA und Vereins-WLAN werden im Gerätespeicher
 abgelegt. Sie bleiben bei normalen Firmware-Updates erhalten und können später
@@ -169,9 +193,10 @@ abgelegt. Sie bleiben bei normalen Firmware-Updates erhalten und können später
 Der Geräte-Token wird nach dem Speichern nicht wieder angezeigt. Ein leeres
 Tokenfeld behält den vorhandenen Wert.
 
-### Lokaler Raspberry
+### ESP8266 oder manueller Rückfall
 
-Für die lokale Docker-Installation gelten folgende Werte:
+Beim bisherigen ESP8266 und falls Bluetooth nicht verfügbar ist, bleibt der
+Wartungsweg erhalten:
 
 1. Tablet beziehungsweise PC mit demselben Netz wie den Raspberry verbinden.
 2. `http://vereinskasse.local:8080/vereinskasse-ca.crt` herunterladen und den
@@ -241,7 +266,8 @@ aktualisieren**. Der Leser lädt die Binärdatei ausschließlich über seine ber
 geprüfte HTTPS-Verbindung, installiert sie in den OTA-Bereich und startet neu.
 WLAN, Serveradresse, Root-CA und Geräte-Token bleiben im EEPROM erhalten.
 
-Die erste OTA-fähige Version 1.6.0 muss einmal per USB installiert werden.
+Für den neuen Bluetooth-Ablauf muss Version 1.7.0 auf dem ESP32 einmal per USB
+installiert werden. Danach können weitere Versionen per OTA installiert werden.
 Während eines Kartenauftrags oder eines noch nicht übertragenen Scans wird kein
 Update gestartet. Während der Installation die Stromversorgung nicht trennen.
 
@@ -250,8 +276,8 @@ Update gestartet. Während der Installation die Stromversorgung nicht trennen.
 ESP8266-Boardpaket und die Bibliothek **MFRC522 by GithubCommunity** installieren.
 `src/main.cpp` als `.ino` übernehmen und `include/web_ui.h` sowie
 `include/config.h` als weitere Tabs/Dateien einfügen. Board „NodeMCU 1.0
-(ESP-12E Module)“,
-Upload Speed 460800, serieller Monitor 115200.
+(ESP-12E Module)“, Upload Speed 115200, serieller Monitor 115200. Für den
+empfohlenen ESP32 ist PlatformIO vorzuziehen.
 
 ## 5. Bedienung
 
@@ -307,6 +333,14 @@ Für breitere NFC-Kompatibilität ist ein PN532/PN7150 meist geeigneter.
 
 ## 8. Fehlerhilfe
 
+- ESP32 erscheint nicht in ClubIQ: Chrome auf Android verwenden, Bluetooth und
+  Standort-/Geräteberechtigung für Chrome erlauben und den Leser neu starten.
+  Ein bereits vollständig gekoppelter Leser sendet absichtlich kein
+  Einrichtungs-Bluetooth mehr aus.
+- Bluetooth ist im Browser nicht verfügbar: ClubIQ über die installierte und
+  vertrauenswürdige HTTPS-Adresse öffnen, nicht über eine HTTP-Adresse.
+- Einrichtung bleibt bei WLAN stehen: nur ein 2,4-GHz-WLAN verwenden und
+  prüfen, dass es kein isoliertes Gastnetz ist.
 - `Version=0x00/0xFF`: Versorgung oder SPI-Leitungen prüfen; Kabel kürzen.
 - Karte wird nicht erkannt: Es muss 13,56 MHz/ISO 14443 A sein; mittig auflegen.
 - Authentifizierung fehlgeschlagen: falscher Schlüssel oder Access Bits.

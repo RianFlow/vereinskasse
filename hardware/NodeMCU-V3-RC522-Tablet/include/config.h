@@ -1,18 +1,30 @@
 #pragma once
 
-constexpr char FIRMWARE_VERSION[] = "1.6.0";
+constexpr char FIRMWARE_VERSION[] = "1.7.0";
 
+#if defined(CLUBIQ_ESP32_BLE)
+// ESP32-WROOM-32 / ESP32 DevKit: VSPI plus Pins ohne Boot-Strapping-Konflikte.
+constexpr int PIN_RC522_SS = 5;
+constexpr int PIN_RC522_RST = 27;
+// Hardware-SPI: SCK GPIO 18, MISO GPIO 19, MOSI GPIO 23.
+constexpr int PIN_STATUS_LED = 13;
+constexpr int PIN_I2C_SDA = 21;
+constexpr int PIN_I2C_SCL = 22;
+#else
 // NodeMCU V3 / ESP8266: Hardware-SPI plus sichere freie Pins.
 // D-Bezeichnungen stehen nur auf der Platine; hier werden GPIO-Nummern verwendet.
 constexpr int PIN_RC522_SS = 4;    // D2
 constexpr int PIN_RC522_RST = 5;   // D1
 // Hardware-SPI ist beim ESP8266 fest: SCK D5, MISO D6, MOSI D7.
+constexpr int PIN_STATUS_LED = 15; // D8
+constexpr int PIN_I2C_SDA = 0;     // D3 / GPIO 0
+constexpr int PIN_I2C_SCL = 2;     // D4 / GPIO 2
+#endif
 
 // WS2812B-Statusstreifen. GPIO 16 / D0 wird absichtlich nicht verwendet:
 // Die schnelle ESP8266-Ausgabe der NeoPixel-Bibliothek arbeitet mit GPIO 0–15.
 // D8 / GPIO 15 ist frei und besitzt auf dem NodeMCU bereits den nötigen
 // Boot-Pulldown. Am LED-Dateneingang darf deshalb kein Pull-up angeschlossen sein.
-constexpr int PIN_STATUS_LED = 15;       // D8
 constexpr uint16_t STATUS_LED_COUNT = 5;
 constexpr uint8_t STATUS_LED_BRIGHTNESS = 90;
 constexpr unsigned long STATUS_LED_TEST_STEP_MS = 180;
@@ -21,8 +33,6 @@ constexpr unsigned long STATUS_LED_TEST_STEP_MS = 180;
 // D1/D2 werden bereits vom RC522 verwendet, daher liegt der separate I2C-Bus
 // auf D3/D4. Beide Pins muessen beim Einschalten HIGH bleiben (Boot-Pins).
 constexpr bool ENABLE_I2C_STATUS_DISPLAY = true;
-constexpr int PIN_I2C_SDA = 0;           // D3 / GPIO 0
-constexpr int PIN_I2C_SCL = 2;           // D4 / GPIO 2
 constexpr uint8_t STATUS_DISPLAY_ADDRESS = 0x3C;
 constexpr uint16_t STATUS_DISPLAY_WIDTH = 128;
 constexpr uint16_t STATUS_DISPLAY_HEIGHT = 64;

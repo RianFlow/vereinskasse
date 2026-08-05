@@ -63,9 +63,10 @@ test("RFID-Kassenserver kann ohne neuen Firmware-Build sicher umgestellt werden"
 });
 
 test("RFID-Leser koppelt sich ohne PC per kurzlebigem Einmalcode",async()=>{
-  const [route,component,firmware,readerUi,schema,d1Migration,postgresMigration]=await Promise.all([
+  const [route,component,ble,firmware,readerUi,schema,d1Migration,postgresMigration]=await Promise.all([
     read("app/api/rfid/pair/route.ts"),
     read("app/RfidIntegration.tsx"),
+    read("app/rfid-ble.ts"),
     read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),
     read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h"),
     read("db/schema.ts"),
@@ -78,14 +79,40 @@ test("RFID-Leser koppelt sich ohne PC per kurzlebigem Einmalcode",async()=>{
   for(const fragment of ["secureRandomHex(32)","os_random()","/api/pair/start","X-RFID-Pairing-Secret","pollPairingApproval()","saveServerSettings(vereinskasseApiUrl, pairingSecret"]){
     assert.ok(firmware.includes(fragment),`Leser-Kopplung fehlt: ${fragment}`);
   }
-  for(const fragment of ["Ohne PC koppeln",'autoComplete="one-time-code"',"/api/rfid/pair","Freigeben","Notfallweg mit manuellem Geräte-Token"]){
+  for(const fragment of ["Direkt per App verbinden","Leser suchen und verbinden","Neuen ESP32-Leser verbinden","Notfallweg mit manuellem Geräte-Token"]){
     assert.ok(component.includes(fragment),`Tablet-Kopplungsassistent fehlt: ${fragment}`);
+  }
+  for(const fragment of ["navigator as Navigator","requestDevice","ClubIQ-RFID-","/rfid-ca.crt","/api/rfid/pair","approvePairing","writeValueWithResponse"]){
+    assert.ok(ble.includes(fragment),`Bluetooth-Kopplung fehlt: ${fragment}`);
   }
   assert.ok(readerUi.includes("RFID-Leser verbinden")&&readerUi.includes("/api/pair/start"),"Kopplungsstart fehlt auf der Wartungsseite");
   for(const source of [schema,d1Migration,postgresMigration]){
     assert.ok(source.includes("rfid_pairing_requests")&&source.includes("hardware_id"),"Kopplungsdatenmodell ist nicht vollständig migriert");
   }
   assert.ok(!firmware.includes("setInsecure()"),"Auch die Kopplung muss das TLS-Zertifikat prüfen");
+});
+
+test("Android richtet den ESP32-Leser direkt und verschlüsselt per Bluetooth ein",async()=>{
+  const [firmware,config,platformio,ble,pairRoute,commands,caddy]=await Promise.all([
+    read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/include/config.h"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/platformio.ini"),
+    read("app/rfid-ble.ts"),read("app/api/rfid/pair/route.ts"),
+    read("app/api/rfid/commands/route.ts"),read("deploy/docker/Caddyfile")
+  ]);
+  for(const fragment of ["[env:esp32dev]","board = esp32dev","board_build.partitions = min_spiffs.csv","-D CLUBIQ_ESP32_BLE"]){
+    assert.ok(platformio.includes(fragment),`ESP32-Buildkonfiguration fehlt: ${fragment}`);
+  }
+  for(const fragment of ["PIN_RC522_SS = 5","PIN_RC522_RST = 27","PIN_STATUS_LED = 13","PIN_I2C_SDA = 21","PIN_I2C_SCL = 22"]){
+    assert.ok(config.includes(fragment),`ESP32-Pin fehlt: ${fragment}`);
+  }
+  for(const fragment of ["BLE_SERVICE_UUID","ESP_GATT_PERM_WRITE_ENCRYPTED","ESP_GATT_PERM_READ_ENCRYPTED","mbedtls_base64_decode","processBleProvisioning","startBleProvisioning","ESP_LE_AUTH_REQ_SC_BOND"]){
+    assert.ok(firmware.includes(fragment),`Sichere ESP32-Einrichtung fehlt: ${fragment}`);
+  }
+  assert.ok(ble.includes("location.origin")&&!ble.includes("http://"),"Die App muss denselben sicheren ClubIQ-Ursprung verwenden");
+  assert.ok(pairRoute.includes("ESP(?:8266|32)"),"Die Kopplungsroute akzeptiert die ESP32-Hardwarekennung nicht");
+  assert.ok(commands.includes('device.hardwareId?.startsWith("ESP32-")')&&commands.includes("clubiq-rfid-esp32.bin"),"OTA wählt nicht die ESP32-Firmware");
+  assert.ok(caddy.includes("/rfid-ca.crt")&&caddy.includes("Content-Disposition \"inline;"),"Das lokale Root-Zertifikat ist nicht gleichursprünglich abrufbar");
 });
 
 test("RFID-Leser wird einfach eingerichtet und danach sicher per OTA aktualisiert",async()=>{
@@ -95,13 +122,13 @@ test("RFID-Leser wird einfach eingerichtet und danach sicher per OTA aktualisier
     read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h"),read("Dockerfile"),read("db/schema.ts"),
     read("drizzle/0026_simple_rfid_ota.sql"),read("postgres/migrations/0003_rfid_firmware.sql")
   ]);
-  for(const fragment of ["Leser in drei Schritten verbinden","Firmware aktualisieren","Alte Firmware · einmaliges USB-Update erforderlich",'action:"firmware"'])assert.ok(component.includes(fragment),`Vereinfachte App-Führung fehlt: ${fragment}`);
+  for(const fragment of ["Leser suchen und verbinden","Firmware aktualisieren","Alte Firmware · einmaliges USB-Update erforderlich",'action:"firmware"'])assert.ok(component.includes(fragment),`Vereinfachte App-Führung fehlt: ${fragment}`);
   for(const fragment of ["LATEST_RFID_FIRMWARE","x-rfid-firmware-version",'command.block===-2?"firmware"',"RFID_FIRMWARE_UPDATE_QUEUED","firmwareUrl"])assert.ok(commands.includes(fragment),`OTA-Befehl fehlt: ${fragment}`);
   assert.ok(devices.includes("firmware_version firmwareVersion"),"Firmwarestand wird nicht angezeigt");
-  for(const fragment of ["ESP8266httpUpdate.h","ESPhttpUpdate.update","performFirmwareUpdate","reportDeviceCommandResult",'action == "firmware"',"StatusLedMode::Updating"])assert.ok(firmware.includes(fragment),`Firmware-OTA fehlt: ${fragment}`);
-  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.6.0"'),"Firmwareversion ist nicht eingebettet");
+  for(const fragment of ["ESP8266httpUpdate.h","HTTPUpdate.h","ESPhttpUpdate.update","clubiqHttpUpdate.update","performFirmwareUpdate","reportDeviceCommandResult",'action == "firmware"',"StatusLedMode::Updating"])assert.ok(firmware.includes(fragment),`Firmware-OTA fehlt: ${fragment}`);
+  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.7.0"'),"Firmwareversion ist nicht eingebettet");
   for(const fragment of ["RFID-Leser verbinden","ClubIQ-Zertifikatsdatei","setupReader()","Leser verbinden","setInterval(()=>{if(!setupRunning)refreshStatus()},8000)"])assert.ok(readerUi.includes(fragment),`Einrichtungsassistent fehlt: ${fragment}`);
   assert.ok(readerUi.includes('accept=".crt,.pem')&&!readerUi.includes("setInsecure()"),"Zertifikat wird nicht sicher übernommen");
-  for(const fragment of ["firmware-builder","platformio==6.1.18","clubiq-rfid.bin"])assert.ok(dockerfile.includes(fragment),`Container-Firmwarebuild fehlt: ${fragment}`);
+  for(const fragment of ["firmware-builder","platformio==6.1.18","clubiq-rfid.bin","clubiq-rfid-esp8266.bin","clubiq-rfid-esp32.bin","-e nodemcuv2 -e esp32dev"])assert.ok(dockerfile.includes(fragment),`Container-Firmwarebuild fehlt: ${fragment}`);
   for(const source of [schema,d1Migration,postgresMigration])assert.ok(source.includes("firmware_version"),"Firmwarestand fehlt in einer Datenbanklaufzeit");
 });
