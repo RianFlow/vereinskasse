@@ -129,6 +129,8 @@ jobs:
             exit 1
           fi
           docker compose exec -T app sh -c 'export PGPASSWORD="$(cat "$PGPASSWORD_FILE")"; node raspberry/postgres-admin.mjs check'
+          docker compose exec -T app sh -c \
+            'curl --fail --silent --show-error http://127.0.0.1:3000/firmware/clubiq-rfid.bin --output /tmp/clubiq-rfid.bin && test -s /tmp/clubiq-rfid.bin'
           USB_BACKUP_PATH=/tmp/clubiq-usb docker compose up -d backup
           for attempt in $(seq 1 30); do
             if docker compose exec -T backup \
