@@ -6,8 +6,10 @@ type Device={id:string;profileId:string};
 type Command={id:string;profileId:string;deviceId:string;uid:string;block:number;payloadHex:string;status:string;error:string|null;createdAt:string;expiresAt:string;completedAt:string|null};
 type DisplayState={state:string;customerName:string|null;itemsText:string|null;itemCount:number;totalCents:number;revision:string;updatedAt:string};
 const headers={"cache-control":"no-store"};
+const LATEST_RFID_FIRMWARE="1.6.0";
 const hash=async(value:string)=>[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(byte=>byte.toString(16).padStart(2,"0")).join("");
 const uid=(value:unknown)=>String(value||"").trim().toUpperCase();
+const firmwareVersion=(value:string|null)=>value&&/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value)?value:null;
 
 async function deviceFrom(request:Request){
   const token=request.headers.get("x-rfid-token")?.trim();
@@ -20,9 +22,12 @@ export async function GET(request:Request){
     const device=await deviceFrom(request);
     if(device){
       const now=new Date().toISOString();
+      const reportedFirmware=firmwareVersion(request.headers.get("x-rfid-firmware-version"));
       await env.DB.batch([
         env.DB.prepare("UPDATE rfid_write_commands SET status='expired',error='Zeitfenster abgelaufen',completed_at=? WHERE device_id=? AND status IN ('pending','processing') AND expires_at<=?").bind(now,device.id,now),
-        env.DB.prepare("UPDATE rfid_devices SET last_seen_at=? WHERE id=?").bind(now,device.id)
+        reportedFirmware
+          ?env.DB.prepare("UPDATE rfid_devices SET last_seen_at=?,firmware_version=? WHERE id=?").bind(now,reportedFirmware,device.id)
+          :env.DB.prepare("UPDATE rfid_devices SET last_seen_at=? WHERE id=?").bind(now,device.id)
       ]);
       const command=await env.DB.prepare("SELECT id,uid,block,payload_hex payloadHex,status,expires_at expiresAt FROM rfid_write_commands WHERE device_id=? AND status IN ('pending','processing') AND expires_at>? ORDER BY created_at LIMIT 1").bind(device.id,now).first<{id:string;uid:string;block:number;payloadHex:string;status:string;expiresAt:string}>();
       if(!command){
@@ -42,7 +47,8 @@ export async function GET(request:Request){
         const claimed=await env.DB.prepare("UPDATE rfid_write_commands SET status='processing',claimed_at=? WHERE id=? AND device_id=? AND status='pending'").bind(now,command.id,device.id).run();
         if(!claimed.meta.changes)return new Response(null,{status:204,headers});
       }
-      return Response.json({command:{id:command.id,action:command.block===-1?"restart":"write",uid:command.uid,block:command.block,hex:command.payloadHex,expiresAt:command.expiresAt}},{headers});
+      const action=command.block===-2?"firmware":command.block===-1?"restart":"write";
+      return Response.json({command:{id:command.id,action,uid:command.uid,block:command.block,hex:command.payloadHex,version:action==="firmware"?command.payloadHex:undefined,firmwareUrl:action==="firmware"?"/firmware/clubiq-rfid.bin":undefined,expiresAt:command.expiresAt}},{headers});
     }
 
     const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);
@@ -64,16 +70,19 @@ export async function POST(request:Request){
     const body=await request.json() as {id?:unknown;success?:unknown;uid?:unknown;hex?:unknown;error?:unknown};
     const id=String(body.id||""),scannedUid=uid(body.uid),success=body.success===true;
     if(!id||id.length>100||!scannedUid)return Response.json({error:"Ungültiges Ergebnis"},{status:400,headers});
-    const command=await env.DB.prepare("SELECT id,profile_id profileId,uid,payload_hex payloadHex,status FROM rfid_write_commands WHERE id=? AND device_id=?").bind(id,device.id).first<{id:string;profileId:string;uid:string;payloadHex:string;status:string}>();
+    const command=await env.DB.prepare("SELECT id,profile_id profileId,uid,block,payload_hex payloadHex,status FROM rfid_write_commands WHERE id=? AND device_id=?").bind(id,device.id).first<{id:string;profileId:string;uid:string;block:number;payloadHex:string;status:string}>();
     if(!command)return Response.json({error:"Schreibauftrag nicht gefunden"},{status:404,headers});
     if(command.status==="succeeded"||command.status==="failed")return Response.json({ok:true,duplicate:true},{headers});
     if(scannedUid!==command.uid)return Response.json({error:"Falsche Karte aufgelegt"},{status:409,headers});
-    const returnedHex=String(body.hex||"").toUpperCase().replace(/[^0-9A-F]/g,"");
-    if(success&&returnedHex!==command.payloadHex)return Response.json({error:"Rücklesedaten stimmen nicht überein"},{status:400,headers});
+    const returnedHex=command.block===-2?String(body.hex||"").trim():String(body.hex||"").toUpperCase().replace(/[^0-9A-F]/g,"");
+    if(success&&returnedHex!==command.payloadHex)return Response.json({error:command.block===-2?"Installierte Firmwareversion stimmt nicht überein":"Rücklesedaten stimmen nicht überein"},{status:400,headers});
     const now=new Date().toISOString(),error=success?null:String(body.error||"Schreiben fehlgeschlagen").slice(0,240);
+    const auditAction=command.block===-2
+      ?(success?"RFID_FIRMWARE_UPDATE_SUCCEEDED":"RFID_FIRMWARE_UPDATE_FAILED")
+      :(success?"RFID_WRITE_SUCCEEDED":"RFID_WRITE_FAILED");
     await env.DB.batch([
       env.DB.prepare("UPDATE rfid_write_commands SET status=?,error=?,completed_at=? WHERE id=? AND device_id=?").bind(success?"succeeded":"failed",error,now,command.id,device.id),
-      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),success?"RFID_WRITE_SUCCEEDED":"RFID_WRITE_FAILED","rfid_write_command",command.id,device.id,JSON.stringify({profileId:command.profileId,uid:command.uid,error}),now)
+      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),auditAction,command.block===-2?"rfid_device":"rfid_write_command",command.block===-2?device.id:command.id,device.id,JSON.stringify({profileId:command.profileId,uid:command.uid,version:command.block===-2?command.payloadHex:null,error}),now)
     ]);
     return Response.json({ok:true,status:success?"succeeded":"failed"},{headers});
   }catch{
@@ -84,19 +93,22 @@ export async function POST(request:Request){
 export async function PUT(request:Request){
   try{
     const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);
-    if(!admin||!profile)return Response.json({error:"Nur Vorstand oder Systemadministration dürfen den RFID-Leser neu starten"},{status:403,headers});
-    const body=await request.json() as {deviceId?:unknown},deviceId=String(body.deviceId||"");
+    if(!admin||!profile)return Response.json({error:"Nur Vorstand oder Systemadministration dürfen den RFID-Leser steuern"},{status:403,headers});
+    const body=await request.json() as {deviceId?:unknown;action?:unknown},deviceId=String(body.deviceId||""),action=body.action==="firmware"?"firmware":"restart";
     if(!deviceId||deviceId.length>100)return Response.json({error:"RFID-Leser fehlt"},{status:400,headers});
     const device=await env.DB.prepare("SELECT id,name FROM rfid_devices WHERE id=? AND profile_id=? AND active=1").bind(deviceId,profile.id).first<{id:string;name:string}>();
     if(!device)return Response.json({error:"Aktiver RFID-Leser nicht gefunden"},{status:404,headers});
     const active=await env.DB.prepare("SELECT id FROM rfid_write_commands WHERE device_id=? AND status IN ('pending','processing') AND expires_at>? LIMIT 1").bind(device.id,new Date().toISOString()).first();
-    if(active)return Response.json({error:"Der Leser bearbeitet gerade einen Kartenauftrag. Bitte danach erneut starten."},{status:409,headers});
-    const id=crypto.randomUUID(),now=new Date(),expires=new Date(now.getTime()+45000).toISOString();
+    if(active)return Response.json({error:`Der Leser bearbeitet gerade einen Auftrag. Bitte danach erneut ${action==="firmware"?"aktualisieren":"starten"}.`},{status:409,headers});
+    const id=crypto.randomUUID(),now=new Date(),expires=new Date(now.getTime()+(action==="firmware"?240000:45000)).toISOString();
+    const command=action==="firmware"
+      ?{uid:"DEVICE-FIRMWARE",block:-2,payload:LATEST_RFID_FIRMWARE,audit:"RFID_FIRMWARE_UPDATE_QUEUED"}
+      :{uid:"DEVICE-RESTART",block:-1,payload:"",audit:"RFID_RESTART_QUEUED"};
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO rfid_write_commands (id,profile_id,device_id,uid,block,payload_hex,status,created_by,created_at,expires_at) VALUES (?,?,?,?,?,?,'pending',?,?,?)").bind(id,profile.id,device.id,"DEVICE-RESTART",-1,"",admin.id,now.toISOString(),expires),
-      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"RFID_RESTART_QUEUED","rfid_device",device.id,admin.id,JSON.stringify({profileId:profile.id,name:device.name}),now.toISOString())
+      env.DB.prepare("INSERT INTO rfid_write_commands (id,profile_id,device_id,uid,block,payload_hex,status,created_by,created_at,expires_at) VALUES (?,?,?,?,?,?,'pending',?,?,?)").bind(id,profile.id,device.id,command.uid,command.block,command.payload,admin.id,now.toISOString(),expires),
+      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),command.audit,"rfid_device",device.id,admin.id,JSON.stringify({profileId:profile.id,name:device.name,version:action==="firmware"?LATEST_RFID_FIRMWARE:null}),now.toISOString())
     ]);
-    return Response.json({ok:true,id},{status:201,headers});
+    return Response.json({ok:true,id,action,version:action==="firmware"?LATEST_RFID_FIRMWARE:null},{status:201,headers});
   }catch{
     return Response.json({error:"Neustartauftrag konnte nicht erstellt werden"},{status:500,headers});
   }

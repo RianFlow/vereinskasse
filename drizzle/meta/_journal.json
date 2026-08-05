@@ -183,6 +183,13 @@
       "when": 1785843540733,
       "tag": "0025_mixed_captain_universe",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1785852000000,
+      "tag": "0026_simple_rfid_ota",
+      "breakpoints": true
     }
   ]
 }

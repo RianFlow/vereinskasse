@@ -9,7 +9,7 @@ export async function GET(request:Request){
   const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);
   if(!admin||!profile)return Response.json({error:"Nur Vorstand oder Systemadministration dürfen RFID-Leser verwalten"},{status:403,headers:noStore});
   const [rows,cards]=await Promise.all([
-    env.DB.prepare("SELECT id,name,hardware_id hardwareId,active,last_seen_at lastSeenAt,created_at createdAt FROM rfid_devices WHERE profile_id=? ORDER BY active DESC,name").bind(profile.id).all(),
+    env.DB.prepare("SELECT id,name,hardware_id hardwareId,firmware_version firmwareVersion,active,last_seen_at lastSeenAt,created_at createdAt FROM rfid_devices WHERE profile_id=? ORDER BY active DESC,name").bind(profile.id).all(),
     env.DB.prepare("SELECT c.uid,c.member_id memberId,m.name memberName,c.updated_at updatedAt FROM rfid_cards c JOIN members m ON m.id=c.member_id WHERE c.profile_id=? ORDER BY m.name,c.uid").bind(profile.id).all()
   ]);
   return Response.json({devices:rows.results,cards:cards.results},{headers:noStore});

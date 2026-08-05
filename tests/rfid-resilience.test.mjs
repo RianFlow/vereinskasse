@@ -34,7 +34,7 @@ test("RFID-WLAN kann geschützt eingerichtet und dauerhaft gespeichert werden",a
     assert.ok(firmware.includes(fragment),`WLAN-Einrichtung fehlt: ${fragment}`);
   }
   for(const fragment of ["WIFI_SETTINGS_EEPROM_SIZE","WIFI_SETTINGS_EEPROM_ADDRESS","MAINTENANCE_PRIORITY_MS","HTTPS_TIMEOUT_MS"])assert.ok(config.includes(fragment),`EEPROM-/Performance-Einstellung fehlt: ${fragment}`);
-  for(const fragment of ["Vereins-WLAN einrichten","WLANs suchen","WLAN speichern und verbinden","Gespeichertes WLAN entfernen","_csrf"]){
+  for(const fragment of ["Vereins-WLAN","WLANs suchen","Leser verbinden","Gespeichertes WLAN entfernen","_csrf"]){
     assert.ok(ui.includes(fragment),`WLAN-Oberfläche fehlt: ${fragment}`);
   }
   assert.ok(!firmware.includes('",\\"stationPassword\\":'),"Das WLAN-Kennwort darf nicht über den Status ausgeliefert werden");
@@ -53,7 +53,7 @@ test("RFID-Kassenserver kann ohne neuen Firmware-Build sicher umgestellt werden"
   for(const fragment of ["SERVER_SETTINGS_EEPROM_ADDRESS","SERVER_API_URL_MAX_BYTES","SERVER_DEVICE_TOKEN_MAX_BYTES","SERVER_ROOT_CA_MAX_BYTES"]){
     assert.ok(config.includes(fragment),`Server-Speichergrenze fehlt: ${fragment}`);
   }
-  for(const fragment of ["Kassenserver einrichten","https://vereinskasse.local/api/rfid","Geräte-Token","Root-CA-Zertifikat","Server sicher speichern","Verbindung testen"]){
+  for(const fragment of ["Kassenserver","https://vereinskasse.local/api/rfid","Geräte-Token","ClubIQ-Zertifikatsdatei","Server speichern","Verbindung testen"]){
     assert.ok(ui.includes(fragment),`Server-Oberfläche fehlt: ${fragment}`);
   }
   assert.ok(firmware.includes('url.startsWith("https://")'),"Unsichere Serveradressen dürfen nicht gespeichert werden");
@@ -81,9 +81,27 @@ test("RFID-Leser koppelt sich ohne PC per kurzlebigem Einmalcode",async()=>{
   for(const fragment of ["Ohne PC koppeln",'autoComplete="one-time-code"',"/api/rfid/pair","Freigeben","Notfallweg mit manuellem Geräte-Token"]){
     assert.ok(component.includes(fragment),`Tablet-Kopplungsassistent fehlt: ${fragment}`);
   }
-  assert.ok(readerUi.includes("Mit Clubiq Ledger koppeln")&&readerUi.includes("/api/pair/start"),"Kopplungsstart fehlt auf der Wartungsseite");
+  assert.ok(readerUi.includes("RFID-Leser verbinden")&&readerUi.includes("/api/pair/start"),"Kopplungsstart fehlt auf der Wartungsseite");
   for(const source of [schema,d1Migration,postgresMigration]){
     assert.ok(source.includes("rfid_pairing_requests")&&source.includes("hardware_id"),"Kopplungsdatenmodell ist nicht vollständig migriert");
   }
   assert.ok(!firmware.includes("setInsecure()"),"Auch die Kopplung muss das TLS-Zertifikat prüfen");
+});
+
+test("RFID-Leser wird einfach eingerichtet und danach sicher per OTA aktualisiert",async()=>{
+  const [component,commands,devices,firmware,config,readerUi,dockerfile,schema,d1Migration,postgresMigration]=await Promise.all([
+    read("app/RfidIntegration.tsx"),read("app/api/rfid/commands/route.ts"),read("app/api/rfid/devices/route.ts"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),read("hardware/NodeMCU-V3-RC522-Tablet/include/config.h"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h"),read("Dockerfile"),read("db/schema.ts"),
+    read("drizzle/0026_simple_rfid_ota.sql"),read("postgres/migrations/0003_rfid_firmware.sql")
+  ]);
+  for(const fragment of ["Leser in drei Schritten verbinden","Firmware aktualisieren","Alte Firmware · einmaliges USB-Update erforderlich",'action:"firmware"'])assert.ok(component.includes(fragment),`Vereinfachte App-Führung fehlt: ${fragment}`);
+  for(const fragment of ["LATEST_RFID_FIRMWARE","x-rfid-firmware-version",'command.block===-2?"firmware"',"RFID_FIRMWARE_UPDATE_QUEUED","firmwareUrl"])assert.ok(commands.includes(fragment),`OTA-Befehl fehlt: ${fragment}`);
+  assert.ok(devices.includes("firmware_version firmwareVersion"),"Firmwarestand wird nicht angezeigt");
+  for(const fragment of ["ESP8266httpUpdate.h","ESPhttpUpdate.update","performFirmwareUpdate","reportDeviceCommandResult",'action == "firmware"',"StatusLedMode::Updating"])assert.ok(firmware.includes(fragment),`Firmware-OTA fehlt: ${fragment}`);
+  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.6.0"'),"Firmwareversion ist nicht eingebettet");
+  for(const fragment of ["RFID-Leser verbinden","ClubIQ-Zertifikatsdatei","setupReader()","Leser verbinden","setInterval(()=>{if(!setupRunning)refreshStatus()},8000)"])assert.ok(readerUi.includes(fragment),`Einrichtungsassistent fehlt: ${fragment}`);
+  assert.ok(readerUi.includes('accept=".crt,.pem')&&!readerUi.includes("setInsecure()"),"Zertifikat wird nicht sicher übernommen");
+  for(const fragment of ["firmware-builder","platformio==6.1.18","clubiq-rfid.bin"])assert.ok(dockerfile.includes(fragment),`Container-Firmwarebuild fehlt: ${fragment}`);
+  for(const source of [schema,d1Migration,postgresMigration])assert.ok(source.includes("firmware_version"),"Firmwarestand fehlt in einer Datenbanklaufzeit");
 });
