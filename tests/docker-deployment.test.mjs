@@ -121,6 +121,7 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(workflow, /ghcr\.io\/rianflow\/vereinskasse/);
   assert.match(workflow, /provenance: true/);
   assert.match(workflow, /sbom: true/);
+  assert.match(workflow, /curl .*\/firmware\/clubiq-rfid\.bin/);
   assert.match(dockerfile, /npm ci --omit=dev/);
   assert.match(dockerfile, /BUILDPLATFORM/);
   assert.match(dockerfile, /TARGETPLATFORM/);
