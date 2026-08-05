@@ -121,10 +121,15 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(workflow, /ghcr\.io\/rianflow\/vereinskasse/);
   assert.match(workflow, /provenance: true/);
   assert.match(workflow, /sbom: true/);
+  assert.match(workflow, /curl .*\/firmware\/clubiq-rfid\.bin/);
   assert.match(dockerfile, /npm ci --omit=dev/);
   assert.match(dockerfile, /BUILDPLATFORM/);
   assert.match(dockerfile, /TARGETPLATFORM/);
   assert.match(dockerfile, /postgresql-client-17 restic tini/);
+  const firmwareCopy = dockerfile.indexOf("./public/firmware/clubiq-rfid.bin");
+  const applicationBuild = dockerfile.indexOf("RUN npm run build:raspberry");
+  assert.ok(firmwareCopy >= 0 && firmwareCopy < applicationBuild, "Firmware muss vor dem App-Build als öffentliche Datei vorliegen");
+  assert.doesNotMatch(dockerfile, /\.\/dist\/client\/firmware\/clubiq-rfid\.bin/);
   assert.doesNotMatch(dockerfile, /purge --auto-remove/);
   assert.doesNotMatch(compose, /\n\s+init: true/);
   assert.match(dockerfile, /ENTRYPOINT \["\/usr\/bin\/tini"/);

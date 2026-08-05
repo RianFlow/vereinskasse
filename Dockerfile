@@ -15,6 +15,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 
 FROM --platform=$BUILDPLATFORM dependencies AS builder
 COPY . .
+COPY --from=firmware-builder /firmware/.pio/build/nodemcuv2/firmware.bin \
+  ./public/firmware/clubiq-rfid.bin
 ENV NODE_ENV=production \
     VEREINSKASSE_RUNTIME=raspberry
 RUN npm run build:raspberry
@@ -45,8 +47,6 @@ WORKDIR /app
 COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=builder /app/node_modules/vinext ./node_modules/vinext
 COPY --from=builder /app/dist ./dist
-COPY --from=firmware-builder /firmware/.pio/build/nodemcuv2/firmware.bin \
-  ./dist/client/firmware/clubiq-rfid.bin
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/postgres ./postgres
 COPY --from=builder /app/raspberry ./raspberry
