@@ -48,14 +48,10 @@ export async function GET(request:Request){
         if(!claimed.meta.changes)return new Response(null,{status:204,headers});
       }
       const action=command.block===-2?"firmware":command.block===-1?"restart":"write";
-<<<<<<< ours
-      return Response.json({command:{id:command.id,action,uid:command.uid,block:command.block,hex:command.payloadHex,version:action==="firmware"?command.payloadHex:undefined,firmwareUrl:action==="firmware"?"/firmware/clubiq-rfid.bin":undefined,expiresAt:command.expiresAt}},{headers});
-=======
       const firmwareUrl=device.hardwareId?.startsWith("ESP32-")
         ?"/firmware/clubiq-rfid-esp32.bin"
         :"/firmware/clubiq-rfid-esp8266.bin";
       return Response.json({command:{id:command.id,action,uid:command.uid,block:command.block,hex:command.payloadHex,version:action==="firmware"?command.payloadHex:undefined,firmwareUrl:action==="firmware"?firmwareUrl:undefined,expiresAt:command.expiresAt}},{headers});
->>>>>>> theirs
     }
 
     const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);
