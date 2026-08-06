@@ -70,7 +70,7 @@ jobs:
           tags: |
             type=raw,value=test,enable=${{ github.ref == 'refs/heads/codex/raspberry-docker' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=1.6.0,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=1.7.0,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=sha,prefix=sha-
 
@@ -130,7 +130,7 @@ jobs:
           fi
           docker compose exec -T app sh -c 'export PGPASSWORD="$(cat "$PGPASSWORD_FILE")"; node raspberry/postgres-admin.mjs check'
           docker compose exec -T app sh -c \
-            'curl --fail --silent --show-error http://127.0.0.1:3000/firmware/clubiq-rfid.bin --output /tmp/clubiq-rfid.bin && test -s /tmp/clubiq-rfid.bin'
+            'curl --fail --silent --show-error http://127.0.0.1:3000/firmware/clubiq-rfid.bin --output /tmp/clubiq-rfid.bin && test -s /tmp/clubiq-rfid.bin && curl --fail --silent --show-error http://127.0.0.1:3000/firmware/clubiq-rfid-esp8266.bin --output /tmp/clubiq-rfid-esp8266.bin && test -s /tmp/clubiq-rfid-esp8266.bin && curl --fail --silent --show-error http://127.0.0.1:3000/firmware/clubiq-rfid-esp32.bin --output /tmp/clubiq-rfid-esp32.bin && test -s /tmp/clubiq-rfid-esp32.bin'
           USB_BACKUP_PATH=/tmp/clubiq-usb docker compose up -d backup
           for attempt in $(seq 1 30); do
             if docker compose exec -T backup \

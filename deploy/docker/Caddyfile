@@ -24,7 +24,21 @@ http://{$CLUBIQ_HOSTNAME:vereinskasse.local} {
 https://{$CLUBIQ_HOSTNAME:vereinskasse.local}, https://{$CLUBIQ_LAN_IP:127.0.0.1} {
   tls internal
   encode zstd gzip
-  reverse_proxy app:3000
+  @rfidCertificate path /rfid-ca.crt
+  handle @rfidCertificate {
+    rewrite * /root.crt
+    root * /data/caddy/pki/authorities/local
+    file_server
+    header {
+      Content-Type application/x-x509-ca-cert
+      Content-Disposition "inline; filename=clubiq-ledger-ca.crt"
+      Cache-Control "no-store"
+      X-Content-Type-Options "nosniff"
+    }
+  }
+  handle {
+    reverse_proxy app:3000
+  }
   header {
     Strict-Transport-Security "max-age=31536000"
     X-Content-Type-Options "nosniff"

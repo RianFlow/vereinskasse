@@ -4,12 +4,29 @@
 #include <Wire.h>
 #include <EEPROM.h>
 #include <stddef.h>
+#include <memory>
+#include <string>
+#if defined(CLUBIQ_ESP32_BLE)
+#include <WiFi.h>
+#include <WebServer.h>
+#include <HTTPClient.h>
+#include <HTTPUpdate.h>
+#include <WiFiClientSecure.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+#include <BLESecurity.h>
+#include <esp_system.h>
+#include <mbedtls/base64.h>
+#else
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
 #include <ESP8266httpUpdate.h>
 #include <WiFiClientSecureBearSSL.h>
 #include <osapi.h>
+#endif
 #include <MFRC522.h>
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_GFX.h>
@@ -18,17 +35,27 @@
 #include "web_ui.h"
 
 MFRC522 rfid(PIN_RC522_SS, PIN_RC522_RST);
+#if defined(CLUBIQ_ESP32_BLE)
+WebServer server(80);
+#else
 ESP8266WebServer server(80);
+#endif
 Adafruit_NeoPixel statusPixels(STATUS_LED_COUNT, PIN_STATUS_LED, NEO_GRB + NEO_KHZ800);
 Adafruit_SSD1306 statusDisplay(
     STATUS_DISPLAY_WIDTH, STATUS_DISPLAY_HEIGHT, &Wire, -1);
+#if defined(CLUBIQ_ESP32_BLE)
+WiFiClientSecure vereinskasseTls;
+HTTPUpdate clubiqHttpUpdate;
+#else
 BearSSL::WiFiClientSecure vereinskasseTls;
-HTTPClient vereinskasseHttps;
 BearSSL::X509List *vereinskasseTrustAnchor = nullptr;
+#endif
+HTTPClient vereinskasseHttps;
 String apSsid, apPassword, webUser, webPassword;
 String clubWifiSsid, clubWifiPassword, wifiCsrfToken;
 String vereinskasseApiUrl, rfidDeviceToken, vereinskasseRootCa;
 String pairingRequestId, pairingSecret, pairingCode;
+String pairingDeviceName;
 String pairingState = "idle";
 String pairingMessage = "Noch keine Kopplung gestartet.";
 bool pairingActive = false;
@@ -73,6 +100,20 @@ bool displayOrderActive = false;
 unsigned long displayOrderUpdatedAt = 0;
 unsigned long displayReadySince = 0;
 
+#if defined(CLUBIQ_ESP32_BLE)
+constexpr char BLE_SERVICE_UUID[] = "4a4f0001-7b5a-4f52-8844-434c55424951";
+constexpr char BLE_RX_UUID[] = "4a4f0002-7b5a-4f52-8844-434c55424951";
+constexpr char BLE_TX_UUID[] = "4a4f0003-7b5a-4f52-8844-434c55424951";
+BLECharacteristic *bleTx = nullptr;
+String bleReceiveBuffer;
+String blePendingCommand;
+bool bleClientConnected = false;
+volatile bool bleCommandPending = false;
+bool bleSetupInProgress = false;
+bool blePairingSent = false;
+unsigned long bleLastProgressAt = 0;
+#endif
+
 enum class StatusLedMode {
   Starting,
   Connecting,
@@ -97,7 +138,33 @@ String jsonStringField(const String &body, const String &name);
 String commandApiUrl();
 String pairingApiUrl();
 String macSuffix();
+String hardwareId();
 void maintainStationWifi();
+#if defined(CLUBIQ_ESP32_BLE)
+void bleNotifyJson(const String &payload);
+#endif
+
+uint32_t secureRandomWord() {
+#if defined(CLUBIQ_ESP32_BLE)
+  return esp_random();
+#else
+  return os_random();
+#endif
+}
+
+void enableWatchdog() {
+#if !defined(CLUBIQ_ESP32_BLE)
+  ESP.wdtEnable(8000);
+#endif
+}
+
+void feedWatchdog() {
+#if defined(CLUBIQ_ESP32_BLE)
+  delay(0);
+#else
+  ESP.wdtFeed();
+#endif
+}
 
 struct WifiSettings {
   char magic[8];
@@ -149,6 +216,11 @@ String stringFromProgmem(const char *value) {
 }
 
 void rebuildVereinskasseTrustAnchor() {
+#if defined(CLUBIQ_ESP32_BLE)
+  if (vereinskasseRootCa.length() > 100) {
+    vereinskasseTls.setCACert(vereinskasseRootCa.c_str());
+  }
+#else
   if (vereinskasseTrustAnchor) {
     delete vereinskasseTrustAnchor;
     vereinskasseTrustAnchor = nullptr;
@@ -156,6 +228,15 @@ void rebuildVereinskasseTrustAnchor() {
   if (vereinskasseRootCa.length() > 100) {
     vereinskasseTrustAnchor = new BearSSL::X509List(vereinskasseRootCa.c_str());
   }
+#endif
+}
+
+bool trustAnchorReady() {
+#if defined(CLUBIQ_ESP32_BLE)
+  return vereinskasseRootCa.length() > 100;
+#else
+  return vereinskasseTrustAnchor != nullptr;
+#endif
 }
 
 void applyCompileTimeServerSettings() {
@@ -208,7 +289,7 @@ bool saveServerSettings(const String &apiUrl, const String &deviceToken,
   vereinskasseRootCa = rootCa;
   serverSettingsStored = true;
   rebuildVereinskasseTrustAnchor();
-  return vereinskasseTrustAnchor != nullptr;
+  return trustAnchorReady();
 }
 
 void applyCompileTimeWifi() {
@@ -496,13 +577,13 @@ bool pushConfigured() {
   return stationConfigured() &&
          rfidDeviceToken.length() >= 24 &&
          vereinskasseApiUrl.startsWith("https://") &&
-         vereinskasseTrustAnchor != nullptr;
+         trustAnchorReady();
 }
 
 bool pairingConfigured() {
   return stationConfigured() &&
          vereinskasseApiUrl.startsWith("https://") &&
-         vereinskasseTrustAnchor != nullptr;
+         trustAnchorReady();
 }
 
 String jsonEscape(const String &s) {
@@ -566,8 +647,12 @@ bool clockReady() {
 }
 
 bool beginVereinskasseRequest(const String &url) {
-  if (!vereinskasseTrustAnchor) return false;
+  if (!trustAnchorReady()) return false;
+#if defined(CLUBIQ_ESP32_BLE)
+  vereinskasseTls.setCACert(vereinskasseRootCa.c_str());
+#else
   vereinskasseTls.setTrustAnchors(vereinskasseTrustAnchor);
+#endif
   vereinskasseTls.setTimeout(HTTPS_TIMEOUT_MS);
   vereinskasseHttps.setTimeout(HTTPS_TIMEOUT_MS);
   vereinskasseHttps.setReuse(true);
@@ -656,7 +741,7 @@ void handleStatus() {
                  ",\"pairingState\":\"" + jsonEscape(pairingState) +
                  "\",\"pairingCode\":\"" + jsonEscape(pairingCode) +
                  "\",\"pairingMessage\":\"" + jsonEscape(pairingMessage) +
-                 "\",\"hardwareId\":\"ESP8266-" + macSuffix() + "\"" +
+                 "\",\"hardwareId\":\"" + hardwareId() + "\"" +
                  ",\"firmwareVersion\":\"" + String(FIRMWARE_VERSION) + "\"" +
                  ",\"clockReady\":" + String(clockReady() ? "true" : "false") +
                 ",\"pendingScan\":" + String(pendingUidReady ? "true" : "false") +
@@ -804,7 +889,7 @@ String secureRandomHex(size_t bytes) {
   result.reserve(bytes * 2);
   uint32_t randomValue = 0;
   for (size_t i = 0; i < bytes; ++i) {
-    if ((i % 4) == 0) randomValue = os_random();
+    if ((i % 4) == 0) randomValue = secureRandomWord();
     const uint8_t value = (randomValue >> ((i % 4) * 8)) & 0xFF;
     result += hexDigits[value >> 4];
     result += hexDigits[value & 0x0F];
@@ -815,11 +900,14 @@ String secureRandomHex(size_t bytes) {
 bool sendPairingRequest() {
   if (!beginVereinskasseRequest(pairingApiUrl())) return false;
   vereinskasseHttps.addHeader("Content-Type", "application/json");
-  const String hardwareId = "ESP8266-" + macSuffix();
-  const String body = "{\"hardwareId\":\"" + hardwareId +
+  const String idValue = hardwareId();
+  const String requestedName = pairingDeviceName.length()
+      ? pairingDeviceName
+      : "RFID-Leser " + macSuffix();
+  const String body = "{\"hardwareId\":\"" + idValue +
                       "\",\"code\":\"" + pairingCode +
                       "\",\"secret\":\"" + pairingSecret +
-                      "\",\"name\":\"RFID-Leser " + macSuffix() + "\"}";
+                      "\",\"name\":\"" + jsonEscape(requestedName) + "\"}";
   const int status = vereinskasseHttps.POST(body);
   const String response = vereinskasseHttps.getString();
   vereinskasseHttps.end();
@@ -840,6 +928,10 @@ bool sendPairingRequest() {
   lastPairingPollAt = 0;
   setStatusLed(StatusLedMode::Pairing);
   showStatusDisplay("Kopplungscode", pairingCode);
+#if defined(CLUBIQ_ESP32_BLE)
+  bleNotifyJson("{\"state\":\"pairing\",\"hardwareId\":\"" + idValue +
+                "\",\"code\":\"" + pairingCode + "\"}");
+#endif
   return true;
 }
 
@@ -868,7 +960,7 @@ void handlePairingStart() {
   }
   pairingSecret = secureRandomHex(32);
   char codeBuffer[7];
-  snprintf(codeBuffer, sizeof(codeBuffer), "%06lu", os_random() % 1000000UL);
+  snprintf(codeBuffer, sizeof(codeBuffer), "%06lu", secureRandomWord() % 1000000UL);
   pairingCode = codeBuffer;
   pairingRequestId = "";
   pairingState = "requesting";
@@ -880,7 +972,7 @@ void handlePairingStart() {
     json(502, "{\"error\":\"" + jsonEscape(pairingMessage) + "\"}");
     return;
   }
-  json(202, "{\"state\":\"pending\",\"hardwareId\":\"ESP8266-" + macSuffix() +
+  json(202, "{\"state\":\"pending\",\"hardwareId\":\"" + hardwareId() +
             "\",\"code\":\"" + pairingCode + "\"}");
 }
 
@@ -901,6 +993,11 @@ void pollPairingApproval() {
       pairingMessage = "Freigabe erhalten, aber Anmeldung konnte nicht gespeichert werden.";
       pairingActive = false;
       setStatusLed(StatusLedMode::Error, 1800);
+#if defined(CLUBIQ_ESP32_BLE)
+      bleNotifyJson("{\"state\":\"error\",\"message\":\"" +
+                    jsonEscape(pairingMessage) + "\"}");
+      bleSetupInProgress = false;
+#endif
       return;
     }
     pairingState = "approved";
@@ -913,6 +1010,10 @@ void pollPairingApproval() {
     lastPushState = pairingMessage;
     setStatusLed(StatusLedMode::Success, 1400);
     showStatusDisplay("Gekoppelt", "RFID bereit");
+#if defined(CLUBIQ_ESP32_BLE)
+    bleNotifyJson("{\"state\":\"approved\",\"hardwareId\":\"" + hardwareId() + "\"}");
+    bleSetupInProgress = false;
+#endif
     return;
   }
   if ((status == 200 && (state == "rejected" || state == "expired")) || status == 410) {
@@ -926,6 +1027,12 @@ void pollPairingApproval() {
     pairingRequestId = "";
     setStatusLed(StatusLedMode::Error, 1800);
     showStatusDisplay("Kopplung", "Erneut starten");
+#if defined(CLUBIQ_ESP32_BLE)
+    bleNotifyJson("{\"state\":\"error\",\"message\":\"" +
+                  jsonEscape(pairingMessage) + "\"}");
+    bleSetupInProgress = false;
+    blePairingSent = false;
+#endif
     return;
   }
   if (status != 200) pairingMessage = "Warte auf Kassenserver; Kopplung bleibt offen.";
@@ -1041,7 +1148,11 @@ void handleWifiScan() {
     if (i) body += ',';
     body += "{\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) +
             "\",\"rssi\":" + String(WiFi.RSSI(i)) +
+#if defined(CLUBIQ_ESP32_BLE)
+            ",\"secure\":" + String(WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "false" : "true") + "}";
+#else
             ",\"secure\":" + String(WiFi.encryptionType(i) == ENC_TYPE_NONE ? "false" : "true") + "}";
+#endif
   }
   body += "],\"scanning\":false}";
   WiFi.scanDelete();
@@ -1373,29 +1484,54 @@ void performFirmwareUpdate(const String &commandId, const String &targetVersion,
   }
   vereinskasseHttps.end();
   vereinskasseTls.stop();
+#if defined(CLUBIQ_ESP32_BLE)
+  vereinskasseTls.setCACert(vereinskasseRootCa.c_str());
+#else
   vereinskasseTls.setTrustAnchors(vereinskasseTrustAnchor);
+#endif
   vereinskasseTls.setTimeout(15000);
+#if defined(CLUBIQ_ESP32_BLE)
+  clubiqHttpUpdate.rebootOnUpdate(false);
+  clubiqHttpUpdate.onStart([] {
+#else
   ESPhttpUpdate.rebootOnUpdate(false);
   ESPhttpUpdate.onStart([] {
+#endif
     lastPushState = "Firmware wird sicher geladen und installiert.";
     setStatusLed(StatusLedMode::Updating);
     showStatusDisplay("Firmwareupdate", "Strom nicht trennen");
     renderStatusLed();
   });
+#if defined(CLUBIQ_ESP32_BLE)
+  clubiqHttpUpdate.onProgress([](int current, int total) {
+#else
   ESPhttpUpdate.onProgress([](int current, int total) {
-    ESP.wdtFeed();
+#endif
+    feedWatchdog();
     if (total > 0) lastPushState = "Firmwareupdate: " + String((current * 100) / total) + "%";
     renderStatusLed();
   });
+#if defined(CLUBIQ_ESP32_BLE)
+  clubiqHttpUpdate.onError([](int error) {
+#else
   ESPhttpUpdate.onError([](int error) {
+#endif
     lastPushState = "Firmwareupdate fehlgeschlagen: " + String(error) + ".";
   });
+#if defined(CLUBIQ_ESP32_BLE)
+  const t_httpUpdate_return result = clubiqHttpUpdate.update(vereinskasseTls, url, FIRMWARE_VERSION);
+#else
   const t_httpUpdate_return result = ESPhttpUpdate.update(vereinskasseTls, url, FIRMWARE_VERSION);
+#endif
   vereinskasseTls.stop();
   if (result != HTTP_UPDATE_OK) {
     const String error = result == HTTP_UPDATE_NO_UPDATES
         ? "Firmware ist bereits aktuell."
+#if defined(CLUBIQ_ESP32_BLE)
+        : String(clubiqHttpUpdate.getLastErrorString().c_str());
+#else
         : String(ESPhttpUpdate.getLastErrorString().c_str());
+#endif
     reportDeviceCommandResult(commandId, "DEVICE-FIRMWARE", targetVersion, false, error);
     setStatusLed(StatusLedMode::Error, 2400);
     return;
@@ -1543,16 +1679,215 @@ void processWriteCommand() {
   reportWriteResult();
 }
 
+#if defined(CLUBIQ_ESP32_BLE)
+class ClubIqBleServerCallbacks final : public BLEServerCallbacks {
+  void onConnect(BLEServer *) override {
+    bleClientConnected = true;
+    bleLastProgressAt = 0;
+  }
+
+  void onDisconnect(BLEServer *) override {
+    bleClientConnected = false;
+    if (!pushConfigured()) BLEDevice::startAdvertising();
+  }
+};
+
+class ClubIqBleRxCallbacks final : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *characteristic) override {
+    const std::string value = characteristic->getValue();
+    if (value.empty() || bleCommandPending) return;
+    for (const char byte : value) {
+      if (byte == '\n') {
+        if (bleReceiveBuffer.length() > 0 && bleReceiveBuffer.length() <= 6144) {
+          blePendingCommand = bleReceiveBuffer;
+          bleCommandPending = true;
+        }
+        bleReceiveBuffer = "";
+        continue;
+      }
+      if (bleReceiveBuffer.length() < 6144) bleReceiveBuffer += byte;
+      else bleReceiveBuffer = "";
+    }
+  }
+};
+
+void bleNotifyJson(const String &payload) {
+  if (!bleTx || !bleClientConnected) return;
+  const String framed = payload + "\n";
+  for (size_t offset = 0; offset < framed.length(); offset += 18) {
+    const size_t count = min(static_cast<size_t>(18), framed.length() - offset);
+    bleTx->setValue(std::string(framed.c_str() + offset, count));
+    bleTx->notify();
+    delay(18);
+  }
+}
+
+String decodeProvisionField(const String &body, const String &name) {
+  const String encoded = jsonStringField(body, name);
+  if (!encoded.length() || encoded.length() > 4096) return "";
+  size_t outputLength = 0;
+  const size_t capacity = (encoded.length() * 3) / 4 + 4;
+  std::unique_ptr<unsigned char[]> output(new unsigned char[capacity + 1]);
+  if (mbedtls_base64_decode(output.get(), capacity, &outputLength,
+                            reinterpret_cast<const unsigned char *>(encoded.c_str()),
+                            encoded.length()) != 0) return "";
+  output[outputLength] = '\0';
+  return String(reinterpret_cast<char *>(output.get())).substring(0, outputLength);
+}
+
+void rejectBleProvisioning(const String &message) {
+  bleSetupInProgress = false;
+  blePairingSent = false;
+  setStatusLed(StatusLedMode::Error, 1800);
+  bleNotifyJson("{\"state\":\"error\",\"message\":\"" + jsonEscape(message) + "\"}");
+}
+
+void processBleCommand() {
+  if (!bleCommandPending) return;
+  const String body = blePendingCommand;
+  blePendingCommand = "";
+  bleCommandPending = false;
+  if (jsonStringField(body, "type") != "provision") {
+    rejectBleProvisioning("Unbekannter Bluetooth-Auftrag.");
+    return;
+  }
+  String ssid = decodeProvisionField(body, "ssid");
+  const String password = decodeProvisionField(body, "password");
+  String apiUrl = decodeProvisionField(body, "apiUrl");
+  const String rootCa = decodeProvisionField(body, "rootCa");
+  String requestedName = decodeProvisionField(body, "name");
+  ssid.trim();
+  apiUrl.trim();
+  requestedName.trim();
+  while (apiUrl.endsWith("/")) apiUrl.remove(apiUrl.length() - 1);
+  if (!ssid.length() || ssid.length() > 32 || password.length() > 63 ||
+      (password.length() > 0 && password.length() < 8)) {
+    rejectBleProvisioning("WLAN-Name oder Kennwort ist ungueltig.");
+    return;
+  }
+  if (!validVereinskasseApiUrl(apiUrl) || !validRootCertificate(rootCa)) {
+    rejectBleProvisioning("ClubIQ-Adresse oder Zertifikat ist ungueltig.");
+    return;
+  }
+  if (requestedName.length() < 3) requestedName = "RFID-Leser " + macSuffix();
+  if (requestedName.length() > 60) requestedName.remove(60);
+  if (!saveWifiSettings(ssid, password) || !saveServerSettings(apiUrl, "", rootCa)) {
+    rejectBleProvisioning("Einstellungen konnten nicht gespeichert werden.");
+    return;
+  }
+  pairingDeviceName = requestedName;
+  pairingRequestId = "";
+  pairingSecret = "";
+  pairingCode = "";
+  pairingState = "idle";
+  pairingActive = false;
+  bleSetupInProgress = true;
+  blePairingSent = false;
+  bleLastProgressAt = 0;
+  scheduleStationReconnect();
+  setStatusLed(StatusLedMode::Connecting);
+  showStatusDisplay("Bluetooth", "Verbinde Vereins-WLAN");
+  bleNotifyJson("{\"state\":\"wifi_connecting\",\"hardwareId\":\"" + hardwareId() + "\"}");
+}
+
+void processBleProvisioning() {
+  processBleCommand();
+  if (!bleClientConnected) return;
+  const unsigned long now = millis();
+  if (!bleSetupInProgress) {
+    if (!bleLastProgressAt || now - bleLastProgressAt > 5000) {
+      bleLastProgressAt = now;
+      bleNotifyJson("{\"state\":\"ready\",\"hardwareId\":\"" + hardwareId() +
+                    "\",\"firmwareVersion\":\"" + FIRMWARE_VERSION + "\"}");
+    }
+    return;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    if (!bleLastProgressAt || now - bleLastProgressAt > 3000) {
+      bleLastProgressAt = now;
+      bleNotifyJson("{\"state\":\"wifi_connecting\"}");
+    }
+    return;
+  }
+  if (!clockReady()) {
+    beginClockSync();
+    if (!bleLastProgressAt || now - bleLastProgressAt > 3000) {
+      bleLastProgressAt = now;
+      bleNotifyJson("{\"state\":\"securing_connection\"}");
+    }
+    return;
+  }
+  if (blePairingSent || pairingActive) return;
+  if (bleLastProgressAt && now - bleLastProgressAt < 3000) return;
+  bleLastProgressAt = now;
+  if (!pairingSecret.length()) {
+    pairingSecret = secureRandomHex(32);
+    char codeBuffer[7];
+    snprintf(codeBuffer, sizeof(codeBuffer), "%06lu", secureRandomWord() % 1000000UL);
+    pairingCode = codeBuffer;
+  }
+  pairingState = "requesting";
+  pairingMessage = "Bluetooth-Kopplung wird an ClubIQ gesendet.";
+  if (sendPairingRequest()) {
+    blePairingSent = true;
+    return;
+  }
+  bleNotifyJson("{\"state\":\"retrying_server\",\"message\":\"" +
+                jsonEscape(pairingMessage) + "\"}");
+}
+
+void startBleProvisioning() {
+  if (pushConfigured()) return;
+  const String deviceName = "ClubIQ-RFID-" + macSuffix();
+  BLEDevice::init(deviceName.c_str());
+  BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
+  BLESecurity *security = new BLESecurity();
+  security->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
+  security->setCapability(ESP_IO_CAP_NONE);
+  BLEServer *bleServer = BLEDevice::createServer();
+  bleServer->setCallbacks(new ClubIqBleServerCallbacks());
+  BLEService *service = bleServer->createService(BLE_SERVICE_UUID);
+  BLECharacteristic *rx = service->createCharacteristic(
+      BLE_RX_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+  rx->setAccessPermissions(ESP_GATT_PERM_WRITE_ENCRYPTED);
+  rx->setCallbacks(new ClubIqBleRxCallbacks());
+  bleTx = service->createCharacteristic(
+      BLE_TX_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  bleTx->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED);
+  bleTx->addDescriptor(new BLE2902());
+  service->start();
+  BLEAdvertising *advertising = BLEDevice::getAdvertising();
+  advertising->addServiceUUID(BLE_SERVICE_UUID);
+  advertising->setScanResponse(true);
+  advertising->setMinPreferred(0x06);
+  advertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+  Serial.printf("Bluetooth-Einrichtung: %s\n", deviceName.c_str());
+}
+#endif
+
 String macSuffix() {
   char buf[7];
+#if defined(CLUBIQ_ESP32_BLE)
+  snprintf(buf, sizeof(buf), "%06X", static_cast<uint32_t>(ESP.getEfuseMac() & 0xFFFFFF));
+#else
   snprintf(buf, sizeof(buf), "%06X", ESP.getChipId() & 0xFFFFFF);
+#endif
   return String(buf);
+}
+
+String hardwareId() {
+#if defined(CLUBIQ_ESP32_BLE)
+  return "ESP32-" + macSuffix();
+#else
+  return "ESP8266-" + macSuffix();
+#endif
 }
 
 void setup() {
   Serial.begin(115200);
   delay(300);
-  ESP.wdtEnable(8000);
+  enableWatchdog();
   statusPixels.begin();
   statusPixels.setBrightness(STATUS_LED_BRIGHTNESS);
   statusPixels.clear();
@@ -1560,7 +1895,7 @@ void setup() {
   startStatusLedTest();
   while (statusLedTestActive) {
     renderStatusLed();
-    ESP.wdtFeed();
+    feedWatchdog();
     delay(2);
   }
   setupStatusDisplay();
@@ -1580,15 +1915,22 @@ void setup() {
   loadServerSettings();
 
   // Der Wartungs-AP bleibt immer erreichbar. Parallel verbindet sich der
-  // ESP8266 als Station mit dem Vereins-WLAN und sendet Scans per HTTPS.
+  // Der Leser arbeitet parallel als Wartungszugang und Station im Vereins-WLAN.
   WiFi.mode(WIFI_AP_STA);
+#if defined(CLUBIQ_ESP32_BLE)
+  WiFi.setSleep(false);
+#else
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
+#endif
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
   if (!WiFi.softAP(apSsid.c_str(), apPassword.c_str(), 6, false, 2)) {
     Serial.println("FEHLER: WLAN-AP konnte nicht gestartet werden.");
   }
   maintainStationWifi();
+#if defined(CLUBIQ_ESP32_BLE)
+  startBleProvisioning();
+#endif
 
   server.on("/", HTTP_GET, [] {
     if (!authorized()) return;
@@ -1627,10 +1969,13 @@ void setup() {
 }
 
 void loop() {
-  ESP.wdtFeed();
+  feedWatchdog();
   server.handleClient();
   processStationReconnect();
   maintainStationWifi();
+#if defined(CLUBIQ_ESP32_BLE)
+  processBleProvisioning();
+#endif
   // Kartenscans haben Vorrang vor der langsameren HTTPS-Abfrage nach
   // Schreibaufträgen, damit ein Mitgliederwechsel sofort erkannt wird.
   automaticUidScan();

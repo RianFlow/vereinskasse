@@ -11,7 +11,7 @@ const noStore={"cache-control":"no-store"};
 const hash=async(value:string)=>[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(byte=>byte.toString(16).padStart(2,"0")).join("");
 const hardwareId=(value:unknown)=>{
   const normalized=String(value||"").trim().toUpperCase();
-  return /^ESP8266-[0-9A-F]{6}$/.test(normalized)?normalized:null;
+  return /^ESP(?:8266|32)-[0-9A-F]{6}$/.test(normalized)?normalized:null;
 };
 const pairingCode=(value:unknown)=>{
   const normalized=String(value||"").replace(/\s+/g,"");

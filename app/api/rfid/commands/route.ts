@@ -2,11 +2,11 @@ import { env } from "cloudflare:workers";
 import { requireProfile } from "../../profile-session";
 import { requireRole } from "../../session";
 
-type Device={id:string;profileId:string};
+type Device={id:string;profileId:string;hardwareId:string|null};
 type Command={id:string;profileId:string;deviceId:string;uid:string;block:number;payloadHex:string;status:string;error:string|null;createdAt:string;expiresAt:string;completedAt:string|null};
 type DisplayState={state:string;customerName:string|null;itemsText:string|null;itemCount:number;totalCents:number;revision:string;updatedAt:string};
 const headers={"cache-control":"no-store"};
-const LATEST_RFID_FIRMWARE="1.6.0";
+const LATEST_RFID_FIRMWARE="1.7.0";
 const hash=async(value:string)=>[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(byte=>byte.toString(16).padStart(2,"0")).join("");
 const uid=(value:unknown)=>String(value||"").trim().toUpperCase();
 const firmwareVersion=(value:string|null)=>value&&/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value)?value:null;
@@ -14,7 +14,7 @@ const firmwareVersion=(value:string|null)=>value&&/^\d+\.\d+\.\d+(?:[-+][0-9A-Za
 async function deviceFrom(request:Request){
   const token=request.headers.get("x-rfid-token")?.trim();
   if(!token||token.length<32||token.length>200)return null;
-  return env.DB.prepare("SELECT id,profile_id profileId FROM rfid_devices WHERE token_hash=? AND active=1").bind(await hash(token)).first<Device>();
+  return env.DB.prepare("SELECT id,profile_id profileId,hardware_id hardwareId FROM rfid_devices WHERE token_hash=? AND active=1").bind(await hash(token)).first<Device>();
 }
 
 export async function GET(request:Request){
@@ -48,7 +48,14 @@ export async function GET(request:Request){
         if(!claimed.meta.changes)return new Response(null,{status:204,headers});
       }
       const action=command.block===-2?"firmware":command.block===-1?"restart":"write";
+<<<<<<< ours
       return Response.json({command:{id:command.id,action,uid:command.uid,block:command.block,hex:command.payloadHex,version:action==="firmware"?command.payloadHex:undefined,firmwareUrl:action==="firmware"?"/firmware/clubiq-rfid.bin":undefined,expiresAt:command.expiresAt}},{headers});
+=======
+      const firmwareUrl=device.hardwareId?.startsWith("ESP32-")
+        ?"/firmware/clubiq-rfid-esp32.bin"
+        :"/firmware/clubiq-rfid-esp8266.bin";
+      return Response.json({command:{id:command.id,action,uid:command.uid,block:command.block,hex:command.payloadHex,version:action==="firmware"?command.payloadHex:undefined,firmwareUrl:action==="firmware"?firmwareUrl:undefined,expiresAt:command.expiresAt}},{headers});
+>>>>>>> theirs
     }
 
     const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);

@@ -1,3 +1,4 @@
 .pio/
+.pio-core/
 .vscode/
 include/secrets.h

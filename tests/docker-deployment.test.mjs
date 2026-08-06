@@ -122,6 +122,8 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(workflow, /provenance: true/);
   assert.match(workflow, /sbom: true/);
   assert.match(workflow, /curl .*\/firmware\/clubiq-rfid\.bin/);
+  assert.match(workflow, /clubiq-rfid-esp8266\.bin/);
+  assert.match(workflow, /clubiq-rfid-esp32\.bin/);
   assert.match(dockerfile, /npm ci --omit=dev/);
   assert.match(dockerfile, /BUILDPLATFORM/);
   assert.match(dockerfile, /TARGETPLATFORM/);
@@ -129,6 +131,9 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   const firmwareCopy = dockerfile.indexOf("./public/firmware/clubiq-rfid.bin");
   const applicationBuild = dockerfile.indexOf("RUN npm run build:raspberry");
   assert.ok(firmwareCopy >= 0 && firmwareCopy < applicationBuild, "Firmware muss vor dem App-Build als öffentliche Datei vorliegen");
+  assert.match(dockerfile, /platformio run -e nodemcuv2 -e esp32dev/);
+  assert.match(dockerfile, /\.\/public\/firmware\/clubiq-rfid-esp8266\.bin/);
+  assert.match(dockerfile, /\.\/public\/firmware\/clubiq-rfid-esp32\.bin/);
   assert.doesNotMatch(dockerfile, /\.\/dist\/client\/firmware\/clubiq-rfid\.bin/);
   assert.doesNotMatch(dockerfile, /purge --auto-remove/);
   assert.doesNotMatch(compose, /\n\s+init: true/);
