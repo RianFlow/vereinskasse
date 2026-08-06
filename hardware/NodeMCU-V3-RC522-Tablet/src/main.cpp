@@ -1570,10 +1570,12 @@ void pollWriteCommand() {
     if (status > 0) {
       lastPushState = "Schreibauftrag-Abfrage: HTTP " + String(status) + ".";
     } else {
+      lastPushState = "Schreibauftrag-Abfrage: " + String(HTTPClient::errorToString(status).c_str());
+#if !defined(CLUBIQ_ESP32_BLE)
       char tlsError[120] = {};
       const int tlsCode = vereinskasseTls.getLastSSLError(tlsError, sizeof(tlsError));
-      lastPushState = "Schreibauftrag-Abfrage: " + String(HTTPClient::errorToString(status).c_str());
       if (tlsCode) lastPushState += " · TLS " + String(tlsCode) + ": " + String(tlsError);
+#endif
     }
     setStatusLed(StatusLedMode::Error, 1400);
     if (millis() - lastCommandErrorLogAt >= 15000) {
