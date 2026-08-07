@@ -18,12 +18,12 @@ export type RfidBleProgress={state:string;message:string;hardwareId?:string};
 export type RfidBleProvisionInput={name:string;ssid:string;password:string};
 
 const progressMessages:Record<string,string>={
-  ready:"Leser gefunden. Einstellungen werden sicher übertragen …",
-  wifi_connecting:"Leser verbindet sich mit dem Vereins-WLAN …",
-  securing_connection:"Sichere ClubIQ-Verbindung wird aufgebaut …",
-  retrying_server:"ClubIQ wird erneut gesucht …",
-  pairing:"Leser gefunden. Sichere Freigabe läuft automatisch …",
-  approved:"Leser ist verbunden und einsatzbereit."
+  ready:"Leser gefunden. Die Einrichtung startet jetzt …",
+  wifi_connecting:"Leser verbindet sich jetzt mit dem Vereins-WLAN …",
+  securing_connection:"Sichere Verbindung zum Kassenserver wird aufgebaut …",
+  retrying_server:"ClubIQ wird noch einmal angefragt …",
+  pairing:"Der Leser ist bereit. Die Freigabe wird automatisch abgeschlossen …",
+  approved:"Leser ist jetzt verbunden und sofort einsatzbereit."
 };
 
 const base64=(value:string)=>{
@@ -68,11 +68,16 @@ export async function provisionRfidReader(input:RfidBleProvisionInput,onProgress
   if(!bluetooth)throw new Error("Bluetooth-Einrichtung wird von diesem Browser nicht unterstützt. Bitte Chrome auf dem Android-Tablet verwenden.");
   if(!window.isSecureContext)throw new Error("Bluetooth ist nur über die sichere HTTPS-Adresse von ClubIQ verfügbar.");
 
-  onProgress({state:"searching",message:"Bluetooth-Leser in der Nähe werden gesucht …"});
-  const device=await bluetooth.requestDevice({
-    filters:[{namePrefix:"ClubIQ-RFID-",services:[SERVICE_UUID]}],
-    optionalServices:[SERVICE_UUID]
-  });
+  onProgress({state:"searching",message:"Bluetooth-Leser wird gesucht. Bitte den Leser einschalten …"});
+  let device:BluetoothDevice;
+  try{
+    device=await bluetooth.requestDevice({
+      filters:[{namePrefix:"ClubIQ-RFID-"}],
+      optionalServices:[SERVICE_UUID]
+    });
+  }catch{
+    throw new Error("Kein Leser gefunden. Bitte den Leser mit Strom versorgen und die Verbindung in der Browser-Abfrage bestätigen.");
+  }
   if(!device.gatt)throw new Error("Der ausgewählte Leser bietet keine Bluetooth-Verbindung an.");
   const server=await device.gatt.connect();
   const service=await server.getPrimaryService(SERVICE_UUID);

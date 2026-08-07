@@ -79,7 +79,7 @@ test("RFID-Leser koppelt sich ohne PC per kurzlebigem Einmalcode",async()=>{
   for(const fragment of ["secureRandomHex(32)","os_random()","/api/pair/start","X-RFID-Pairing-Secret","pollPairingApproval()","saveServerSettings(vereinskasseApiUrl, pairingSecret"]){
     assert.ok(firmware.includes(fragment),`Leser-Kopplung fehlt: ${fragment}`);
   }
-  for(const fragment of ["Direkt per App verbinden","Leser suchen und verbinden","Neuen ESP32-Leser verbinden","Notfallweg mit manuellem Geräte-Token"]){
+  for(const fragment of ["Direkt per App verbinden","Leser suchen und verbinden","Neuen ESP32-Leser verbinden","Einfach verbinden","Leser einschalten und in der App verbinden"]){
     assert.ok(component.includes(fragment),`Tablet-Kopplungsassistent fehlt: ${fragment}`);
   }
   for(const fragment of ["navigator as Navigator","requestDevice","ClubIQ-RFID-","/rfid-ca.crt","/api/rfid/pair","approvePairing","writeValueWithResponse"]){

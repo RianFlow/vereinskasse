@@ -1889,8 +1889,10 @@ void startBleProvisioning() {
   advertising->setScanResponse(true);
   advertising->setMinPreferred(0x06);
   advertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
   bleServerReady = true;
-  Serial.printf("Bluetooth bereit (noch nicht sichtbar): %s\n", deviceName.c_str());
+  bleAdvertisingRequested = true;
+  Serial.printf("Bluetooth bereit und sichtbar: %s\n", deviceName.c_str());
 }
 
 // Wird durch den physischen Bestätigungstaster ausgelöst: macht den Leser
