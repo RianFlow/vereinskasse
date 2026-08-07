@@ -24,6 +24,9 @@ if (-not (Test-Path $tempArchive)) {
 Write-Host "Uploading archive to $remoteUser@$remoteHost..."
 $scpTarget = "${remoteUser}@${remoteHost}:/home/${remoteUser}/${archiveName}"
 scp $tempArchive $scpTarget
+if ($LASTEXITCODE -ne 0) {
+  throw "Upload to Raspberry failed (scp exit code $LASTEXITCODE)."
+}
 
 $remoteArchivePath = "/home/$remoteUser/$archiveName"
 
@@ -31,7 +34,7 @@ $remoteScript = @(
   "mkdir -p /home/$remoteUser",
   "rm -rf $remotePath",
   "mkdir -p $remotePath",
-  "tar -xzf $remoteArchivePath -C $remotePath --strip-components=1",
+  "tar -xzf $remoteArchivePath -C $remotePath",
   "cd $remotePath/deploy/docker",
   'docker compose up --build -d',
   'docker compose ps'
@@ -39,6 +42,9 @@ $remoteScript = @(
 
 Write-Host "Starting deployment on the Raspberry..."
 ssh $remoteUser@$remoteHost $remoteScript
+if ($LASTEXITCODE -ne 0) {
+  throw "Remote deployment on Raspberry failed (ssh exit code $LASTEXITCODE)."
+}
 
 Write-Host "Deployment completed."
 Write-Host "Open http://192.168.178.54"
