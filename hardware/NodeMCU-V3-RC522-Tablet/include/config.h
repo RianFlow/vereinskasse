@@ -6,6 +6,7 @@ constexpr char FIRMWARE_VERSION[] = "1.7.0";
 // ESP32-WROOM-32 / ESP32 DevKit: VSPI plus Pins ohne Boot-Strapping-Konflikte.
 constexpr int PIN_RC522_SS = 5;
 constexpr int PIN_RC522_RST = 27;
+constexpr int PIN_PAIR_BUTTON = 4; // Taster gegen GND, interner Pull-up
 // Hardware-SPI: SCK GPIO 18, MISO GPIO 19, MOSI GPIO 23.
 constexpr int PIN_STATUS_LED = 13;
 constexpr int PIN_I2C_SDA = 21;
