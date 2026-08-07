@@ -1865,7 +1865,7 @@ void processBleProvisioning() {
 // Baut den BLE-Server und den GATT-Dienst einmalig beim Boot auf. Es wird
 // dabei noch NICHT geworben (advertised) – das übernimmt erst der Taster
 // über startBleAdvertising(), damit der Leser nicht dauerhaft sichtbar ist.
-void setupBleServer() {
+void startBleProvisioning() {
   const String deviceName = "ClubIQ-RFID-" + macSuffix();
   BLEDevice::init(deviceName.c_str());
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
@@ -1992,7 +1992,7 @@ void setup() {
   // funktioniert, sobald das Gerät läuft.
 #if defined(CLUBIQ_ESP32_BLE)
   pinMode(PIN_PAIR_BUTTON, INPUT_PULLUP);
-  setupBleServer();
+  startBleProvisioning();
 #endif
 
   WiFi.mode(WIFI_AP_STA);
