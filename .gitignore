@@ -46,3 +46,6 @@ next-env.d.ts
 
 # docker
 /docker/postgresql
+
+# local deployment temp artifacts
+/.tmp/
