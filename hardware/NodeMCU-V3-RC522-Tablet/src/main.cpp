@@ -112,6 +112,14 @@ volatile bool bleCommandPending = false;
 bool bleSetupInProgress = false;
 bool blePairingSent = false;
 unsigned long bleLastProgressAt = 0;
+// Taster-gesteuertes Advertising: der ESP32 ist nur sichtbar, solange eine
+// Kopplungsanfrage per Taster ausgelöst wurde. Der BLE-Server selbst wird
+// einmalig beim Boot aufgebaut, das Advertising aber erst durch den Taster
+// gestartet und nach Abschluss/Fehler wieder gestoppt.
+bool bleServerReady = false;
+bool bleAdvertisingRequested = false;
+bool pairButtonPressed = false;
+unsigned long pairButtonDebounceAt = 0;
 #endif
 
 enum class StatusLedMode {
@@ -142,6 +150,7 @@ String hardwareId();
 void maintainStationWifi();
 #if defined(CLUBIQ_ESP32_BLE)
 void bleNotifyJson(const String &payload);
+void stopBleAdvertising();
 #endif
 
 uint32_t secureRandomWord() {
@@ -997,6 +1006,7 @@ void pollPairingApproval() {
       bleNotifyJson("{\"state\":\"error\",\"message\":\"" +
                     jsonEscape(pairingMessage) + "\"}");
       bleSetupInProgress = false;
+      stopBleAdvertising();
 #endif
       return;
     }
@@ -1013,6 +1023,9 @@ void pollPairingApproval() {
 #if defined(CLUBIQ_ESP32_BLE)
     bleNotifyJson("{\"state\":\"approved\",\"hardwareId\":\"" + hardwareId() + "\"}");
     bleSetupInProgress = false;
+    // Nach erfolgreicher Kopplung wird das Advertising beendet; für einen
+    // erneuten Einsatz muss der Taster wieder gedrückt werden.
+    stopBleAdvertising();
 #endif
     return;
   }
@@ -1032,6 +1045,7 @@ void pollPairingApproval() {
                   jsonEscape(pairingMessage) + "\"}");
     bleSetupInProgress = false;
     blePairingSent = false;
+    stopBleAdvertising();
 #endif
     return;
   }
@@ -1690,7 +1704,17 @@ class ClubIqBleServerCallbacks final : public BLEServerCallbacks {
 
   void onDisconnect(BLEServer *) override {
     bleClientConnected = false;
-    if (!pushConfigured()) BLEDevice::startAdvertising();
+    bleLastProgressAt = 0;
+    Serial.println("Bluetooth: Client getrennt.");
+    // Nur automatisch neu ankündigen, solange die Kopplungssitzung per
+    // Taster noch aktiv ist (z. B. bei kurzem Verbindungsabbruch). Ist die
+    // Kopplung bereits abgeschlossen oder wurde nicht angefordert, bleibt
+    // der Leser unsichtbar, bis der Taster erneut gedrückt wird.
+    if (bleAdvertisingRequested && !pushConfigured()) {
+      delay(100);
+      BLEDevice::startAdvertising();
+      Serial.println("Bluetooth: Advertising erneut gestartet (Kopplung war noch aktiv).");
+    }
   }
 };
 
@@ -1838,8 +1862,10 @@ void processBleProvisioning() {
                 jsonEscape(pairingMessage) + "\"}");
 }
 
-void startBleProvisioning() {
-  if (pushConfigured()) return;
+// Baut den BLE-Server und den GATT-Dienst einmalig beim Boot auf. Es wird
+// dabei noch NICHT geworben (advertised) – das übernimmt erst der Taster
+// über startBleAdvertising(), damit der Leser nicht dauerhaft sichtbar ist.
+void setupBleServer() {
   const String deviceName = "ClubIQ-RFID-" + macSuffix();
   BLEDevice::init(deviceName.c_str());
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
@@ -1863,8 +1889,52 @@ void startBleProvisioning() {
   advertising->setScanResponse(true);
   advertising->setMinPreferred(0x06);
   advertising->setMinPreferred(0x12);
+  bleServerReady = true;
+  Serial.printf("Bluetooth bereit (noch nicht sichtbar): %s\n", deviceName.c_str());
+}
+
+// Wird durch den physischen Bestätigungstaster ausgelöst: macht den Leser
+// für die Dauer der Kopplung per Bluetooth sichtbar.
+void startBleAdvertising() {
+  if (!bleServerReady || bleAdvertisingRequested) return;
   BLEDevice::startAdvertising();
-  Serial.printf("Bluetooth-Einrichtung: %s\n", deviceName.c_str());
+  bleAdvertisingRequested = true;
+  setStatusLed(StatusLedMode::Pairing);
+  showStatusDisplay("Bluetooth", "Kopplung bereit - App oeffnen");
+  Serial.println("Bluetooth: Advertising per Taster gestartet.");
+}
+
+// Beendet die Sichtbarkeit wieder, z. B. nach erfolgreicher/abgebrochener
+// Kopplung. Der Taster muss danach erneut gedrückt werden.
+void stopBleAdvertising() {
+  if (!bleAdvertisingRequested) return;
+  BLEDevice::stopAdvertising();
+  bleAdvertisingRequested = false;
+  Serial.println("Bluetooth: Advertising gestoppt.");
+}
+
+// Entprellte Abfrage des Bestätigungstasters (zweipolig gegen GND, interner
+// Pull-up). Ein einzelner kurzer Druck reicht, um das Advertising zu
+// starten; ist bereits eine Kopplung aktiv/sichtbar, hat ein erneuter Druck
+// keine Wirkung.
+void checkPairButton() {
+  const bool pressedNow = digitalRead(PIN_PAIR_BUTTON) == LOW;
+  const unsigned long now = millis();
+  if (pressedNow != pairButtonPressed) {
+    pairButtonDebounceAt = now;
+    pairButtonPressed = pressedNow;
+  }
+  static bool triggered = false;
+  if (pairButtonPressed && now - pairButtonDebounceAt > 40) {
+    if (!triggered) {
+      triggered = true;
+      if (!bleAdvertisingRequested && !pushConfigured()) {
+        startBleAdvertising();
+      }
+    }
+  } else if (!pairButtonPressed) {
+    triggered = false;
+  }
 }
 #endif
 
@@ -1917,7 +1987,14 @@ void setup() {
   loadServerSettings();
 
   // Der Wartungs-AP bleibt immer erreichbar. Parallel verbindet sich der
-  // Der Leser arbeitet parallel als Wartungszugang und Station im Vereins-WLAN.
+  // Leser als Station im Vereins-WLAN. Der BLE-Server wird schon hier
+  // aufgebaut (aber noch nicht sichtbar gemacht), damit der Taster sofort
+  // funktioniert, sobald das Gerät läuft.
+#if defined(CLUBIQ_ESP32_BLE)
+  pinMode(PIN_PAIR_BUTTON, INPUT_PULLUP);
+  setupBleServer();
+#endif
+
   WiFi.mode(WIFI_AP_STA);
 #if defined(CLUBIQ_ESP32_BLE)
   WiFi.setSleep(false);
@@ -1930,9 +2007,6 @@ void setup() {
     Serial.println("FEHLER: WLAN-AP konnte nicht gestartet werden.");
   }
   maintainStationWifi();
-#if defined(CLUBIQ_ESP32_BLE)
-  startBleProvisioning();
-#endif
 
   server.on("/", HTTP_GET, [] {
     if (!authorized()) return;
@@ -1976,6 +2050,7 @@ void loop() {
   processStationReconnect();
   maintainStationWifi();
 #if defined(CLUBIQ_ESP32_BLE)
+  checkPairButton();
   processBleProvisioning();
 #endif
   // Kartenscans haben Vorrang vor der langsameren HTTPS-Abfrage nach
