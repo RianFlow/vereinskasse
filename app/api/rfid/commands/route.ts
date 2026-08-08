@@ -6,7 +6,7 @@ type Device={id:string;profileId:string;hardwareId:string|null};
 type Command={id:string;profileId:string;deviceId:string;uid:string;block:number;payloadHex:string;status:string;error:string|null;createdAt:string;expiresAt:string;completedAt:string|null};
 type DisplayState={state:string;customerName:string|null;itemsText:string|null;itemCount:number;totalCents:number;revision:string;updatedAt:string};
 const headers={"cache-control":"no-store"};
-const LATEST_RFID_FIRMWARE="1.7.0";
+const LATEST_RFID_FIRMWARE="1.7.1";
 const hash=async(value:string)=>[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(byte=>byte.toString(16).padStart(2,"0")).join("");
 const uid=(value:unknown)=>String(value||"").trim().toUpperCase();
 const firmwareVersion=(value:string|null)=>value&&/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value)?value:null;

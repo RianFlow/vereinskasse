@@ -169,23 +169,29 @@ eintragen.
 
 ## 4. ESP32 direkt in ClubIQ verbinden (Android)
 
-Ab Version 1.7.0 erledigt die ClubIQ-App die gesamte Ersteinrichtung des ESP32.
+Ab Version 1.7.1 erledigt die ClubIQ-App die gesamte Einrichtung des ESP32.
 Voraussetzungen sind Chrome auf einem Android-Tablet, eingeschaltetes Bluetooth,
-die geöffnete sichere ClubIQ-Adresse und ein noch nicht eingerichteter ESP32.
+die geöffnete sichere ClubIQ-Adresse und ein ESP32 mit dieser Firmware.
 
-1. Firmware 1.7.0 einmal per USB mit der Umgebung `esp32dev` aufspielen.
+1. Firmware 1.7.1 einmal per USB mit der Umgebung `esp32dev` aufspielen.
 2. Tablet mit dem Vereins-WLAN verbinden und ClubIQ öffnen.
 3. **Admin → Sicherheit → RFID-Leser** öffnen.
 4. Lesername, 2,4-GHz-WLAN und WLAN-Kennwort eintragen.
-5. **Leser suchen und verbinden** drücken und `ClubIQ-RFID-xxxxxx` auswählen.
+5. **ClubIQ-Leser suchen** drücken und `ClubIQ-RFID-xxxxxx` auswählen.
 6. Android bestätigt bei Bedarf die geschützte Bluetooth-Verbindung. ClubIQ
    überträgt WLAN, Serveradresse und Root-CA und gibt den Einmalcode automatisch
    frei. Bei **Leser ist verbunden und einsatzbereit** ist die Einrichtung fertig.
 
+Ein bereits eingerichteter Leser bleibt für ClubIQ auffindbar. Bevor bestehende
+WLAN- oder Serverdaten überschrieben werden, zeigt sein Display
+**App-Freigabe – Jetzt Karte auflegen**. Eine beliebige RFID-Karte direkt am
+Leser bestätigt die physische Anwesenheit; die Karte wird dabei nicht gebucht.
+Ohne diese Bestätigung verwirft die Firmware die Änderung nach 90 Sekunden.
+
 Das Tablet bleibt dabei durchgehend im Vereins-WLAN. Ein Wechsel zum
 Wartungs-WLAN, ein Zertifikats-Upload und das Abtippen eines Codes entfallen.
-Bluetooth wird nur zur Einrichtung verwendet; der normale Betrieb läuft danach
-über HTTPS im Vereins-WLAN.
+Bluetooth dient nur der Einrichtung und sicheren Wiederverbindung; der normale
+Betrieb läuft weiterhin über HTTPS im Vereins-WLAN.
 
 Serveradresse, Geräte-Token, Root-CA und Vereins-WLAN werden im Gerätespeicher
 abgelegt. Sie bleiben bei normalen Firmware-Updates erhalten und können später
@@ -266,7 +272,7 @@ aktualisieren**. Der Leser lädt die Binärdatei ausschließlich über seine ber
 geprüfte HTTPS-Verbindung, installiert sie in den OTA-Bereich und startet neu.
 WLAN, Serveradresse, Root-CA und Geräte-Token bleiben im EEPROM erhalten.
 
-Für den neuen Bluetooth-Ablauf muss Version 1.7.0 auf dem ESP32 einmal per USB
+Für die App-gesteuerte Wiederverbindung muss Version 1.7.1 auf dem ESP32 einmal per USB
 installiert werden. Danach können weitere Versionen per OTA installiert werden.
 Während eines Kartenauftrags oder eines noch nicht übertragenen Scans wird kein
 Update gestartet. Während der Installation die Stromversorgung nicht trennen.

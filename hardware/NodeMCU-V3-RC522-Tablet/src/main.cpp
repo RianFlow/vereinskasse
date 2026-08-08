@@ -111,7 +111,12 @@ bool bleClientConnected = false;
 volatile bool bleCommandPending = false;
 bool bleSetupInProgress = false;
 bool blePairingSent = false;
+bool bleProvisioningAuthorized = false;
+bool blePhysicalConfirmationPending = false;
+String bleDeferredProvisionCommand;
 unsigned long bleLastProgressAt = 0;
+unsigned long blePhysicalConfirmationUntil = 0;
+constexpr unsigned long BLE_PHYSICAL_CONFIRMATION_MS = 90000;
 #endif
 
 enum class StatusLedMode {
@@ -1685,12 +1690,24 @@ void processWriteCommand() {
 class ClubIqBleServerCallbacks final : public BLEServerCallbacks {
   void onConnect(BLEServer *) override {
     bleClientConnected = true;
+    bleProvisioningAuthorized = !pushConfigured();
+    blePhysicalConfirmationPending = false;
+    bleDeferredProvisionCommand = "";
     bleLastProgressAt = 0;
   }
 
   void onDisconnect(BLEServer *) override {
     bleClientConnected = false;
-    if (!pushConfigured()) BLEDevice::startAdvertising();
+    bleProvisioningAuthorized = false;
+    blePhysicalConfirmationPending = false;
+    bleDeferredProvisionCommand = "";
+    if (pushConfigured()) {
+      setStatusLed(WiFi.status() == WL_CONNECTED && clockReady()
+                       ? StatusLedMode::Ready
+                       : StatusLedMode::Connecting);
+      if (!displayOrderActive) showStatusDisplay("ClubIQ", "Leser bereit");
+    }
+    BLEDevice::startAdvertising();
   }
 };
 
@@ -1753,6 +1770,17 @@ void processBleCommand() {
     rejectBleProvisioning("Unbekannter Bluetooth-Auftrag.");
     return;
   }
+  if (pushConfigured() && !bleProvisioningAuthorized) {
+    bleDeferredProvisionCommand = body;
+    blePhysicalConfirmationPending = true;
+    blePhysicalConfirmationUntil = millis() + BLE_PHYSICAL_CONFIRMATION_MS;
+    bleLastProgressAt = 0;
+    setStatusLed(StatusLedMode::Pairing);
+    showStatusDisplay("App-Freigabe", "Jetzt Karte auflegen");
+    bleNotifyJson("{\"state\":\"confirmation_required\",\"hardwareId\":\"" +
+                  hardwareId() + "\"}");
+    return;
+  }
   String ssid = decodeProvisionField(body, "ssid");
   const String password = decodeProvisionField(body, "password");
   String apiUrl = decodeProvisionField(body, "apiUrl");
@@ -1792,10 +1820,41 @@ void processBleCommand() {
   bleNotifyJson("{\"state\":\"wifi_connecting\",\"hardwareId\":\"" + hardwareId() + "\"}");
 }
 
+void processBlePhysicalConfirmation() {
+  if (!blePhysicalConfirmationPending || !bleClientConnected) return;
+  const unsigned long now = millis();
+  if ((long)(now - blePhysicalConfirmationUntil) >= 0) {
+    blePhysicalConfirmationPending = false;
+    bleDeferredProvisionCommand = "";
+    rejectBleProvisioning("Freigabe abgelaufen. Bitte die Verbindung erneut starten.");
+    return;
+  }
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+  finishCard();
+  bleProvisioningAuthorized = true;
+  blePhysicalConfirmationPending = false;
+  setStatusLed(StatusLedMode::Success, 1000);
+  showStatusDisplay("Freigegeben", "App verbindet Leser");
+  bleNotifyJson("{\"state\":\"physical_confirmed\",\"hardwareId\":\"" +
+                hardwareId() + "\"}");
+  blePendingCommand = bleDeferredProvisionCommand;
+  bleDeferredProvisionCommand = "";
+  bleCommandPending = true;
+}
+
 void processBleProvisioning() {
   processBleCommand();
   if (!bleClientConnected) return;
   const unsigned long now = millis();
+  processBlePhysicalConfirmation();
+  if (blePhysicalConfirmationPending) {
+    if (!bleLastProgressAt || now - bleLastProgressAt > 3000) {
+      bleLastProgressAt = now;
+      bleNotifyJson("{\"state\":\"confirmation_required\",\"hardwareId\":\"" +
+                    hardwareId() + "\"}");
+    }
+    return;
+  }
   if (!bleSetupInProgress) {
     if (!bleLastProgressAt || now - bleLastProgressAt > 5000) {
       bleLastProgressAt = now;
@@ -1839,7 +1898,6 @@ void processBleProvisioning() {
 }
 
 void startBleProvisioning() {
-  if (pushConfigured()) return;
   const String deviceName = "ClubIQ-RFID-" + macSuffix();
   BLEDevice::init(deviceName.c_str());
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);

@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr char FIRMWARE_VERSION[] = "1.7.0";
+constexpr char FIRMWARE_VERSION[] = "1.7.1";
 
 #if defined(CLUBIQ_ESP32_BLE)
 // ESP32-WROOM-32 / ESP32 DevKit: VSPI plus Pins ohne Boot-Strapping-Konflikte.

@@ -23,6 +23,8 @@ export type RfidBleReader={id:string;name:string;device:BluetoothDevice};
 
 const progressMessages:Record<string,string>={
   ready:"Leser gefunden. Einstellungen werden sicher übertragen …",
+  confirmation_required:"Sicherheitsfreigabe: Jetzt eine RFID-Karte am Leser auflegen.",
+  physical_confirmed:"Karte erkannt. Die neue Verbindung wird eingerichtet …",
   wifi_connecting:"Leser verbindet sich mit dem Vereins-WLAN …",
   securing_connection:"Sichere ClubIQ-Verbindung wird aufgebaut …",
   retrying_server:"ClubIQ wird erneut gesucht …",
@@ -61,7 +63,10 @@ export async function getAuthorizedRfidBleReaders(){
 
 export async function selectRfidBleReader(){
   const device=await bluetoothApi().requestDevice({
-    filters:[{namePrefix:"ClubIQ-RFID-",services:[SERVICE_UUID]}],
+    // Android fasst Namen und Service-UUID nicht auf jedem Chipsatz zuverlässig
+    // zusammen, wenn der ESP32 sie auf Advertising und Scan Response verteilt.
+    // Mehrere Filter werden als ODER ausgewertet und finden deshalb beide Fälle.
+    filters:[{namePrefix:"ClubIQ-RFID-"},{services:[SERVICE_UUID]}],
     optionalServices:[SERVICE_UUID]
   });
   if(!device.gatt)throw new Error("Der ausgewählte Leser bietet keine Bluetooth-Verbindung an.");

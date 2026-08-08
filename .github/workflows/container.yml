@@ -70,7 +70,7 @@ jobs:
           tags: |
             type=raw,value=test,enable=${{ github.ref == 'refs/heads/codex/raspberry-docker' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=1.7.2,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=1.7.3,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=sha,prefix=sha-
 
