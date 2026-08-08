@@ -2,8 +2,8 @@ import { env } from "cloudflare:workers";
 import { hasRole, requireRole, type SessionUser } from "../session";
 import { requireProfile, type ActiveProfile } from "../profile-session";
 
-const SCHEMA_VERSION=23;
-const COMPATIBLE_SCHEMA_VERSIONS=[22,SCHEMA_VERSION];
+const SCHEMA_VERSION=24;
+const COMPATIBLE_SCHEMA_VERSIONS=[22,23,SCHEMA_VERSION];
 const BACKUP_FORMAT_VERSION=3;
 const tables=["profiles","profile_recovery_keys","profile_sessions","members","member_lifecycle","rfid_devices","rfid_cards","rfid_scans","rfid_write_commands","rfid_display_states","guest_accounts","products","discount_rules","events","sales","sale_items","sale_allocations","payments","account_transactions","rounds","round_claims","random_reward_campaigns","random_reward_slots","shifts","reversals","monthly_closures","audit_logs"] as const;
 type Snapshot=Record<string,unknown>&{formatVersion:number;schemaVersion:number;createdAt:string;rowCounts:Record<string,number>};

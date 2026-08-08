@@ -6,7 +6,7 @@ type Device={id:string;profileId:string;hardwareId:string|null};
 type Command={id:string;profileId:string;deviceId:string;uid:string;block:number;payloadHex:string;status:string;error:string|null;createdAt:string;expiresAt:string;completedAt:string|null};
 type DisplayState={state:string;customerName:string|null;itemsText:string|null;itemCount:number;totalCents:number;revision:string;updatedAt:string};
 const headers={"cache-control":"no-store"};
-const LATEST_RFID_FIRMWARE="1.7.1";
+const LATEST_RFID_FIRMWARE="1.8.0";
 const hash=async(value:string)=>[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(byte=>byte.toString(16).padStart(2,"0")).join("");
 const uid=(value:unknown)=>String(value||"").trim().toUpperCase();
 const firmwareVersion=(value:string|null)=>value&&/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value)?value:null;
@@ -103,7 +103,7 @@ export async function PUT(request:Request){
     if(!device)return Response.json({error:"Aktiver RFID-Leser nicht gefunden"},{status:404,headers});
     const active=await env.DB.prepare("SELECT id FROM rfid_write_commands WHERE device_id=? AND status IN ('pending','processing') AND expires_at>? LIMIT 1").bind(device.id,new Date().toISOString()).first();
     if(active)return Response.json({error:`Der Leser bearbeitet gerade einen Auftrag. Bitte danach erneut ${action==="firmware"?"aktualisieren":"starten"}.`},{status:409,headers});
-    const id=crypto.randomUUID(),now=new Date(),expires=new Date(now.getTime()+(action==="firmware"?240000:45000)).toISOString();
+    const id=crypto.randomUUID(),now=new Date(),expires=new Date(now.getTime()+(action==="firmware"?15*60_000:45000)).toISOString();
     const command=action==="firmware"
       ?{uid:"DEVICE-FIRMWARE",block:-2,payload:LATEST_RFID_FIRMWARE,audit:"RFID_FIRMWARE_UPDATE_QUEUED"}
       :{uid:"DEVICE-RESTART",block:-1,payload:"",audit:"RFID_RESTART_QUEUED"};
