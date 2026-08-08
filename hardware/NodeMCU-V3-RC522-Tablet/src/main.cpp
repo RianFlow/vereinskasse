@@ -2501,22 +2501,30 @@ void setup() {
   loadWifiSettings();
   loadServerSettings();
 
-  // Der Wartungs-AP bleibt immer erreichbar. Parallel verbindet sich der
+  // Bluetooth vor dem WLAN initialisieren. Das verhindert, dass die
+  // Funk-Koexistenz beim Start die BLE-Werbung ausbremst.
+#if defined(CLUBIQ_ESP32_BLE)
+  startBleProvisioning();
+  delay(200);
+#endif
+
   // Der Leser arbeitet parallel als Wartungszugang und Station im Vereins-WLAN.
   WiFi.mode(WIFI_AP_STA);
-#if defined(CLUBIQ_ESP32_BLE)
-  WiFi.setSleep(false);
-#else
+
+#if !defined(CLUBIQ_ESP32_BLE)
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
 #endif
+
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
+
   if (!WiFi.softAP(apSsid.c_str(), apPassword.c_str(), 6, false, 2)) {
     Serial.println("FEHLER: WLAN-AP konnte nicht gestartet werden.");
   }
+
   maintainStationWifi();
+
 #if defined(CLUBIQ_ESP32_BLE)
-  startBleProvisioning();
   if (bleIdentityConfigured() && !pushConfigured()) {
     setStatusLed(StatusLedMode::Pairing);
     showStatusDisplay("Bluetooth", "Tablet wird gesucht");
