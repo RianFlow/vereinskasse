@@ -17,8 +17,11 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <BLESecurity.h>
+#include <Update.h>
 #include <esp_system.h>
 #include <mbedtls/base64.h>
+#include <mbedtls/md.h>
+#include <mbedtls/sha256.h>
 #else
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
@@ -104,7 +107,9 @@ unsigned long displayReadySince = 0;
 constexpr char BLE_SERVICE_UUID[] = "4a4f0001-7b5a-4f52-8844-434c55424951";
 constexpr char BLE_RX_UUID[] = "4a4f0002-7b5a-4f52-8844-434c55424951";
 constexpr char BLE_TX_UUID[] = "4a4f0003-7b5a-4f52-8844-434c55424951";
+constexpr char BLE_OTA_UUID[] = "4a4f0004-7b5a-4f52-8844-434c55424951";
 BLECharacteristic *bleTx = nullptr;
+BLECharacteristic *bleOta = nullptr;
 String bleReceiveBuffer;
 String blePendingCommand;
 bool bleClientConnected = false;
@@ -117,6 +122,32 @@ String bleDeferredProvisionCommand;
 unsigned long bleLastProgressAt = 0;
 unsigned long blePhysicalConfirmationUntil = 0;
 constexpr unsigned long BLE_PHYSICAL_CONFIRMATION_MS = 90000;
+constexpr unsigned long BLE_SESSION_MAX_MS = 11UL * 60UL * 1000UL;
+constexpr unsigned long BLE_SCAN_RETRY_MS = 850;
+constexpr unsigned long BLE_HEARTBEAT_MS = 10000;
+bool bleSessionActive = false;
+String bleSessionId, bleSessionNonce, bleHelloNonce;
+unsigned long bleSessionStartedAt = 0;
+uint32_t bleSessionCounter = 0;
+bool blePendingScanReady = false;
+String blePendingScanUid, blePendingScanType;
+int blePendingScanBlocks = 0;
+uint32_t blePendingScanCounter = 0;
+unsigned long bleLastScanNotifyAt = 0;
+unsigned long bleLastHeartbeatAt = 0;
+String blePairTokenHash;
+String blePairProof;
+bool bleCommandResultPending = false;
+String bleResultCommandId, bleResultUid, bleResultValue, bleResultError;
+bool bleResultSuccess = false;
+bool bleRestartAfterResult = false;
+unsigned long bleLastResultNotifyAt = 0;
+bool bleOtaActive = false;
+size_t bleOtaExpectedSize = 0;
+size_t bleOtaWritten = 0;
+String bleOtaExpectedSha, bleOtaTargetVersion, bleOtaCommandId;
+unsigned long bleOtaLastProgressAt = 0;
+mbedtls_sha256_context bleOtaShaContext;
 #endif
 
 enum class StatusLedMode {
@@ -147,6 +178,16 @@ String hardwareId();
 void maintainStationWifi();
 #if defined(CLUBIQ_ESP32_BLE)
 void bleNotifyJson(const String &payload);
+void processBleRuntime();
+void rejectBleProvisioning(const String &message);
+bool bleIdentityConfigured();
+String bytesToLowerHex(const unsigned char *bytes, size_t length);
+bool constantTimeHexEquals(const String &left, const String &right);
+String sha256Hex(const String &value);
+String bleHmac(const String &message, const String &token = "");
+bool verifyBleHmac(const String &message, const String &signature,
+                   const String &token = "");
+void sendBlePendingScan();
 #endif
 
 uint32_t secureRandomWord() {
@@ -294,7 +335,8 @@ bool saveServerSettings(const String &apiUrl, const String &deviceToken,
   vereinskasseRootCa = rootCa;
   serverSettingsStored = true;
   rebuildVereinskasseTrustAnchor();
-  return trustAnchorReady();
+  const bool bleOnlyIdentity = !apiUrl.length() && !rootCa.length() && deviceToken.length() >= 24;
+  return bleOnlyIdentity || trustAnchorReady();
 }
 
 void applyCompileTimeWifi() {
@@ -1216,7 +1258,17 @@ void retryPendingUid() {
 
 void automaticUidScan() {
   const unsigned long now = millis();
-  if (writeCommandActive || pendingUidReady || !pushConfigured() || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
+  bool directBleReady = false;
+  bool directBleAvailable = false;
+#if defined(CLUBIQ_ESP32_BLE)
+  directBleReady = bleSessionActive && bleClientConnected;
+  directBleAvailable = bleClientConnected && bleIdentityConfigured();
+  const bool directBlePending = blePendingScanReady;
+#else
+  const bool directBlePending = false;
+#endif
+  if (writeCommandActive || pendingUidReady || directBlePending ||
+      (!directBleAvailable && !pushConfigured()) || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
   lastScanAt = now;
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
 
@@ -1229,6 +1281,20 @@ void automaticUidScan() {
   if (uid == lastPushedUid && now - lastPushAt < RFID_REPEAT_GUARD_MS) return;
   lastPushedUid = uid;
   lastPushAt = now;
+  if (directBleAvailable) {
+#if defined(CLUBIQ_ESP32_BLE)
+    blePendingScanUid = uid;
+    blePendingScanType = type;
+    blePendingScanBlocks = blocks;
+    blePendingScanCounter = ++bleSessionCounter;
+    blePendingScanReady = true;
+    bleLastScanNotifyAt = 0;
+    lastPushState = "Karte " + uid + " erkannt; sichere Bluetooth-Bestätigung läuft.";
+    setStatusLed(StatusLedMode::Scanning);
+    if (directBleReady) sendBlePendingScan();
+    return;
+#endif
+  }
   pendingUid = uid;
   pendingType = type;
   pendingBlocks = blocks;
@@ -1690,22 +1756,31 @@ void processWriteCommand() {
 class ClubIqBleServerCallbacks final : public BLEServerCallbacks {
   void onConnect(BLEServer *) override {
     bleClientConnected = true;
-    bleProvisioningAuthorized = !pushConfigured();
+    bleProvisioningAuthorized = !bleIdentityConfigured();
     blePhysicalConfirmationPending = false;
     bleDeferredProvisionCommand = "";
+    bleSessionActive = false;
+    bleSessionId = "";
     bleLastProgressAt = 0;
   }
 
   void onDisconnect(BLEServer *) override {
     bleClientConnected = false;
+    bleSessionActive = false;
+    bleSessionId = "";
     bleProvisioningAuthorized = false;
     blePhysicalConfirmationPending = false;
     bleDeferredProvisionCommand = "";
-    if (pushConfigured()) {
+    if (bleOtaActive) {
+      Update.abort();
+      mbedtls_sha256_free(&bleOtaShaContext);
+      bleOtaActive = false;
+    }
+    if (bleIdentityConfigured()) {
       setStatusLed(WiFi.status() == WL_CONNECTED && clockReady()
                        ? StatusLedMode::Ready
-                       : StatusLedMode::Connecting);
-      if (!displayOrderActive) showStatusDisplay("ClubIQ", "Leser bereit");
+                       : StatusLedMode::Pairing);
+      if (!displayOrderActive) showStatusDisplay("Bluetooth", "Tablet wird gesucht");
     }
     BLEDevice::startAdvertising();
   }
@@ -1730,6 +1805,33 @@ class ClubIqBleRxCallbacks final : public BLECharacteristicCallbacks {
   }
 };
 
+class ClubIqBleOtaCallbacks final : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *characteristic) override {
+    if (!bleOtaActive) return;
+    const std::string value = characteristic->getValue();
+    if (value.empty() || bleOtaWritten + value.size() > bleOtaExpectedSize) {
+      Update.abort();
+      mbedtls_sha256_free(&bleOtaShaContext);
+      bleOtaActive = false;
+      bleNotifyJson("{\"state\":\"error\",\"message\":\"Firmwaredaten sind unvollständig oder zu groß.\"}");
+      return;
+    }
+    const size_t written = Update.write(
+        reinterpret_cast<uint8_t *>(const_cast<char *>(value.data())), value.size());
+    if (written != value.size()) {
+      Update.abort();
+      mbedtls_sha256_free(&bleOtaShaContext);
+      bleOtaActive = false;
+      bleNotifyJson("{\"state\":\"error\",\"message\":\"Firmware konnte nicht geschrieben werden.\"}");
+      return;
+    }
+    mbedtls_sha256_update_ret(&bleOtaShaContext,
+                              reinterpret_cast<const unsigned char *>(value.data()),
+                              value.size());
+    bleOtaWritten += written;
+  }
+};
+
 void bleNotifyJson(const String &payload) {
   if (!bleTx || !bleClientConnected) return;
   const String framed = payload + "\n";
@@ -1739,6 +1841,113 @@ void bleNotifyJson(const String &payload) {
     bleTx->notify();
     delay(18);
   }
+}
+
+String bleSessionMessage(const String &sessionId, const String &nonce,
+                         const String &expiresAt) {
+  return "session|" + hardwareId() + "|" + sessionId + "|" + nonce + "|" + expiresAt;
+}
+
+void sendBleReady() {
+  const String proof = bleIdentityConfigured() && bleHelloNonce.length() == 48
+      ? bleHmac("hello|" + hardwareId() + "|" + bleHelloNonce + "|" + FIRMWARE_VERSION)
+      : "";
+  bleNotifyJson("{\"state\":\"ready\",\"hardwareId\":\"" + hardwareId() +
+                "\",\"firmwareVersion\":\"" + FIRMWARE_VERSION +
+                "\",\"mode\":\"" +
+                String(bleIdentityConfigured() ? "ble" : "setup") +
+                "\",\"nonce\":\"" + bleHelloNonce +
+                "\",\"proof\":\"" + proof + "\"}");
+}
+
+void clearBleSession() {
+  bleSessionActive = false;
+  bleSessionId = "";
+  bleSessionNonce = "";
+  bleSessionStartedAt = 0;
+  bleLastHeartbeatAt = 0;
+}
+
+void sendBlePendingScan() {
+  if (!bleSessionActive || !blePendingScanReady || !bleClientConnected) return;
+  const String message = "scan|" + hardwareId() + "|" + bleSessionId + "|" +
+      String(blePendingScanCounter) + "|" + blePendingScanUid + "|" +
+      String(blePendingScanBlocks) + "|" + FIRMWARE_VERSION;
+  const String signature = bleHmac(message);
+  if (!signature.length()) return;
+  bleNotifyJson("{\"state\":\"scan\",\"hardwareId\":\"" + hardwareId() +
+                "\",\"sessionId\":\"" + bleSessionId +
+                "\",\"counter\":" + String(blePendingScanCounter) +
+                ",\"uid\":\"" + blePendingScanUid +
+                "\",\"cardType\":\"" + jsonEscape(blePendingScanType) +
+                "\",\"blocks\":" + String(blePendingScanBlocks) +
+                ",\"firmwareVersion\":\"" + FIRMWARE_VERSION +
+                "\",\"signature\":\"" + signature + "\"}");
+  bleLastScanNotifyAt = millis();
+}
+
+void sendBleHeartbeat() {
+  if (!bleSessionActive || !bleClientConnected) return;
+  const String message = "heartbeat|" + hardwareId() + "|" + bleSessionId + "|" +
+                         String(bleSessionCounter) + "|" + FIRMWARE_VERSION;
+  const String signature = bleHmac(message);
+  if (!signature.length()) return;
+  bleNotifyJson("{\"state\":\"heartbeat\",\"hardwareId\":\"" + hardwareId() +
+                "\",\"counter\":" + String(bleSessionCounter) +
+                ",\"firmwareVersion\":\"" + FIRMWARE_VERSION +
+                "\",\"signature\":\"" + signature + "\"}");
+  bleLastHeartbeatAt = millis();
+}
+
+void queueBleCommandResult(const String &commandId, bool success,
+                           const String &uid, const String &value,
+                           String error, bool restartAfterAck = false) {
+  error.replace("|", " ");
+  error.replace("\n", " ");
+  error.replace("\r", " ");
+  if (error.length() > 240) error.remove(240);
+  bleResultCommandId = commandId;
+  bleResultSuccess = success;
+  bleResultUid = uid;
+  bleResultValue = value;
+  bleResultError = error;
+  bleRestartAfterResult = restartAfterAck;
+  bleCommandResultPending = true;
+  bleLastResultNotifyAt = 0;
+}
+
+void sendBleCommandResult() {
+  if (!bleSessionActive || !bleClientConnected || !bleCommandResultPending) return;
+  const String message = "result|" + hardwareId() + "|" + bleSessionId + "|" +
+      bleResultCommandId + "|" + String(bleResultSuccess ? 1 : 0) + "|" +
+      bleResultUid + "|" + bleResultValue + "|" + bleResultError;
+  const String signature = bleHmac(message);
+  if (!signature.length()) return;
+  bleNotifyJson("{\"state\":\"command_result\",\"commandId\":\"" +
+                bleResultCommandId + "\",\"success\":" +
+                String(bleResultSuccess ? "true" : "false") +
+                ",\"uid\":\"" + jsonEscape(bleResultUid) +
+                "\",\"value\":\"" + jsonEscape(bleResultValue) +
+                "\",\"error\":\"" + jsonEscape(bleResultError) +
+                "\",\"signature\":\"" + signature + "\"}");
+  bleLastResultNotifyAt = millis();
+}
+
+void prepareBlePairOffer() {
+  pairingSecret = secureRandomHex(32);
+  blePairTokenHash = sha256Hex(pairingSecret);
+  blePairProof = bleIdentityConfigured()
+      ? bleHmac("pair|" + hardwareId() + "|" + blePairTokenHash)
+      : "";
+  if (!blePairTokenHash.length()) {
+    rejectBleProvisioning("Sichere Gerätekennung konnte nicht erzeugt werden.");
+    return;
+  }
+  setStatusLed(StatusLedMode::Pairing);
+  showStatusDisplay("Bluetooth", "In App bestätigen");
+  bleNotifyJson("{\"state\":\"pair_offer\",\"hardwareId\":\"" + hardwareId() +
+                "\",\"tokenHash\":\"" + blePairTokenHash +
+                "\",\"proof\":\"" + blePairProof + "\"}");
 }
 
 String decodeProvisionField(const String &body, const String &name) {
@@ -1761,16 +1970,243 @@ void rejectBleProvisioning(const String &message) {
   bleNotifyJson("{\"state\":\"error\",\"message\":\"" + jsonEscape(message) + "\"}");
 }
 
+void beginBleCommand(const String &body) {
+  if (!bleSessionActive) {
+    rejectBleProvisioning("Sichere Bluetooth-Sitzung fehlt.");
+    return;
+  }
+  const String commandId = jsonStringField(body, "id");
+  const String action = jsonStringField(body, "action");
+  const String uid = jsonStringField(body, "uid");
+  const String payload = jsonStringField(body, "payload");
+  const String expiresAt = jsonStringField(body, "expiresAt");
+  const String sha256 = jsonStringField(body, "sha256");
+  const String authorization = jsonStringField(body, "authorization");
+  const int block = jsonIntField(body, "block");
+  const int size = jsonIntField(body, "size");
+  const String message = "command|" + hardwareId() + "|" + bleSessionId + "|" +
+      commandId + "|" + action + "|" + uid + "|" + String(block) + "|" +
+      payload + "|" + expiresAt + "|" + String(max(0, size)) + "|" + sha256;
+  if (!commandId.length() || !verifyBleHmac(message, authorization)) {
+    rejectBleProvisioning("RFID-Auftrag ist nicht sicher freigegeben.");
+    return;
+  }
+  if (action == "restart" && uid == "DEVICE-RESTART" && block == -1) {
+    queueBleCommandResult(commandId, true, uid, payload, "", true);
+    return;
+  }
+  if (action == "write") {
+    byte parsed[16];
+    if (writeCommandActive || bleOtaActive || uid.length() < 8 || block < 1 ||
+        isTrailer(block) || !parseHex(payload, parsed, 16)) {
+      queueBleCommandResult(commandId, false, uid, "",
+                            "Schreibauftrag ist momentan nicht ausführbar.");
+      return;
+    }
+    writeCommandId = commandId;
+    writeCommandUid = uid;
+    writeCommandHex = payload;
+    writeCommandBlock = block;
+    writeCommandActive = true;
+    writeResultReady = false;
+    writeResultSuccess = false;
+    writeResultHex = "";
+    writeResultError = "";
+    setStatusLed(StatusLedMode::WriteWaiting);
+    showStatusDisplay("Chip schreiben", "Passende Karte auflegen");
+    return;
+  }
+  if (action == "firmware" && uid == "DEVICE-FIRMWARE" && block == -2) {
+    if (payload == FIRMWARE_VERSION) {
+      queueBleCommandResult(commandId, true, uid, payload, "");
+      return;
+    }
+    if (bleOtaActive || writeCommandActive || size < 100000 || size > 0x1E0000 ||
+        sha256.length() != 64 || !Update.begin(static_cast<size_t>(size), U_FLASH)) {
+      queueBleCommandResult(commandId, false, uid, "",
+                            "Firmwareupdate konnte nicht vorbereitet werden.");
+      return;
+    }
+    bleOtaActive = true;
+    bleOtaExpectedSize = static_cast<size_t>(size);
+    bleOtaWritten = 0;
+    bleOtaExpectedSha = sha256;
+    bleOtaTargetVersion = payload;
+    bleOtaCommandId = commandId;
+    bleOtaLastProgressAt = 0;
+    mbedtls_sha256_init(&bleOtaShaContext);
+    mbedtls_sha256_starts_ret(&bleOtaShaContext, 0);
+    setStatusLed(StatusLedMode::Updating);
+    showStatusDisplay("Firmwareupdate", "Strom nicht trennen");
+    bleNotifyJson("{\"state\":\"ota_ready\",\"commandId\":\"" +
+                  commandId + "\"}");
+    return;
+  }
+  rejectBleProvisioning("Unbekannter oder ungültiger RFID-Auftrag.");
+}
+
+void finishBleOta(const String &body) {
+  const String commandId = jsonStringField(body, "id");
+  if (!bleOtaActive || commandId != bleOtaCommandId) {
+    rejectBleProvisioning("Kein passendes Firmwareupdate aktiv.");
+    return;
+  }
+  unsigned char digest[32];
+  mbedtls_sha256_finish_ret(&bleOtaShaContext, digest);
+  mbedtls_sha256_free(&bleOtaShaContext);
+  const String actualSha = bytesToLowerHex(digest, sizeof(digest));
+  const bool valid = bleOtaWritten == bleOtaExpectedSize &&
+                     constantTimeHexEquals(actualSha, bleOtaExpectedSha);
+  if (!valid) {
+    Update.abort();
+    bleOtaActive = false;
+    queueBleCommandResult(commandId, false, "DEVICE-FIRMWARE", "",
+                          "Firmware-Prüfsumme stimmt nicht überein.");
+    return;
+  }
+  const bool installed = Update.end(true);
+  bleOtaActive = false;
+  queueBleCommandResult(commandId, installed, "DEVICE-FIRMWARE",
+                        installed ? bleOtaTargetVersion : "",
+                        installed ? "" : "Firmware konnte nicht aktiviert werden.",
+                        installed);
+}
+
 void processBleCommand() {
   if (!bleCommandPending) return;
   const String body = blePendingCommand;
   blePendingCommand = "";
   bleCommandPending = false;
-  if (jsonStringField(body, "type") != "provision") {
+  const String action = jsonStringField(body, "type");
+  if (action == "hello") {
+    bleHelloNonce = jsonStringField(body, "nonce");
+    if (bleHelloNonce.length() != 48) bleHelloNonce = "";
+    sendBleReady();
+    return;
+  }
+  if (action == "pair_ble") {
+    if (bleIdentityConfigured() && !bleProvisioningAuthorized) {
+      bleDeferredProvisionCommand = body;
+      blePhysicalConfirmationPending = true;
+      blePhysicalConfirmationUntil = millis() + BLE_PHYSICAL_CONFIRMATION_MS;
+      bleLastProgressAt = 0;
+      setStatusLed(StatusLedMode::Pairing);
+      showStatusDisplay("App-Freigabe", "Jetzt Karte auflegen");
+      bleNotifyJson("{\"state\":\"confirmation_required\",\"hardwareId\":\"" +
+                    hardwareId() + "\"}");
+      return;
+    }
+    prepareBlePairOffer();
+    return;
+  }
+  if (action == "pair_activate") {
+    const String approval = jsonStringField(body, "approval");
+    const String message = "activate|" + hardwareId() + "|" + blePairTokenHash;
+    if (!pairingSecret.length() || !verifyBleHmac(message, approval, pairingSecret) ||
+        !saveServerSettings("", pairingSecret, "") || !saveWifiSettings("", "")) {
+      rejectBleProvisioning("Bluetooth-Freigabe konnte nicht sicher gespeichert werden.");
+      return;
+    }
+    WiFi.disconnect(false);
+    clearBleSession();
+    pairingSecret = "";
+    blePairTokenHash = "";
+    blePairProof = "";
+    bleProvisioningAuthorized = true;
+    setStatusLed(StatusLedMode::Success, 1200);
+    showStatusDisplay("Verbunden", "Tablet übernimmt");
+    bleNotifyJson("{\"state\":\"approved\",\"hardwareId\":\"" + hardwareId() + "\"}");
+    return;
+  }
+  if (action == "session") {
+    const String sessionId = jsonStringField(body, "sessionId");
+    const String nonce = jsonStringField(body, "nonce");
+    const String expiresAt = jsonStringField(body, "expiresAt");
+    const String authorization = jsonStringField(body, "authorization");
+    if (!bleIdentityConfigured() || sessionId.length() < 16 || nonce.length() != 48 ||
+        !verifyBleHmac(bleSessionMessage(sessionId, nonce, expiresAt), authorization)) {
+      rejectBleProvisioning("Bluetooth-Sitzung wurde vom Server nicht bestätigt.");
+      return;
+    }
+    bleSessionId = sessionId;
+    bleSessionNonce = nonce;
+    bleSessionStartedAt = millis();
+    bleSessionCounter = blePendingScanReady ? 1 : 0;
+    if (blePendingScanReady) blePendingScanCounter = bleSessionCounter;
+    bleSessionActive = true;
+    bleLastHeartbeatAt = 0;
+    setStatusLed(StatusLedMode::Ready);
+    if (!displayOrderActive) showStatusDisplay("RFID bereit", "Karte auflegen");
+    bleNotifyJson("{\"state\":\"session_ready\",\"hardwareId\":\"" +
+                  hardwareId() + "\"}");
+    return;
+  }
+  if (action == "scan_ack") {
+    const uint32_t counter = static_cast<uint32_t>(jsonIntField(body, "counter"));
+    const String uid = jsonStringField(body, "uid");
+    const String state = jsonStringField(body, "state");
+    const String memberName = jsonStringField(body, "memberName");
+    const String acknowledgement = jsonStringField(body, "acknowledgement");
+    const String message = "ack|" + hardwareId() + "|" + bleSessionId + "|" +
+        String(counter) + "|" + uid + "|" + state + "|" + memberName;
+    if (!blePendingScanReady || counter != blePendingScanCounter ||
+        uid != blePendingScanUid || !verifyBleHmac(message, acknowledgement)) return;
+    blePendingScanReady = false;
+    blePendingScanUid = "";
+    setStatusLed(StatusLedMode::Success, 900);
+    if (state == "recognized" && memberName.length()) showStatusDisplay("Erkannt", memberName);
+    else showStatusDisplay("Unbekannt", "In der App zuordnen");
+    return;
+  }
+  if (action == "display") {
+    if (!bleSessionActive) return;
+    displayOrderActive = jsonStringField(body, "state") == "cart";
+    displayOrderCustomer = jsonStringField(body, "customerName");
+    displayOrderItems = jsonStringField(body, "itemsText");
+    displayOrderItemCount = max(0, jsonIntField(body, "itemCount"));
+    displayOrderTotalCents = max(0, jsonIntField(body, "totalCents"));
+    displayOrderUpdatedAt = millis();
+    if (displayOrderActive) showOrderDisplay();
+    else {
+      displayReadySince = millis();
+      showStatusDisplay("RFID bereit", "Karte auflegen");
+    }
+    return;
+  }
+  if (action == "command") {
+    beginBleCommand(body);
+    return;
+  }
+  if (action == "ota_end") {
+    finishBleOta(body);
+    return;
+  }
+  if (action == "command_ack") {
+    const String id = jsonStringField(body, "id");
+    const String status = jsonStringField(body, "status");
+    const String acknowledgement = jsonStringField(body, "acknowledgement");
+    const String message = "command_ack|" + hardwareId() + "|" + bleSessionId +
+                           "|" + id + "|" + status;
+    if (!bleCommandResultPending || id != bleResultCommandId ||
+        !verifyBleHmac(message, acknowledgement)) return;
+    const bool restart = bleRestartAfterResult;
+    bleCommandResultPending = false;
+    bleRestartAfterResult = false;
+    bleResultCommandId = "";
+    if (restart) {
+      showStatusDisplay("Neustart", "Bitte kurz warten");
+      setStatusLed(StatusLedMode::Starting);
+      renderStatusLed();
+      delay(350);
+      ESP.restart();
+    }
+    return;
+  }
+  if (action != "provision") {
     rejectBleProvisioning("Unbekannter Bluetooth-Auftrag.");
     return;
   }
-  if (pushConfigured() && !bleProvisioningAuthorized) {
+  if (bleIdentityConfigured() && !bleProvisioningAuthorized) {
     bleDeferredProvisionCommand = body;
     blePhysicalConfirmationPending = true;
     blePhysicalConfirmationUntil = millis() + BLE_PHYSICAL_CONFIRMATION_MS;
@@ -1820,6 +2256,57 @@ void processBleCommand() {
   bleNotifyJson("{\"state\":\"wifi_connecting\",\"hardwareId\":\"" + hardwareId() + "\"}");
 }
 
+bool bleIdentityConfigured() {
+  return rfidDeviceToken.length() >= 24;
+}
+
+#if defined(CLUBIQ_ESP32_BLE)
+String bytesToLowerHex(const unsigned char *bytes, size_t length) {
+  static const char digits[] = "0123456789abcdef";
+  String result;
+  result.reserve(length * 2);
+  for (size_t i = 0; i < length; ++i) {
+    result += digits[bytes[i] >> 4];
+    result += digits[bytes[i] & 0x0F];
+  }
+  return result;
+}
+
+bool constantTimeHexEquals(const String &left, const String &right) {
+  if (left.length() != right.length()) return false;
+  uint8_t difference = 0;
+  for (size_t i = 0; i < left.length(); ++i)
+    difference |= static_cast<uint8_t>(tolower(left[i]) ^ tolower(right[i]));
+  return difference == 0;
+}
+
+String sha256Hex(const String &value) {
+  unsigned char digest[32];
+  if (mbedtls_sha256_ret(reinterpret_cast<const unsigned char *>(value.c_str()),
+                         value.length(), digest, 0) != 0) return "";
+  return bytesToLowerHex(digest, sizeof(digest));
+}
+
+String bleHmac(const String &message, const String &token) {
+  const String source = token.length() ? token : rfidDeviceToken;
+  if (source.length() < 24) return "";
+  unsigned char key[32], digest[32];
+  if (mbedtls_sha256_ret(reinterpret_cast<const unsigned char *>(source.c_str()),
+                         source.length(), key, 0) != 0) return "";
+  const mbedtls_md_info_t *info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  if (!info || mbedtls_md_hmac(info, key, sizeof(key),
+                               reinterpret_cast<const unsigned char *>(message.c_str()),
+                               message.length(), digest) != 0) return "";
+  return bytesToLowerHex(digest, sizeof(digest));
+}
+
+bool verifyBleHmac(const String &message, const String &signature,
+                   const String &token) {
+  return signature.length() == 64 &&
+         constantTimeHexEquals(bleHmac(message, token), signature);
+}
+#endif
+
 void processBlePhysicalConfirmation() {
   if (!blePhysicalConfirmationPending || !bleClientConnected) return;
   const unsigned long now = millis();
@@ -1845,6 +2332,7 @@ void processBlePhysicalConfirmation() {
 void processBleProvisioning() {
   processBleCommand();
   if (!bleClientConnected) return;
+  if (bleSessionActive) return;
   const unsigned long now = millis();
   processBlePhysicalConfirmation();
   if (blePhysicalConfirmationPending) {
@@ -1858,8 +2346,7 @@ void processBleProvisioning() {
   if (!bleSetupInProgress) {
     if (!bleLastProgressAt || now - bleLastProgressAt > 5000) {
       bleLastProgressAt = now;
-      bleNotifyJson("{\"state\":\"ready\",\"hardwareId\":\"" + hardwareId() +
-                    "\",\"firmwareVersion\":\"" + FIRMWARE_VERSION + "\"}");
+      sendBleReady();
     }
     return;
   }
@@ -1897,9 +2384,45 @@ void processBleProvisioning() {
                 jsonEscape(pairingMessage) + "\"}");
 }
 
+void processBleRuntime() {
+  if (!bleClientConnected) return;
+  const unsigned long now = millis();
+  if (bleSessionActive && writeCommandActive && writeResultReady &&
+      !bleCommandResultPending) {
+    queueBleCommandResult(writeCommandId, writeResultSuccess, writeCommandUid,
+                          writeResultHex, writeResultError);
+    writeCommandActive = false;
+    writeResultReady = false;
+    writeCommandId = "";
+  }
+  if (bleSessionActive && now - bleSessionStartedAt >= BLE_SESSION_MAX_MS) {
+    clearBleSession();
+    bleNotifyJson("{\"state\":\"session_expired\",\"hardwareId\":\"" +
+                  hardwareId() + "\"}");
+    return;
+  }
+  if (bleSessionActive && blePendingScanReady &&
+      (!bleLastScanNotifyAt || now - bleLastScanNotifyAt >= BLE_SCAN_RETRY_MS))
+    sendBlePendingScan();
+  if (bleSessionActive &&
+      (!bleLastHeartbeatAt || now - bleLastHeartbeatAt >= BLE_HEARTBEAT_MS))
+    sendBleHeartbeat();
+  if (bleSessionActive && bleCommandResultPending &&
+      (!bleLastResultNotifyAt || now - bleLastResultNotifyAt >= BLE_SCAN_RETRY_MS))
+    sendBleCommandResult();
+  if (bleOtaActive && bleOtaExpectedSize &&
+      (!bleOtaLastProgressAt || now - bleOtaLastProgressAt >= 1200)) {
+    bleOtaLastProgressAt = now;
+    const int percent = static_cast<int>((bleOtaWritten * 100UL) / bleOtaExpectedSize);
+    bleNotifyJson("{\"state\":\"ota_progress\",\"percent\":" +
+                  String(percent) + "}");
+  }
+}
+
 void startBleProvisioning() {
   const String deviceName = "ClubIQ-RFID-" + macSuffix();
   BLEDevice::init(deviceName.c_str());
+  BLEDevice::setMTU(247);
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
   BLESecurity *security = new BLESecurity();
   security->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
@@ -1915,6 +2438,10 @@ void startBleProvisioning() {
       BLE_TX_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   bleTx->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED);
   bleTx->addDescriptor(new BLE2902());
+  bleOta = service->createCharacteristic(
+      BLE_OTA_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+  bleOta->setAccessPermissions(ESP_GATT_PERM_WRITE_ENCRYPTED);
+  bleOta->setCallbacks(new ClubIqBleOtaCallbacks());
   service->start();
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(BLE_SERVICE_UUID);
@@ -1990,6 +2517,10 @@ void setup() {
   maintainStationWifi();
 #if defined(CLUBIQ_ESP32_BLE)
   startBleProvisioning();
+  if (bleIdentityConfigured() && !pushConfigured()) {
+    setStatusLed(StatusLedMode::Pairing);
+    showStatusDisplay("Bluetooth", "Tablet wird gesucht");
+  }
 #endif
 
   server.on("/", HTTP_GET, [] {
@@ -2035,6 +2566,7 @@ void loop() {
   maintainStationWifi();
 #if defined(CLUBIQ_ESP32_BLE)
   processBleProvisioning();
+  processBleRuntime();
 #endif
   // Kartenscans haben Vorrang vor der langsameren HTTPS-Abfrage nach
   // Schreibaufträgen, damit ein Mitgliederwechsel sofort erkannt wird.

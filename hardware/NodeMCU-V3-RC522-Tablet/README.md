@@ -169,18 +169,20 @@ eintragen.
 
 ## 4. ESP32 direkt in ClubIQ verbinden (Android)
 
-Ab Version 1.7.1 erledigt die ClubIQ-App die gesamte Einrichtung des ESP32.
+Ab Version 1.8.0 erledigt die ClubIQ-App die gesamte Einrichtung und den
+laufenden Betrieb des ESP32.
 Voraussetzungen sind Chrome auf einem Android-Tablet, eingeschaltetes Bluetooth,
 die geöffnete sichere ClubIQ-Adresse und ein ESP32 mit dieser Firmware.
 
-1. Firmware 1.7.1 einmal per USB mit der Umgebung `esp32dev` aufspielen.
+1. Firmware 1.8.0 einmal per USB mit der Umgebung `esp32dev` aufspielen.
 2. Tablet mit dem Vereins-WLAN verbinden und ClubIQ öffnen.
 3. **Admin → Sicherheit → RFID-Leser** öffnen.
-4. Lesername, 2,4-GHz-WLAN und WLAN-Kennwort eintragen.
-5. **ClubIQ-Leser suchen** drücken und `ClubIQ-RFID-xxxxxx` auswählen.
-6. Android bestätigt bei Bedarf die geschützte Bluetooth-Verbindung. ClubIQ
-   überträgt WLAN, Serveradresse und Root-CA und gibt den Einmalcode automatisch
-   frei. Bei **Leser ist verbunden und einsatzbereit** ist die Einrichtung fertig.
+4. **Android-Auswahl einmalig öffnen** drücken und im geschützten Android-Fenster
+   `ClubIQ-RFID-xxxxxx` auswählen.
+5. Einen leicht verständlichen Namen vergeben und **Ausgewählten Leser mit
+   ClubIQ verknüpfen** drücken.
+6. Bei **RFID-Leser bereit** ist die Einrichtung fertig. ClubIQ stellt die
+   Verbindung nach einem Neustart oder einer Unterbrechung automatisch wieder her.
 
 Ein bereits eingerichteter Leser bleibt für ClubIQ auffindbar. Bevor bestehende
 WLAN- oder Serverdaten überschrieben werden, zeigt sein Display
@@ -188,16 +190,16 @@ WLAN- oder Serverdaten überschrieben werden, zeigt sein Display
 Leser bestätigt die physische Anwesenheit; die Karte wird dabei nicht gebucht.
 Ohne diese Bestätigung verwirft die Firmware die Änderung nach 90 Sekunden.
 
-Das Tablet bleibt dabei durchgehend im Vereins-WLAN. Ein Wechsel zum
-Wartungs-WLAN, ein Zertifikats-Upload und das Abtippen eines Codes entfallen.
-Bluetooth dient nur der Einrichtung und sicheren Wiederverbindung; der normale
-Betrieb läuft weiterhin über HTTPS im Vereins-WLAN.
+Das Tablet bleibt durchgehend im Vereins-WLAN. Der ESP32 selbst benötigt keine
+Zugangsdaten zum Vereins-WLAN: Scan, Kundendisplay, Schreiben, Neustart und OTA
+laufen direkt über die verschlüsselte Bluetooth-Verbindung. Das Tablet vermittelt
+zum Raspberry. Ein Wechsel zum Wartungs-WLAN, Zertifikats-Upload und Abtippen
+eines Codes entfallen.
 
-Serveradresse, Geräte-Token, Root-CA und Vereins-WLAN werden im Gerätespeicher
-abgelegt. Sie bleiben bei normalen Firmware-Updates erhalten und können später
-über die Wartungsseite geändert werden, ohne den Programmcode erneut anzupassen.
-Der Geräte-Token wird nach dem Speichern nicht wieder angezeigt. Ein leeres
-Tokenfeld behält den vorhandenen Wert.
+Die App verwendet kurzlebige, vom Raspberry signierte Sitzungen. Scans haben
+einen fortlaufenden Zähler und werden erst nach signierter Bestätigung verworfen.
+Nach Verbindungsabbrüchen sendet der Leser den ausstehenden Scan erneut. Geld,
+Kontostände und Berechtigungen bleiben ausschließlich in PostgreSQL.
 
 ### ESP8266 oder manueller Rückfall
 
@@ -272,8 +274,9 @@ aktualisieren**. Der Leser lädt die Binärdatei ausschließlich über seine ber
 geprüfte HTTPS-Verbindung, installiert sie in den OTA-Bereich und startet neu.
 WLAN, Serveradresse, Root-CA und Geräte-Token bleiben im EEPROM erhalten.
 
-Für die App-gesteuerte Wiederverbindung muss Version 1.7.1 auf dem ESP32 einmal per USB
-installiert werden. Danach können weitere Versionen per OTA installiert werden.
+Für den direkten Bluetooth-Betrieb muss Version 1.8.0 auf dem ESP32 einmal per USB
+installiert werden. Danach überträgt die App weitere Versionen geprüft per BLE-OTA;
+der ESP32 prüft Größe und SHA-256-Prüfsumme vor dem Neustart.
 Während eines Kartenauftrags oder eines noch nicht übertragenen Scans wird kein
 Update gestartet. Während der Installation die Stromversorgung nicht trennen.
 

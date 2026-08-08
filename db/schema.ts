@@ -31,7 +31,9 @@ export const rfidDevices=sqliteTable("rfid_devices",{
   id:text("id").primaryKey(),profileId:text("profile_id").notNull(),name:text("name").notNull(),
   hardwareId:text("hardware_id"),
   tokenHash:text("token_hash").notNull(),active:integer("active",{mode:"boolean"}).notNull().default(true),
-  firmwareVersion:text("firmware_version"),lastSeenAt:text("last_seen_at"),createdBy:text("created_by").notNull(),createdAt:text("created_at").notNull(),
+  firmwareVersion:text("firmware_version"),lastSeenAt:text("last_seen_at"),
+  bleSessionId:text("ble_session_id"),bleSessionCounter:integer("ble_session_counter").notNull().default(0),bleSessionExpiresAt:text("ble_session_expires_at"),
+  createdBy:text("created_by").notNull(),createdAt:text("created_at").notNull(),
 },table=>[uniqueIndex("rfid_devices_token_hash_unique").on(table.tokenHash),uniqueIndex("rfid_devices_hardware_id_unique").on(table.hardwareId),index("rfid_devices_profile_active_idx").on(table.profileId,table.active)]);
 
 export const rfidPairingRequests=sqliteTable("rfid_pairing_requests",{

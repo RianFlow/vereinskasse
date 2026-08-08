@@ -9,6 +9,15 @@ kontrollierter Wiederherstellung steht unter
 
 Tabletfreundliches Kassensystem für den SV Barver Darts und weitere Sparten im Dorfgemeinschaftshaus.
 
+## RFID-Betrieb
+
+Der ESP32-RFID-Leser arbeitet ab Firmware 1.8.0 direkt per Bluetooth mit dem
+Android-Tablet. Nur das Tablet benötigt WLAN zum Raspberry; am Leser müssen keine
+Vereins-WLAN-Daten gespeichert werden. Nach der einmaligen Android-Gerätefreigabe
+verbindet ClubIQ den Leser automatisch wieder. Scans, Displayanzeige,
+Chip-Schreiben, Neustart und geprüfte Firmwareupdates laufen über diese Verbindung.
+Der bisherige ESP8266-WLAN-Weg bleibt als Altgeräte- und Notfallweg erhalten.
+
 ## Datensicherheit
 
 - Strukturierte Betriebsdaten liegen zentral in der Datenbank, nicht ausschließlich auf dem Tablet.
