@@ -259,6 +259,14 @@ class RfidBleRuntime {
   stop(){this.running=false;this.paused=false;this.disconnect()}
   pause(){this.paused=true;this.disconnect()}
   resume(){this.paused=false;if(this.running)void this.connect()}
+  prefer(reader:RfidBleReader){
+    if(typeof localStorage!=="undefined")localStorage.setItem("clubiq-rfid-ble-reader",reader.id);
+    this.retryDelay=800;
+    this.paused=false;
+    this.update({state:"connecting",message:`${reader.name} wird mit ClubIQ verbunden …`,readerName:reader.name});
+    this.disconnect(false);
+    if(this.running)this.scheduleReconnect(150);
+  }
   setDisplay(payload:DisplayPayload){
     this.lastDisplay=payload;
     if(this.sessionId)void this.send({type:"display",...payload}).catch(reason=>this.handleTransportError(reason));
