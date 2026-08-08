@@ -12,7 +12,7 @@ test("kapselt PostgreSQL und veröffentlicht nur den HTTPS-Zugang", async () => 
   assert.match(compose, /postgres:17-bookworm/);
   assert.match(compose, /POSTGRES_PASSWORD_FILE/);
   assert.match(compose, /PGPASSWORD_FILE/);
-  assert.match(compose, /database:\n\s+internal: true/);
+  assert.match(compose, /database:\r?\n\s+internal: true/);
   assert.doesNotMatch(compose, /5432:5432/);
   assert.match(compose, /no-new-privileges:true/);
   assert.match(compose, /read_only: true/);

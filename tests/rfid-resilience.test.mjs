@@ -92,6 +92,21 @@ test("RFID-Leser koppelt sich ohne PC per kurzlebigem Einmalcode",async()=>{
   assert.ok(!firmware.includes("setInsecure()"),"Auch die Kopplung muss das TLS-Zertifikat prüfen");
 });
 
+test("zeigt die RFID-Verbindung als eigenen aufgeräumten Adminbereich",async()=>{
+  const [page,component,rfidStyle,adminStyle]=await Promise.all([
+    read("app/page.tsx"),read("app/RfidIntegration.tsx"),read("app/rfid.css"),read("app/admin-sections.css")
+  ]);
+  for(const fragment of ['{id:"rfid",icon:IconNfc,label:"RFID-Leser"}','adminSection==="rfid"','setAdminSection("rfid")']){
+    assert.ok(page.includes(fragment),`Eigener RFID-Menüpunkt fehlt: ${fragment}`);
+  }
+  for(const fragment of ["Wie möchtest du verbinden?","Vorhandener ESP8266","Neuer ESP32","ClubIQ-Zertifikat herunterladen","Zugeordnete Mitgliedskarten","Erweiterte Einrichtung"]){
+    assert.ok(component.includes(fragment),`Aufgeräumte RFID-Einrichtung fehlt: ${fragment}`);
+  }
+  assert.ok(component.includes('setupMode==="esp8266"'),"Der vorhandene ESP8266 ist nicht der einfache Standardweg");
+  assert.ok(rfidStyle.includes(".rfid-setup-picker")&&rfidStyle.includes(".rfid-collapsible"),"RFID-Layout ist nicht getrennt und einklappbar");
+  assert.ok(adminStyle.includes("repeat(8,minmax(0,1fr))"),"Der zusätzliche Adminbereich passt nicht sauber in die Navigation");
+});
+
 test("Android richtet den ESP32-Leser direkt und verschlüsselt per Bluetooth ein",async()=>{
   const [firmware,config,platformio,ble,pairRoute,commands,caddy]=await Promise.all([
     read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),
