@@ -6,7 +6,7 @@ Diese Ausgabe ist für Raspberry Pi OS 64-Bit auf einem Raspberry Pi 4B mit
 
 ## Was automatisch läuft
 
-- **App:** Clubiq Ledger Version 1.7.1 als ARM64-Container
+- **App:** Clubiq Ledger Version 1.7.2 als ARM64-Container
 - **Datenbank:** PostgreSQL 17 in einem nur intern erreichbaren Docker-Netz
 - **HTTPS:** Caddy mit lokalem Zertifikat für Tablet, PWA und Kioskmodus
 - **Start nach Stromausfall:** alle dauerhaften Dienste starten selbst wieder

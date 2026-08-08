@@ -11,11 +11,15 @@ type BluetoothCharacteristic={
 };
 type BluetoothService={getCharacteristic:(uuid:string)=>Promise<BluetoothCharacteristic>};
 type BluetoothServer={connected:boolean;connect:()=>Promise<BluetoothServer>;disconnect:()=>void;getPrimaryService:(uuid:string)=>Promise<BluetoothService>};
-type BluetoothDevice={name?:string;gatt?:BluetoothServer};
-type BluetoothApi={requestDevice:(options:unknown)=>Promise<BluetoothDevice>};
+type BluetoothDevice={id:string;name?:string;gatt?:BluetoothServer};
+type BluetoothApi={
+  requestDevice:(options:unknown)=>Promise<BluetoothDevice>;
+  getDevices?:()=>Promise<BluetoothDevice[]>;
+};
 
 export type RfidBleProgress={state:string;message:string;hardwareId?:string};
 export type RfidBleProvisionInput={name:string;ssid:string;password:string};
+export type RfidBleReader={id:string;name:string;device:BluetoothDevice};
 
 const progressMessages:Record<string,string>={
   ready:"Leser gefunden. Einstellungen werden sicher übertragen …",
@@ -34,6 +38,35 @@ const base64=(value:string)=>{
 };
 
 const delay=(milliseconds:number)=>new Promise(resolve=>setTimeout(resolve,milliseconds));
+
+const bluetoothApi=()=>{
+  const bluetooth=(navigator as Navigator&{bluetooth?:BluetoothApi}).bluetooth;
+  if(!bluetooth)throw new Error("Bluetooth-Einrichtung wird von diesem Browser nicht unterstützt. Bitte Chrome auf dem Android-Tablet verwenden.");
+  if(!window.isSecureContext)throw new Error("Bluetooth ist nur über die sichere HTTPS-Adresse von ClubIQ verfügbar.");
+  return bluetooth;
+};
+
+const readerFrom=(device:BluetoothDevice):RfidBleReader=>({
+  id:device.id,
+  name:device.name?.trim()||"ClubIQ-RFID-Leser",
+  device
+});
+
+export async function getAuthorizedRfidBleReaders(){
+  const bluetooth=bluetoothApi();
+  if(!bluetooth.getDevices)return [];
+  const devices=await bluetooth.getDevices();
+  return devices.filter(device=>device.name?.startsWith("ClubIQ-RFID-")&&device.gatt).map(readerFrom);
+}
+
+export async function selectRfidBleReader(){
+  const device=await bluetoothApi().requestDevice({
+    filters:[{namePrefix:"ClubIQ-RFID-",services:[SERVICE_UUID]}],
+    optionalServices:[SERVICE_UUID]
+  });
+  if(!device.gatt)throw new Error("Der ausgewählte Leser bietet keine Bluetooth-Verbindung an.");
+  return readerFrom(device);
+}
 
 async function writeFrame(characteristic:BluetoothCharacteristic,payload:unknown){
   const bytes=new TextEncoder().encode(`${JSON.stringify(payload)}\n`);
@@ -63,17 +96,11 @@ async function approvePairing(hardwareId:string,code:string,name:string){
   throw new Error("Der Leser wurde nicht rechtzeitig in ClubIQ gefunden.");
 }
 
-export async function provisionRfidReader(input:RfidBleProvisionInput,onProgress:(progress:RfidBleProgress)=>void){
-  const bluetooth=(navigator as Navigator&{bluetooth?:BluetoothApi}).bluetooth;
-  if(!bluetooth)throw new Error("Bluetooth-Einrichtung wird von diesem Browser nicht unterstützt. Bitte Chrome auf dem Android-Tablet verwenden.");
-  if(!window.isSecureContext)throw new Error("Bluetooth ist nur über die sichere HTTPS-Adresse von ClubIQ verfügbar.");
-
-  onProgress({state:"searching",message:"Bluetooth-Leser in der Nähe werden gesucht …"});
-  const device=await bluetooth.requestDevice({
-    filters:[{namePrefix:"ClubIQ-RFID-",services:[SERVICE_UUID]}],
-    optionalServices:[SERVICE_UUID]
-  });
+export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProvisionInput,onProgress:(progress:RfidBleProgress)=>void){
+  bluetoothApi();
+  const device=reader.device;
   if(!device.gatt)throw new Error("Der ausgewählte Leser bietet keine Bluetooth-Verbindung an.");
+  onProgress({state:"connecting",message:`${reader.name} wird mit ClubIQ verbunden …`});
   const server=await device.gatt.connect();
   const service=await server.getPrimaryService(SERVICE_UUID);
   const [rx,tx]=await Promise.all([service.getCharacteristic(RX_UUID),service.getCharacteristic(TX_UUID)]);
