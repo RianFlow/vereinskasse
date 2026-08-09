@@ -228,7 +228,9 @@ class RfidBleRuntime {
   private openingSession=false;
   private handshakePending=false;
   private retryTimer:ReturnType<typeof setTimeout>|null=null;
+  private handshakeTimer:ReturnType<typeof setTimeout>|null=null;
   private retryDelay=800;
+  private preferredReader:RfidBleReader|null=null;
   private device:BluetoothDevice|null=null;
   private server:BluetoothServer|null=null;
   private rx:BluetoothCharacteristic|null=null;
@@ -261,11 +263,13 @@ class RfidBleRuntime {
   resume(){this.paused=false;if(this.running)void this.connect()}
   prefer(reader:RfidBleReader){
     if(typeof localStorage!=="undefined")localStorage.setItem("clubiq-rfid-ble-reader",reader.id);
+    this.preferredReader=reader;
     this.retryDelay=800;
     this.paused=false;
     this.update({state:"connecting",message:`${reader.name} wird mit ClubIQ verbunden …`,readerName:reader.name});
     this.disconnect(false);
-    if(this.running)this.scheduleReconnect(150);
+    if(this.running)this.scheduleReconnect(100);
+    else this.start();
   }
   setDisplay(payload:DisplayPayload){
     this.lastDisplay=payload;
@@ -273,13 +277,17 @@ class RfidBleRuntime {
   }
 
   private async connect(){
-    if(!this.running||this.paused||this.connecting||this.server?.connected)return;
+    if(!this.running||this.paused)return;
+    if(this.connecting){this.scheduleReconnect(250);return}
+    if(this.server?.connected)return;
     this.connecting=true;this.update({state:"connecting",message:"Bluetooth-Leser wird verbunden …"});
     try{
-      const readers=await getAuthorizedRfidBleReaders();
+      const selectedReader=this.preferredReader;
+      const readers=selectedReader?[selectedReader]:await getAuthorizedRfidBleReaders();
       const preferred=typeof localStorage==="undefined"?"":localStorage.getItem("clubiq-rfid-ble-reader")||"";
-      const reader=readers.find(item=>item.id===preferred)||readers[0];
+      const reader=selectedReader||readers.find(item=>item.id===preferred)||readers[0];
       if(!reader){this.update({state:"idle",message:"Noch kein Bluetooth-Leser für diese Kasse freigegeben."});this.scheduleReconnect(5000);return}
+      this.preferredReader=reader;
       this.device=reader.device;this.device.addEventListener?.("gattserverdisconnected",this.disconnected);
       this.server=await reader.device.gatt!.connect();
       const service=await this.server.getPrimaryService(SERVICE_UUID);
@@ -297,6 +305,7 @@ class RfidBleRuntime {
   private scheduleReconnect(delayMs?:number){if(!this.running||this.paused||this.retryTimer)return;const wait=delayMs??this.retryDelay;this.retryDelay=Math.min(this.retryDelay*2,10_000);this.retryTimer=setTimeout(()=>{this.retryTimer=null;void this.connect()},wait)}
   private disconnect(schedule=true){
     if(this.retryTimer){clearTimeout(this.retryTimer);this.retryTimer=null}
+    if(this.handshakeTimer){clearTimeout(this.handshakeTimer);this.handshakeTimer=null}
     if(this.commandTimer){clearInterval(this.commandTimer);this.commandTimer=null}
     if(this.renewTimer){clearTimeout(this.renewTimer);this.renewTimer=null}
     this.sessionId="";this.hardwareId="";this.helloNonce="";this.openingSession=false;this.handshakePending=false;this.activeCommand="";this.scanRequests.clear();this.receiveBuffer="";
@@ -320,7 +329,16 @@ class RfidBleRuntime {
     if(this.handshakePending)return;
     this.handshakePending=true;
     this.helloNonce=randomHex(24);
-    try{await this.send({type:"hello",version:3,nonce:this.helloNonce})}catch(reason){this.handshakePending=false;throw reason}
+    try{
+      await this.send({type:"hello",version:3,nonce:this.helloNonce});
+      if(this.handshakeTimer)clearTimeout(this.handshakeTimer);
+      this.handshakeTimer=setTimeout(()=>{
+        this.handshakeTimer=null;
+        if(!this.handshakePending)return;
+        this.handshakePending=false;
+        this.handleTransportError(new Error("Leser antwortet nicht auf den sicheren Sitzungsaufbau."));
+      },7000);
+    }catch(reason){this.handshakePending=false;throw reason}
   }
   private handleNotification(event:BluetoothValueEvent){
     const view=event.target.value;if(!view)return;
@@ -342,6 +360,7 @@ class RfidBleRuntime {
       const hardwareId=String(frame.hardwareId||"");if(!/^ESP32-[0-9A-F]{6}$/.test(hardwareId))return;
       const nonce=String(frame.nonce||""),proof=String(frame.proof||""),firmwareVersion=String(frame.firmwareVersion||"");
       if(nonce!==this.helloNonce||!/^[0-9a-f]{64}$/.test(proof))return;
+      if(this.handshakeTimer){clearTimeout(this.handshakeTimer);this.handshakeTimer=null}
       this.handshakePending=false;
       if(!this.sessionId&&!this.openingSession){this.openingSession=true;try{this.hardwareId=hardwareId;await this.openSession(nonce,proof,firmwareVersion)}finally{this.openingSession=false}}return;
     }

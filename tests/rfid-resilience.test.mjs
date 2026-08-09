@@ -166,8 +166,11 @@ test("ESP32 überträgt Scans und Updates abgesichert direkt über das Tablet",a
   for(const fragment of ["Keine WLAN-Daten am Leser nötig","RFID-Leser bereit","Bluetooth →","Nur neuen Leser mit ClubIQ verknüpfen","Bluetooth verbinden"]){
     assert.ok(component.includes(fragment),`BLE-Bedienführung fehlt: ${fragment}`);
   }
-  for(const fragment of ["RfidBleRuntime","getDevices","scheduleReconnect","relayScan","scan_ack","uploadFirmware","crypto.subtle.digest","helloNonce","restartSession","setRfidBleDisplayState"]){
+  for(const fragment of ["RfidBleRuntime","getDevices","preferredReader","Leser antwortet nicht auf den sicheren Sitzungsaufbau","scheduleReconnect","relayScan","scan_ack","uploadFirmware","crypto.subtle.digest","helloNonce","restartSession","setRfidBleDisplayState"]){
     assert.ok(ble.includes(fragment),`Tablet-Vermittlung fehlt: ${fragment}`);
+  }
+  for(const fragment of ["Live-Verbindung wird aufgebaut","Sichere Bluetooth-Sitzung aktiv","Registrierter Leser wird direkt verbunden"]){
+    assert.ok(component.includes(fragment),`Echte BLE-Sitzungsanzeige fehlt: ${fragment}`);
   }
   assert.ok(page.includes('if(!activeProfile)return <><RfidBleBridge/><ProfileGateSecure'),"BLE-Leser startet nicht vor der Profilanmeldung");
   for(const fragment of ["verifyHmac","`hello|${hardwareId}|${helloNonce}|${firmwareVersion}`","ble_session_counter","Veralteter Bluetooth-Scan","requireRole(request,[\"Vorstand\",\"Systemadmin\"])","official.byteLength!==size","SHA-256"]){
