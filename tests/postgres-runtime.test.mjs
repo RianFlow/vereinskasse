@@ -32,6 +32,7 @@ test("übersetzt die bestehende D1-Abfrageschnittstelle sicher nach PostgreSQL",
 test("legt ein vollständiges leeres PostgreSQL-Schema mit exakten Geldwerten an", async () => {
   const schema = await read("postgres/migrations/0001_baseline.sql");
   const rfidPairing = await read("postgres/migrations/0002_rfid_pairing.sql");
+  const productIds = await read("postgres/migrations/0005_product_ids_bigint.sql");
   const tables = [...schema.matchAll(/CREATE TABLE ([a-z_]+)/g)].map(
     (match) => match[1],
   );
@@ -52,6 +53,8 @@ test("legt ein vollständiges leeres PostgreSQL-Schema mit exakten Geldwerten an
   assert.ok(tables.length >= 25, "PostgreSQL-Schema ist unvollständig");
   assert.match(schema, /NUMERIC\(12,2\)/);
   assert.doesNotMatch(schema, /INSERT INTO profiles/);
+  assert.match(productIds, /ALTER TABLE products ALTER COLUMN id TYPE BIGINT/);
+  assert.match(productIds, /ALTER TABLE sale_items ALTER COLUMN product_id TYPE BIGINT/);
 
   const memory = newDb();
   const { Pool } = memory.adapters.createPg();
@@ -59,6 +62,14 @@ test("legt ein vollständiges leeres PostgreSQL-Schema mit exakten Geldwerten an
   try {
     await pool.query(schema);
     await pool.query(rfidPairing);
+    await pool.query(productIds);
+    const timestampId = Date.now();
+    await pool.query(
+      "INSERT INTO products (id,name,price,profile_id,member_price,included_items_json,is_offer,icon,category,color,updated_at) VALUES ($1,$2,$3,$4,NULL,'[]',0,$5,$6,$7,$8)",
+      [timestampId, "Neuer Artikel", 1, "darts", "sparkles", "Sonstiges", "#a6a1d8", new Date().toISOString()],
+    );
+    const storedProduct = await pool.query("SELECT id FROM products WHERE id=$1", [timestampId]);
+    assert.equal(Number(storedProduct.rows[0].id), timestampId);
     await pool.query(
       "INSERT INTO members (id,name,role,code,initials,active) VALUES ($1,$2,$3,$4,$5,1)",
       ["M-1", "Test Mitglied", "Mitglied", "NOLOGIN-M-1", "TM"],
