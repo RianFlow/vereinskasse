@@ -131,6 +131,8 @@ jobs:
           docker compose exec -T app sh -c 'export PGPASSWORD="$(cat "$PGPASSWORD_FILE")"; node raspberry/postgres-admin.mjs check'
           docker compose exec -T app sh -c \
             'curl --fail --silent --show-error http://127.0.0.1:3000/firmware/clubiq-rfid.bin --output /tmp/clubiq-rfid.bin && test -s /tmp/clubiq-rfid.bin && curl --fail --silent --show-error http://127.0.0.1:3000/firmware/clubiq-rfid-esp8266.bin --output /tmp/clubiq-rfid-esp8266.bin && test -s /tmp/clubiq-rfid-esp8266.bin && curl --fail --silent --show-error http://127.0.0.1:3000/firmware/clubiq-rfid-esp32.bin --output /tmp/clubiq-rfid-esp32.bin && test -s /tmp/clubiq-rfid-esp32.bin'
+          docker compose exec -T app gosu node sh -c \
+            'mkdir -p /data/objects/backup-permission-test && printf "private-object\n" > /data/objects/backup-permission-test/proof.json && chmod 600 /data/objects/backup-permission-test/proof.json'
           USB_BACKUP_PATH=/tmp/clubiq-usb docker compose up -d backup
           for attempt in $(seq 1 30); do
             if docker compose exec -T backup \
@@ -143,6 +145,8 @@ jobs:
             fi
             sleep 2
           done
+          docker compose exec -T backup sh -c \
+            'latest="$(find /backups/local -maxdepth 1 -type f -name "vereinskasse-*.tar.gz" -print | sort | tail -n 1)" && tar -tzf "$latest" | grep -q "data/backups/backup-permission-test/proof.json"'
 
       - if: always()
         working-directory: deploy/docker

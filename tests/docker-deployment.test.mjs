@@ -76,6 +76,8 @@ test("sichert stündlich auf lokal, freigegebenen USB und optional verschlüssel
   assert.match(backup, /pg_dump --no-password/);
   assert.match(backup, /pg_dump .*--format=custom/);
   assert.match(backup, /pg_restore --list/);
+  assert.match(backup, /gosu node tar -C "\$objects" -cf -/);
+  assert.match(backup, /tar -C "\$work\/data\/backups" --no-same-owner -xf -/);
   assert.match(backup, /cp -a --no-preserve=ownership/);
   assert.match(backup, /VEREINSKASSE_SECONDARY_REQUIRED_MARKER/);
   assert.match(backup, /sha256sum/);
@@ -122,6 +124,7 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(workflow, /provenance: true/);
   assert.match(workflow, /sbom: true/);
   assert.match(workflow, /curl .*\/firmware\/clubiq-rfid\.bin/);
+  assert.match(workflow, /backup-permission-test\/proof\.json/);
   assert.match(workflow, /clubiq-rfid-esp8266\.bin/);
   assert.match(workflow, /clubiq-rfid-esp32\.bin/);
   assert.match(dockerfile, /npm ci --omit=dev/);
