@@ -64,12 +64,13 @@ test("startet Datenbankabgleich, Migration, Bootstrap und Gesundheitsprüfung au
 });
 
 test("sichert stündlich auf lokal, freigegebenen USB und optional verschlüsselt nach R2", async () => {
-  const [compose, backup, loop, r2, r2Restore] = await Promise.all([
+  const [compose, backup, loop, r2, r2Restore, manager] = await Promise.all([
     read("deploy/docker/compose.yaml"),
     read("deploy/raspberry/backup.sh"),
     read("deploy/docker/backup-loop.sh"),
     read("deploy/docker/r2-backup.sh"),
     read("deploy/docker/r2-restore-latest.sh"),
+    read("deploy/docker/clubiq"),
   ]);
   assert.match(compose, /BACKUP_INTERVAL_SECONDS:-3600/);
   assert.match(backup, /read_secret_if_present PGPASSWORD/);
@@ -88,11 +89,20 @@ test("sichert stündlich auf lokal, freigegebenen USB und optional verschlüssel
   );
   assert.match(backupService, /app:\s*\n\s+condition: service_healthy/);
   assert.match(backupService, /cap_add:[\s\S]*?- SETGID\s*\n\s+- SETUID/);
+  assert.match(backupService, /networks:\s*\n\s+- database\s*\n\s+- backup-egress/);
   assert.doesNotMatch(backupService, /DAC_READ_SEARCH|DAC_OVERRIDE/);
+  const networkDeclarations = compose.slice(
+    compose.indexOf("\nnetworks:"),
+    compose.indexOf("\nsecrets:"),
+  );
+  assert.match(networkDeclarations, /\n  backup-egress:\s*(?:\n|$)/);
+  assert.doesNotMatch(networkDeclarations, /backup-egress:\s*\n\s+internal: true/);
   assert.match(r2, /restic backup/);
   assert.match(r2, /restic check/);
   assert.match(r2, /RESTIC_PASSWORD_FILE/);
   assert.match(r2Restore, /restic restore/);
+  assert.match(manager, /Erlaubt sind 3 bis 63 Kleinbuchstaben, Zahlen und Bindestriche/);
+  assert.doesNotMatch(manager, /\[A-Za-z0-9\._-\]\{3,63\}/);
 });
 
 test("prüft eine Rücksicherung in einer temporären Datenbank und behält den Rückfall", async () => {
