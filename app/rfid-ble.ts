@@ -291,7 +291,10 @@ class RfidBleRuntime {
       this.device=reader.device;this.device.addEventListener?.("gattserverdisconnected",this.disconnected);
       this.server=await reader.device.gatt!.connect();
       const service=await this.server.getPrimaryService(SERVICE_UUID);
-      [this.rx,this.tx,this.ota]=await Promise.all([service.getCharacteristic(RX_UUID),service.getCharacteristic(TX_UUID),service.getCharacteristic(OTA_UUID)]);
+      [this.rx,this.tx]=await Promise.all([service.getCharacteristic(RX_UUID),service.getCharacteristic(TX_UUID)]);
+      // Ältere BLE-Firmware kann bereits sicher scannen, besitzt aber noch
+      // keine OTA-Characteristic. Das darf die Kassensitzung nicht blockieren.
+      this.ota=await service.getCharacteristic(OTA_UUID).catch(()=>null);
       await this.tx.startNotifications();this.tx.addEventListener("characteristicvaluechanged",this.notification);
       this.retryDelay=800;this.update({state:"connecting",message:"Leser gefunden. Sichere Sitzung wird aufgebaut …",readerName:reader.name});
       await this.beginHandshake();
