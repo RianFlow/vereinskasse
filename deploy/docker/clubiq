@@ -214,7 +214,8 @@ case "$command" in
     read -r -s -p "Secret Access Key: " secret_key
     echo
     [[ "$endpoint" =~ ^https://[A-Za-z0-9.-]+\.r2\.cloudflarestorage\.com$ ]] || { echo "Ungültiger R2-Endpunkt." >&2; exit 1; }
-    [[ "$bucket" =~ ^[A-Za-z0-9._-]{3,63}$ && -n "$access_key" && -n "$secret_key" ]] || { echo "Bucket oder Zugangsdaten sind ungültig." >&2; exit 1; }
+    [[ "$bucket" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]] || { echo "Ungueltiger R2-Bucket. Erlaubt sind 3 bis 63 Kleinbuchstaben, Zahlen und Bindestriche." >&2; exit 1; }
+    [[ -n "$access_key" && -n "$secret_key" ]] || { echo "R2-Zugangsdaten duerfen nicht leer sein." >&2; exit 1; }
     printf '%s' "$access_key" > "$base/secrets/r2_access_key_id"
     printf '%s' "$secret_key" > "$base/secrets/r2_secret_access_key"
     chmod 600 "$base/secrets/r2_access_key_id" "$base/secrets/r2_secret_access_key"

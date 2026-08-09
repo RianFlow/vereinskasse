@@ -204,6 +204,7 @@ services:
       - restic_cache:/var/cache/restic
     networks:
       - database
+      - backup-egress
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=128m
@@ -263,6 +264,7 @@ volumes:
 networks:
   database:
     internal: true
+  backup-egress:
   web:
 
 secrets:
