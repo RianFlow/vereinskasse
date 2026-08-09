@@ -229,6 +229,7 @@ class RfidBleRuntime {
   private handshakePending=false;
   private retryTimer:ReturnType<typeof setTimeout>|null=null;
   private handshakeTimer:ReturnType<typeof setTimeout>|null=null;
+  private heartbeatWatchdog:ReturnType<typeof setInterval>|null=null;
   private retryDelay=800;
   private preferredReader:RfidBleReader|null=null;
   private device:BluetoothDevice|null=null;
@@ -246,6 +247,7 @@ class RfidBleRuntime {
   private renewTimer:ReturnType<typeof setTimeout>|null=null;
   private activeCommand="";
   private scanRequests=new Set<string>();
+  private lastReaderFrameAt=0;
   private otaReadyResolve:(()=>void)|null=null;
   private otaReadyReject:((reason:Error)=>void)|null=null;
   private listeners=new Set<(status:RfidBleRuntimeStatus)=>void>();
@@ -309,9 +311,10 @@ class RfidBleRuntime {
   private disconnect(schedule=true){
     if(this.retryTimer){clearTimeout(this.retryTimer);this.retryTimer=null}
     if(this.handshakeTimer){clearTimeout(this.handshakeTimer);this.handshakeTimer=null}
+    if(this.heartbeatWatchdog){clearInterval(this.heartbeatWatchdog);this.heartbeatWatchdog=null}
     if(this.commandTimer){clearInterval(this.commandTimer);this.commandTimer=null}
     if(this.renewTimer){clearTimeout(this.renewTimer);this.renewTimer=null}
-    this.sessionId="";this.hardwareId="";this.helloNonce="";this.openingSession=false;this.handshakePending=false;this.activeCommand="";this.scanRequests.clear();this.receiveBuffer="";
+    this.sessionId="";this.hardwareId="";this.helloNonce="";this.openingSession=false;this.handshakePending=false;this.activeCommand="";this.scanRequests.clear();this.receiveBuffer="";this.lastReaderFrameAt=0;
     this.otaReadyReject?.(new Error("Bluetooth-Verbindung während des Updates getrennt."));this.otaReadyResolve=null;this.otaReadyReject=null;
     if(this.tx)this.tx.removeEventListener("characteristicvaluechanged",this.notification);
     this.device?.removeEventListener?.("gattserverdisconnected",this.disconnected);
@@ -345,6 +348,7 @@ class RfidBleRuntime {
   }
   private handleNotification(event:BluetoothValueEvent){
     const view=event.target.value;if(!view)return;
+    this.lastReaderFrameAt=Date.now();
     this.receiveBuffer+=this.decoder.decode(new Uint8Array(view.buffer,view.byteOffset,view.byteLength),{stream:true});
     let separator=this.receiveBuffer.indexOf("\n");
     while(separator>=0){
@@ -369,6 +373,13 @@ class RfidBleRuntime {
     }
     if(state==="session_ready"){
       this.update({state:"online",message:"RFID-Leser bereit",hardwareId:this.hardwareId});
+      this.lastReaderFrameAt=Date.now();
+      if(this.heartbeatWatchdog)clearInterval(this.heartbeatWatchdog);
+      this.heartbeatWatchdog=setInterval(()=>{
+        if(this.sessionId&&this.lastReaderFrameAt&&Date.now()-this.lastReaderFrameAt>35_000){
+          this.handleTransportError(new Error("Keine Antwort vom Leser. Verbindung wird neu aufgebaut."));
+        }
+      },5000);
       await this.send({type:"display",...this.lastDisplay});
       if(this.commandTimer)clearInterval(this.commandTimer);this.commandTimer=setInterval(()=>void this.pollCommand(),1600);void this.pollCommand();return;
     }
