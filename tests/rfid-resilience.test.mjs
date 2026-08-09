@@ -166,7 +166,7 @@ test("ESP32 überträgt Scans und Updates abgesichert direkt über das Tablet",a
   for(const fragment of ["Keine WLAN-Daten am Leser nötig","RFID-Leser bereit","Bluetooth →","Nur neuen Leser mit ClubIQ verknüpfen","Bluetooth verbinden"]){
     assert.ok(component.includes(fragment),`BLE-Bedienführung fehlt: ${fragment}`);
   }
-  for(const fragment of ["RfidBleRuntime","getDevices","preferredReader","Leser antwortet nicht auf den sicheren Sitzungsaufbau","getCharacteristic(OTA_UUID).catch(()=>null)","scheduleReconnect","relayScan","scan_ack","uploadFirmware","crypto.subtle.digest","helloNonce","restartSession","setRfidBleDisplayState"]){
+  for(const fragment of ["RfidBleRuntime","getDevices","preferredReader","Leser antwortet nicht auf den sicheren Sitzungsaufbau","getCharacteristic(OTA_UUID).catch(()=>null)","scheduleReconnect","heartbeatWatchdog","Keine Antwort vom Leser. Verbindung wird neu aufgebaut.","relayScan","scan_ack","uploadFirmware","crypto.subtle.digest","helloNonce","restartSession","setRfidBleDisplayState"]){
     assert.ok(ble.includes(fragment),`Tablet-Vermittlung fehlt: ${fragment}`);
   }
   for(const fragment of ["Live-Verbindung wird aufgebaut","Sichere Bluetooth-Sitzung aktiv","Registrierter Leser wird direkt verbunden"]){
@@ -184,4 +184,19 @@ test("ESP32 überträgt Scans und Updates abgesichert direkt über das Tablet",a
       assert.ok(source.includes(fragment),`BLE-Sitzungsfeld fehlt: ${fragment}`);
     }
   }
+});
+
+test("RFID-Ampel verbindet einen getrennten Leser ohne Umweg über den Adminbereich",async()=>{
+  const [component,style]=await Promise.all([read("app/RfidIntegration.tsx"),read("app/rfid.css")]);
+  for(const fragment of [
+    "rfidBleRuntime.subscribe(setBleStatus)",
+    "getAuthorizedRfidBleReaders()",
+    "selectRfidBleReader()",
+    "rfidBleRuntime.prefer(reader)",
+    "RFID getrennt",
+    "Neu verbinden"
+  ]){
+    assert.ok(component.includes(fragment),`Schnelle RFID-Wiederverbindung fehlt: ${fragment}`);
+  }
+  assert.ok(style.includes(".rfid-header-status.reconnectable")&&style.includes(".rfid-reconnect-cue"),"Die RFID-Ampel zeigt die direkte Wiederverbindung nicht sichtbar an");
 });

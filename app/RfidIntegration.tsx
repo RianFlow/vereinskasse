@@ -41,9 +41,12 @@ async function playRfidRecognitionTone(){
 
 export function RfidScanner({onSelect}:{members:Member[];onSelect:(member:Member)=>void}){
   const [state,setState]=useState<ScannerState>({kind:"waiting",deviceCount:0});
+  const [bleStatus,setBleStatus]=useState<RfidBleRuntimeStatus>(()=>rfidBleRuntime.snapshot());
+  const [reconnecting,setReconnecting]=useState(false);
   const stateRef=useRef(state),onSelectRef=useRef(onSelect),holdUntil=useRef(0);
   useEffect(()=>{stateRef.current=state},[state]);
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
+  useEffect(()=>rfidBleRuntime.subscribe(setBleStatus),[]);
 
   useEffect(()=>{
     let stopped=false,busy=false;
@@ -75,20 +78,51 @@ export function RfidScanner({onSelect}:{members:Member[];onSelect:(member:Member
 
   const dismiss=()=>{holdUntil.current=0;setState({kind:"waiting",deviceCount:state.deviceCount})};
 
+  const reconnect=async()=>{
+    if(reconnecting)return;
+    setReconnecting(true);holdUntil.current=0;
+    try{
+      const readers=await getAuthorizedRfidBleReaders();
+      const preferredId=typeof localStorage!=="undefined"?localStorage.getItem("clubiq-rfid-ble-reader"):null;
+      const reader=readers.find(candidate=>candidate.id===preferredId)||readers[0]||await selectRfidBleReader();
+      rfidBleRuntime.prefer(reader);
+      setState({kind:"waiting",deviceCount:stateRef.current.deviceCount});
+    }catch(reason){
+      setState({kind:"error",deviceCount:stateRef.current.deviceCount,message:reason instanceof Error?reason.message:"Bluetooth-Verbindung konnte nicht gestartet werden."});
+    }finally{
+      setReconnecting(false);
+    }
+  };
+
+  const bleKnown=Boolean(bleStatus.readerName||bleStatus.hardwareId);
+  const reconnectable=state.kind!=="recognized"&&state.kind!=="unknown"&&bleStatus.state!=="unsupported"&&(
+    bleStatus.state==="error"||bleStatus.state==="connecting"&&bleKnown||!state.deviceCount&&bleStatus.state==="idle"
+  );
+
   const copy=state.kind==="recognized"
     ?{title:`${state.member.name.split(" ")[0]} erkannt`,detail:`${state.member.name} ist ausgewählt. Anderes Mitglied scannen: nächste Karte auflegen.`}
     :state.kind==="unknown"
       ?{title:"Unbekannte Karte",detail:`UID ${state.scan.uid} kann im Adminbereich beim Mitglied zugeordnet werden.`}
       :state.kind==="error"
         ?{title:"RFID-Fehler",detail:state.message}
-        :state.deviceCount
+        :reconnecting
+          ?{title:"RFID verbindet",detail:"Die Verbindung zum Kartenleser wird neu aufgebaut."}
+          :bleStatus.state==="online"
+            ?{title:"RFID bereit",detail:`${bleStatus.readerName||"RFID-Leser"} ist verbunden · Karte auflegen.`}
+            :bleStatus.state==="connecting"
+              ?{title:"RFID verbindet",detail:bleKnown?"Automatischer Neuaufbau läuft · antippen für sofortigen Versuch.":"Bluetooth-Leser wird gesucht."}
+              :bleStatus.state==="error"
+                ?{title:"RFID getrennt",detail:"Antippen, um den Kartenleser sofort neu zu verbinden."}
+                :state.deviceCount
           ?{title:"RFID bereit",detail:`${state.deviceCount===1?"RFID-Leser bereit":`${state.deviceCount} RFID-Leser bereit`} · Karte auflegen.`}
-          :{title:"RFID offline",detail:"Leser, Strom und Vereins-WLAN prüfen."};
+                  :{title:"RFID offline",detail:bleStatus.state==="unsupported"?"Dieser Browser unterstützt Bluetooth-Leser nicht.":"Antippen, um den Kartenleser neu zu verbinden."};
 
-  const light=state.kind==="recognized"||state.kind==="waiting"&&state.deviceCount?"green":state.kind==="unknown"?"yellow":"red";
-  return <button type="button" className={`rfid-header-status ${state.kind} ${light}`} onClick={dismiss} aria-live="polite" aria-label={`${copy.title}. ${copy.detail}`} title={copy.detail}>
+  const light=state.kind==="recognized"||state.kind==="waiting"&&(bleStatus.state==="online"||Boolean(state.deviceCount))&&bleStatus.state!=="error"&&bleStatus.state!=="connecting"?"green":state.kind==="unknown"||reconnecting||bleStatus.state==="connecting"?"yellow":"red";
+  const activate=()=>{if(reconnectable)void reconnect();else dismiss()};
+  return <button type="button" className={`rfid-header-status ${state.kind} ${light}${reconnectable?" reconnectable":""}${reconnecting?" reconnecting":""}`} onClick={activate} aria-live="polite" aria-label={`${copy.title}. ${copy.detail}`} title={copy.detail}>
     <span className="rfid-traffic-light" aria-hidden="true"><i/><i/><i/></span>
-    <span><strong>{copy.title}</strong><small>{copy.detail}</small></span>
+    <span className="rfid-status-copy"><strong>{copy.title}</strong><small>{copy.detail}</small></span>
+    {reconnectable&&<span className="rfid-reconnect-cue" aria-hidden="true"><IconRefresh size={14}/><b>Neu verbinden</b></span>}
   </button>;
 }
 
