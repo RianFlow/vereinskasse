@@ -209,6 +209,11 @@ services:
       - /tmp:rw,noexec,nosuid,size=128m
     cap_drop:
       - ALL
+    cap_add:
+      # Nur fuer den kontrollierten Wechsel zum unprivilegierten App-Benutzer,
+      # der die privaten 0600-Belegdateien lesen darf.
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     logging: *default-logging

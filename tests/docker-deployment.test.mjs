@@ -87,6 +87,8 @@ test("sichert stündlich auf lokal, freigegebenen USB und optional verschlüssel
     compose.indexOf("\n  tools:"),
   );
   assert.match(backupService, /app:\s*\n\s+condition: service_healthy/);
+  assert.match(backupService, /cap_add:[\s\S]*?- SETGID\s*\n\s+- SETUID/);
+  assert.doesNotMatch(backupService, /DAC_READ_SEARCH|DAC_OVERRIDE/);
   assert.match(r2, /restic backup/);
   assert.match(r2, /restic check/);
   assert.match(r2, /RESTIC_PASSWORD_FILE/);
