@@ -117,10 +117,17 @@ else
 fi
 
 if [[ -d "$objects" ]]; then
-  # Container-Sicherungen laufen absichtlich ohne CHOWN-Recht. Die Inhalte und
-  # Metadaten bleiben erhalten; Benutzer-/Gruppenbesitz wird beim Restore neu
-  # und passend zum Ziel gesetzt.
-  cp -a --no-preserve=ownership "$objects" "$work/data/backups"
+  # Lokale Objekte sind absichtlich nur fuer den App-Benutzer lesbar (0600).
+  # Der Backup-Container bekommt kein globales Dateileserecht. Stattdessen
+  # liest genau derselbe unprivilegierte Benutzer die Objekte in einen Stream;
+  # tar im Backup-Prozess schreibt daraus eine root-eigene, weiterhin private
+  # Arbeitskopie. Auf Installationen ohne Container bleibt der direkte Weg.
+  if [[ "$(id -u)" == "0" ]] && command -v gosu >/dev/null 2>&1 && id node >/dev/null 2>&1; then
+    mkdir -p "$work/data/backups"
+    gosu node tar -C "$objects" -cf - . | tar -C "$work/data/backups" --no-same-owner -xf -
+  else
+    cp -a --no-preserve=ownership "$objects" "$work/data/backups"
+  fi
 fi
 printf '{"createdAt":"%s","hostname":"%s","provider":"%s","databaseCheck":"%s","sales":%s,"members":%s}\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(hostname)" "$provider" "$database_check" \
