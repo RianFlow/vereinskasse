@@ -197,6 +197,13 @@
       "when": 1786209600000,
       "tag": "0027_secure_ble_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1786352400000,
+      "tag": "0028_member_invoice_email",
+      "breakpoints": true
     }
   ]
 }
