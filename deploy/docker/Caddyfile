@@ -17,6 +17,23 @@ http://:8080 {
   }
 }
 
+# Ausschliesslich auf dem Raspberry-Loopback veroeffentlicht. Tailscale Serve
+# nutzt diesen Eingang fuer privaten HTTPS-Zugriff innerhalb des Tailnets.
+http://:8090 {
+  encode zstd gzip
+  reverse_proxy app:3000 {
+    header_up Host {$CLUBIQ_HOSTNAME:vereinskasse.local}
+    header_up X-Forwarded-Host {$CLUBIQ_HOSTNAME:vereinskasse.local}
+    header_up X-Forwarded-Proto https
+  }
+  header {
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "same-origin"
+    -Server
+  }
+}
+
 http://{$CLUBIQ_HOSTNAME:vereinskasse.local} {
   redir https://{$CLUBIQ_HOSTNAME:vereinskasse.local}{uri} permanent
 }
