@@ -263,6 +263,15 @@ class RfidBleRuntime {
   stop(){this.running=false;this.paused=false;this.disconnect()}
   pause(){this.paused=true;this.disconnect()}
   resume(){this.paused=false;if(this.running)void this.connect()}
+  ensureConnection(){
+    if(!this.running||this.paused||this.connecting||this.openingSession||this.handshakePending||this.retryTimer)return;
+    const stale=!this.server?.connected||!this.sessionId||!this.lastReaderFrameAt||Date.now()-this.lastReaderFrameAt>30_000;
+    if(!stale)return;
+    this.retryDelay=800;
+    this.update({state:"connecting",message:"Bluetooth-Leser wird nach der Pause neu verbunden …"});
+    this.disconnect(false);
+    this.scheduleReconnect(100);
+  }
   prefer(reader:RfidBleReader){
     if(typeof localStorage!=="undefined")localStorage.setItem("clubiq-rfid-ble-reader",reader.id);
     this.preferredReader=reader;

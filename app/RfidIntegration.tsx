@@ -16,7 +16,21 @@ type ScannerState=
 let rfidAudioContext:AudioContext|null=null;
 
 export function RfidBleBridge(){
-  useEffect(()=>{rfidBleRuntime.start();return()=>rfidBleRuntime.stop()},[]);
+  useEffect(()=>{
+    const wake=()=>{if(document.visibilityState==="visible")rfidBleRuntime.ensureConnection()};
+    rfidBleRuntime.start();
+    document.addEventListener("visibilitychange",wake);
+    window.addEventListener("pageshow",wake);
+    window.addEventListener("focus",wake);
+    window.addEventListener("online",wake);
+    return()=>{
+      document.removeEventListener("visibilitychange",wake);
+      window.removeEventListener("pageshow",wake);
+      window.removeEventListener("focus",wake);
+      window.removeEventListener("online",wake);
+      rfidBleRuntime.stop();
+    };
+  },[]);
   return null;
 }
 async function playRfidRecognitionTone(){
