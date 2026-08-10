@@ -1,11 +1,12 @@
 # ClubIQ RFID-Leser mit ESP32-WROOM-32 oder NodeMCU V3
 
-Ein WLAN-Leser/-Schreiber für **MIFARE Classic** mit direkter Anbindung an die
+Ein RFID-Leser/-Schreiber für **MIFARE Classic** mit direkter Anbindung an die
 Vereinskasse. Für neue Geräte wird ein **ESP32-WROOM-32** empfohlen: Er lässt
 sich in Chrome auf einem Android-Tablet direkt aus ClubIQ per Bluetooth finden
 und vollständig einrichten. Der NodeMCU V3 (ESP8266) bleibt als kompatibler
 Rückfall erhalten. Beide Varianten übertragen Kartenscans verschlüsselt an
-ClubIQ und bieten ein eigenes Wartungs-WLAN unter `http://192.168.4.1`.
+ClubIQ. Das Wartungs-WLAN unter `http://192.168.4.1` läuft beim ESP8266 dauerhaft
+und beim ESP32 nur bis zur abgeschlossenen Bluetooth-Einrichtung.
 
 Kontostände, Beträge, Namen und Berechtigungen liegen ausschließlich in der
 Kassendatenbank. Die beschreibbaren Kartendaten werden dafür nicht vertraut.
@@ -194,7 +195,9 @@ Das Tablet bleibt durchgehend im Vereins-WLAN. Der ESP32 selbst benötigt keine
 Zugangsdaten zum Vereins-WLAN: Scan, Kundendisplay, Schreiben, Neustart und OTA
 laufen direkt über die verschlüsselte Bluetooth-Verbindung. Das Tablet vermittelt
 zum Raspberry. Ein Wechsel zum Wartungs-WLAN, Zertifikats-Upload und Abtippen
-eines Codes entfallen.
+eines Codes entfallen. Nach erfolgreicher Kopplung schaltet die Firmware sowohl
+den ESP32-Access-Point als auch seine WLAN-Station aus. Dadurch konkurriert WLAN
+nicht mehr mit Bluetooth um den gemeinsamen 2,4-GHz-Funkteil.
 
 Die App verwendet kurzlebige, vom Raspberry signierte Sitzungen. Scans haben
 einen fortlaufenden Zähler und werden erst nach signierter Bestätigung verworfen.
@@ -233,7 +236,8 @@ anmelden. Für den echten Leser muss die Vereinskasse öffentlich erreichbar sei
 oder der Scan über einen lokalen Vermittlungsserver laufen. Die RFID-Route selbst
 bleibt durch den zufälligen Geräte-Token geschützt.
 
-Beim Start arbeitet das Gerät im kombinierten Modus:
+Der ESP8266 und ein noch nicht per Bluetooth eingerichteter ESP32 arbeiten im
+kombinierten Wartungsmodus:
 
 - Wartungs-WLAN `NFC-Reader-xxxxxx` für Diagnose, Lesen und Schreiben
 - Verbindung zum Vereins-WLAN für NTP-Zeit und HTTPS-Übertragung
@@ -243,6 +247,8 @@ Beim Start arbeitet das Gerät im kombinierten Modus:
 - geschützter Fernneustart aus der Geräteverwaltung
 
 Der lokale Status ist nach Anmeldung unter `http://192.168.4.1` sichtbar.
+Bei einem gekoppelten ESP32 ist diese lokale WLAN-Seite bewusst ausgeschaltet;
+Status, Schreiben, Neustart und Updates werden dann in ClubIQ bedient.
 
 ### Beschreiben aus der Vereinskassen-App
 
@@ -262,17 +268,19 @@ Unter **Admin → Sicherheit → RFID-Leser** kann ein aktiver Leser mit
 **Neu starten** kontrolliert neu gestartet werden. Ein laufender
 Kartenschreibauftrag wird dabei nicht unterbrochen. Der Leser bestätigt den
 Auftrag zuerst am Kassenserver, startet anschließend neu und verbindet sich
-selbstständig wieder mit dem Vereins-WLAN. Dafür muss diese Firmware-Version
-einmal per USB auf den NodeMCU übertragen worden sein.
+selbstständig wieder mit dem Tablet. Der ESP8266 verbindet sich stattdessen mit
+dem Vereins-WLAN. Dafür muss eine OTA-fähige Firmware einmal per USB auf den
+Leser übertragen worden sein.
 
 ### Firmware später ohne USB aktualisieren
 
 Ab Version 1.6.0 meldet der Leser seinen Firmwarestand an ClubIQ. Unter
 **Admin → Sicherheit → RFID-Leser** erscheint bei einer neueren, im
 ClubIQ-Container enthaltenen Firmware die Schaltfläche **Firmware
-aktualisieren**. Der Leser lädt die Binärdatei ausschließlich über seine bereits
-geprüfte HTTPS-Verbindung, installiert sie in den OTA-Bereich und startet neu.
-WLAN, Serveradresse, Root-CA und Geräte-Token bleiben im EEPROM erhalten.
+aktualisieren**. Der ESP8266 lädt die Binärdatei über seine geprüfte
+HTTPS-Verbindung. Beim gekoppelten ESP32 lädt das Tablet die Binärdatei von
+ClubIQ und überträgt sie über die verschlüsselte BLE-Sitzung. Beide installieren
+sie in den OTA-Bereich und starten anschließend neu.
 
 Für den direkten Bluetooth-Betrieb muss Version 1.8.0 auf dem ESP32 einmal per USB
 installiert werden. Danach überträgt die App weitere Versionen geprüft per BLE-OTA;
@@ -348,6 +356,11 @@ Für breitere NFC-Kompatibilität ist ein PN532/PN7150 meist geeigneter.
   Einrichtungs-Bluetooth mehr aus.
 - Bluetooth ist im Browser nicht verfügbar: ClubIQ über die installierte und
   vertrauenswürdige HTTPS-Adresse öffnen, nicht über eine HTTP-Adresse.
+- Gekoppelter ESP32 zeigt „Tablet wird gesucht“: ClubIQ am Tablet in den
+  Vordergrund holen und oben an der RFID-Ampel **Neu verbinden** wählen. Die App
+  versucht die Wiederverbindung zusätzlich nach Standby und Netzwechsel selbst.
+- Das Wartungs-WLAN des gekoppelten ESP32 fehlt: Das ist im Bluetooth-
+  Direktbetrieb beabsichtigt. Für Scans und OTA wird es nicht benötigt.
 - Einrichtung bleibt bei WLAN stehen: nur ein 2,4-GHz-WLAN verwenden und
   prüfen, dass es kein isoliertes Gastnetz ist.
 - `Version=0x00/0xFF`: Versorgung oder SPI-Leitungen prüfen; Kabel kürzen.

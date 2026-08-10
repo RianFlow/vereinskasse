@@ -175,8 +175,11 @@ String commandApiUrl();
 String pairingApiUrl();
 String macSuffix();
 String hardwareId();
+bool directBleRuntimeMode();
+void startReaderWifi();
 void maintainStationWifi();
 #if defined(CLUBIQ_ESP32_BLE)
+void disableWifiForBleRuntime();
 void bleNotifyJson(const String &payload);
 void processBleRuntime();
 void rejectBleProvisioning(const String &message);
@@ -1102,6 +1105,12 @@ void handleLedTest() {
 }
 
 void reconnectStationWifi() {
+#if defined(CLUBIQ_ESP32_BLE)
+  if (directBleRuntimeMode()) {
+    disableWifiForBleRuntime();
+    return;
+  }
+#endif
   WiFi.disconnect(false);
   stationWasConnected = false;
   clockWasReady = false;
@@ -1123,6 +1132,12 @@ void scheduleStationReconnect() {
 }
 
 void processStationReconnect() {
+#if defined(CLUBIQ_ESP32_BLE)
+  if (directBleRuntimeMode()) {
+    stationReconnectPending = false;
+    return;
+  }
+#endif
   if (!stationReconnectPending || (long)(millis() - stationReconnectAt) < 0) return;
   stationReconnectPending = false;
   reconnectStationWifi();
@@ -1207,6 +1222,7 @@ void handleWifiScan() {
 }
 
 void maintainStationWifi() {
+  if (directBleRuntimeMode()) return;
   if (!stationConfigured()) return;
   if (WiFi.status() == WL_CONNECTED) {
     wifiDisconnectedSince = 0;
@@ -1242,6 +1258,7 @@ void maintainStationWifi() {
 }
 
 void retryPendingUid() {
+  if (directBleRuntimeMode()) return;
   if (!pendingUidReady || millis() < nextPendingRetryAt) return;
   if (pushUidToVereinskasse(pendingUid, pendingType, pendingBlocks)) {
     pendingUidReady = false;
@@ -1258,17 +1275,19 @@ void retryPendingUid() {
 
 void automaticUidScan() {
   const unsigned long now = millis();
-  bool directBleReady = false;
   bool directBleAvailable = false;
+  bool directBleMode = false;
 #if defined(CLUBIQ_ESP32_BLE)
-  directBleReady = bleSessionActive && bleClientConnected;
+  const bool directBleReady = bleSessionActive && bleClientConnected;
+  directBleMode = directBleRuntimeMode();
   directBleAvailable = bleClientConnected && bleIdentityConfigured();
   const bool directBlePending = blePendingScanReady;
 #else
   const bool directBlePending = false;
 #endif
+  const bool transportUnavailable = directBleMode ? !directBleAvailable : !pushConfigured();
   if (writeCommandActive || pendingUidReady || directBlePending ||
-      (!directBleAvailable && !pushConfigured()) || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
+      transportUnavailable || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
   lastScanAt = now;
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
 
@@ -1320,7 +1339,7 @@ void maintainRfidReader() {
 
 void selfRecoverIfStalled() {
   const unsigned long now = millis();
-  const bool wifiStalled = stationConfigured() && wifiDisconnectedSince &&
+  const bool wifiStalled = !directBleRuntimeMode() && stationConfigured() && wifiDisconnectedSince &&
       now - wifiDisconnectedSince >= SELF_RECOVERY_RESTART_MS;
   const bool serverStalled = pendingUidReady && serverFailureSince &&
       now - serverFailureSince >= SELF_RECOVERY_RESTART_MS;
@@ -1617,6 +1636,7 @@ void performFirmwareUpdate(const String &commandId, const String &targetVersion,
 }
 
 void pollWriteCommand() {
+  if (directBleRuntimeMode()) return;
   if (!pushConfigured() || WiFi.status() != WL_CONNECTED || !clockReady()) return;
   if (pendingUidReady) return;
   if (writeCommandActive) {
@@ -2107,7 +2127,7 @@ void processBleCommand() {
       rejectBleProvisioning("Bluetooth-Freigabe konnte nicht sicher gespeichert werden.");
       return;
     }
-    WiFi.disconnect(false);
+    disableWifiForBleRuntime();
     clearBleSession();
     pairingSecret = "";
     blePairTokenHash = "";
@@ -2471,6 +2491,46 @@ String hardwareId() {
 #endif
 }
 
+bool directBleRuntimeMode() {
+#if defined(CLUBIQ_ESP32_BLE)
+  return bleIdentityConfigured();
+#else
+  return false;
+#endif
+}
+
+void startReaderWifi() {
+  WiFi.mode(WIFI_AP_STA);
+#if !defined(CLUBIQ_ESP32_BLE)
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+#endif
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
+  if (!WiFi.softAP(apSsid.c_str(), apPassword.c_str(), 6, false, 2)) {
+    Serial.println("FEHLER: WLAN-AP konnte nicht gestartet werden.");
+  }
+  maintainStationWifi();
+}
+
+#if defined(CLUBIQ_ESP32_BLE)
+void disableWifiForBleRuntime() {
+  stationReconnectPending = false;
+  stationWasConnected = false;
+  clockWasReady = false;
+  timeSyncStarted = false;
+  wifiDisconnectedSince = 0;
+  lastWifiAttempt = 0;
+  pendingUidReady = false;
+  serverFailureSince = 0;
+  vereinskasseHttps.end();
+  vereinskasseTls.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true, false);
+  WiFi.mode(WIFI_OFF);
+  lastPushState = "Bluetooth-Direktbetrieb; Leser-WLAN deaktiviert.";
+}
+#endif
+
 void setup() {
   Serial.begin(115200);
   delay(300);
@@ -2508,27 +2568,16 @@ void setup() {
   delay(200);
 #endif
 
-  // Der Leser arbeitet parallel als Wartungszugang und Station im Vereins-WLAN.
-  WiFi.mode(WIFI_AP_STA);
-
-#if !defined(CLUBIQ_ESP32_BLE)
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-#endif
-
-  WiFi.persistent(false);
-  WiFi.setAutoReconnect(true);
-
-  if (!WiFi.softAP(apSsid.c_str(), apPassword.c_str(), 6, false, 2)) {
-    Serial.println("FEHLER: WLAN-AP konnte nicht gestartet werden.");
-  }
-
-  maintainStationWifi();
-
 #if defined(CLUBIQ_ESP32_BLE)
-  if (bleIdentityConfigured() && !pushConfigured()) {
+  if (directBleRuntimeMode()) {
+    disableWifiForBleRuntime();
     setStatusLed(StatusLedMode::Pairing);
     showStatusDisplay("Bluetooth", "Tablet wird gesucht");
+  } else {
+    startReaderWifi();
   }
+#else
+  startReaderWifi();
 #endif
 
   server.on("/", HTTP_GET, [] {
@@ -2554,10 +2603,20 @@ void setup() {
   Serial.println("\n=== NodeMCU V3 NFC/RFID ===");
   Serial.printf("Firmware: %s\n", FIRMWARE_VERSION);
   Serial.printf("RC522 Version: 0x%02X\n", rfid.PCD_ReadRegister(MFRC522::VersionReg));
-  Serial.printf("WLAN: %s\nWLAN-Kennwort: %s\n", apSsid.c_str(), apPassword.c_str());
-  Serial.printf("Adresse: http://%s\nWeb-Benutzer: %s\nWeb-Kennwort: %s\n",
-                WiFi.softAPIP().toString().c_str(), webUser.c_str(), webPassword.c_str());
-  if (!stationConfigured()) {
+#if defined(CLUBIQ_ESP32_BLE)
+  if (directBleRuntimeMode()) {
+    Serial.println("Betriebsart: Bluetooth direkt; Leser-WLAN ist deaktiviert.");
+    Serial.println("Scans, Display, Schreibauftraege und OTA laufen ueber das Tablet.");
+  } else
+#endif
+  {
+    Serial.printf("WLAN: %s\nWLAN-Kennwort: %s\n", apSsid.c_str(), apPassword.c_str());
+    Serial.printf("Adresse: http://%s\nWeb-Benutzer: %s\nWeb-Kennwort: %s\n",
+                  WiFi.softAPIP().toString().c_str(), webUser.c_str(), webPassword.c_str());
+  }
+  if (directBleRuntimeMode()) {
+    Serial.println("Vereinskasse: sichere Bluetooth-Direktverbindung ist eingerichtet.");
+  } else if (!stationConfigured()) {
     Serial.println("Vereinskasse: noch nicht eingerichtet (include/secrets.h fehlt oder WLAN leer).");
   } else if (!pushConfigured()) {
     Serial.println("Vereinskasse: WLAN eingetragen, aber Token oder Root-CA fehlt.");

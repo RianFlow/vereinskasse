@@ -148,8 +148,9 @@ test("RFID-Leser wird einfach eingerichtet und danach sicher per OTA aktualisier
   for(const fragment of ["LATEST_RFID_FIRMWARE","x-rfid-firmware-version",'command.block===-2?"firmware"',"RFID_FIRMWARE_UPDATE_QUEUED","firmwareUrl"])assert.ok(commands.includes(fragment),`OTA-Befehl fehlt: ${fragment}`);
   assert.ok(devices.includes("firmware_version firmwareVersion"),"Firmwarestand wird nicht angezeigt");
   for(const fragment of ["ESP8266httpUpdate.h","HTTPUpdate.h","ESPhttpUpdate.update","clubiqHttpUpdate.update","performFirmwareUpdate","reportDeviceCommandResult",'action == "firmware"',"StatusLedMode::Updating"])assert.ok(firmware.includes(fragment),`Firmware-OTA fehlt: ${fragment}`);
-  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.9.0"'),"Firmwareversion ist nicht eingebettet");
-  assert.ok(firmware.indexOf("startBleProvisioning();")<firmware.indexOf("WiFi.mode(WIFI_AP_STA);"),"BLE muss vor dem WLAN initialisiert werden");
+  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.9.1"'),"Firmwareversion ist nicht eingebettet");
+  const setupSource=firmware.slice(firmware.indexOf("void setup()"));
+  assert.ok(setupSource.indexOf("startBleProvisioning();")<setupSource.indexOf("startReaderWifi();"),"BLE muss vor dem WLAN initialisiert werden");
   assert.ok(!firmware.includes("WiFi.setSleep(false);"),"ESP32-WLAN darf den BLE-Start nicht durch eine zusätzliche Sleep-Umschaltung stören");
   for(const fragment of ["RFID-Leser verbinden","ClubIQ-Zertifikatsdatei","setupReader()","Leser verbinden","setInterval(()=>{if(!setupRunning)refreshStatus()},8000)"])assert.ok(readerUi.includes(fragment),`Einrichtungsassistent fehlt: ${fragment}`);
   assert.ok(readerUi.includes('accept=".crt,.pem')&&!readerUi.includes("setInsecure()"),"Zertifikat wird nicht sicher übernommen");
@@ -169,6 +170,13 @@ test("ESP32 überträgt Scans und Updates abgesichert direkt über das Tablet",a
   for(const fragment of ["RfidBleRuntime","getDevices","preferredReader","Leser antwortet nicht auf den sicheren Sitzungsaufbau","getCharacteristic(OTA_UUID).catch(()=>null)","scheduleReconnect","heartbeatWatchdog","Keine Antwort vom Leser. Verbindung wird neu aufgebaut.","relayScan","scan_ack","uploadFirmware","crypto.subtle.digest","helloNonce","restartSession","setRfidBleDisplayState"]){
     assert.ok(ble.includes(fragment),`Tablet-Vermittlung fehlt: ${fragment}`);
   }
+  for(const fragment of ["ensureConnection","visibilitychange","pageshow","focus","online"]){
+    assert.ok(ble.includes(fragment)||component.includes(fragment),`Automatische BLE-Wiederverbindung fehlt: ${fragment}`);
+  }
+  for(const fragment of ["directBleRuntimeMode","disableWifiForBleRuntime","WiFi.softAPdisconnect(true)","WiFi.disconnect(true, false)","WiFi.mode(WIFI_OFF)","transportUnavailable"]){
+    assert.ok(firmware.includes(fragment),`Stabiler Bluetooth-Direktbetrieb fehlt: ${fragment}`);
+  }
+  assert.ok(firmware.includes("if (directBleRuntimeMode()) return;"),"WLAN-Laufzeit wird im Bluetooth-Direktbetrieb nicht sicher gestoppt");
   for(const fragment of ["Live-Verbindung wird aufgebaut","Sichere Bluetooth-Sitzung aktiv","Registrierter Leser wird direkt verbunden"]){
     assert.ok(component.includes(fragment),`Echte BLE-Sitzungsanzeige fehlt: ${fragment}`);
   }
