@@ -79,7 +79,7 @@ test("RFID-Leser koppelt sich ohne PC per kurzlebigem Einmalcode",async()=>{
   for(const fragment of ["secureRandomHex(32)","os_random()","/api/pair/start","X-RFID-Pairing-Secret","pollPairingApproval()","saveServerSettings(vereinskasseApiUrl, pairingSecret"]){
     assert.ok(firmware.includes(fragment),`Leser-Kopplung fehlt: ${fragment}`);
   }
-  for(const fragment of ["ESP32 per App","Android-Auswahl einmalig öffnen","ESP32-Leser direkt verbinden","Notfall-Token erzeugen"]){
+  for(const fragment of ["ESP32 ins Kassen-WLAN","Leser für die Einrichtung auswählen","ESP32 einmal ins Kassen-WLAN aufnehmen","Notfall-Token erzeugen"]){
     assert.ok(component.includes(fragment),`Tablet-Kopplungsassistent fehlt: ${fragment}`);
   }
   for(const fragment of ["navigator as Navigator","requestDevice","ClubIQ-RFID-","/rfid-ca.crt","/api/rfid/pair","approvePairing","writeValueWithResponse"]){
@@ -99,7 +99,7 @@ test("zeigt die RFID-Verbindung als eigenen aufgeräumten Adminbereich",async()=
   for(const fragment of ['{id:"rfid",icon:IconNfc,label:"RFID-Leser"}','adminSection==="rfid"','setAdminSection("rfid")']){
     assert.ok(page.includes(fragment),`Eigener RFID-Menüpunkt fehlt: ${fragment}`);
   }
-  for(const fragment of ["Wie möchtest du verbinden?","Alter ESP8266","ESP32 per App","ClubIQ-Zertifikat herunterladen","Zugeordnete Mitgliedskarten","Erweiterte Einrichtung"]){
+  for(const fragment of ["Wie möchtest du verbinden?","Alter ESP8266","ESP32 ins Kassen-WLAN","ClubIQ-Zertifikat herunterladen","Zugeordnete Mitgliedskarten","Erweiterte Einrichtung"]){
     assert.ok(component.includes(fragment),`Aufgeräumte RFID-Einrichtung fehlt: ${fragment}`);
   }
   assert.ok(component.includes('useState<"esp8266"|"esp32">("esp32")'),"Der direkte ESP32-Betrieb ist nicht der einfache Standardweg");
@@ -128,7 +128,7 @@ test("Android richtet den ESP32-Leser direkt und verschlüsselt per Bluetooth ei
     assert.ok(firmware.includes(fragment),`Physisch geschützte BLE-Wiederverbindung fehlt: ${fragment}`);
   }
   assert.ok(!firmware.includes("if (pushConfigured()) return;\n  const String deviceName"),"Ein eingerichteter ESP32 muss für die App auffindbar bleiben");
-  assert.ok(ble.includes("location.origin")&&!ble.includes("http://"),"Die App muss denselben sicheren ClubIQ-Ursprung verwenden");
+  assert.ok(ble.includes('KIOSK_API_URL="https://10.42.0.1/api/rfid"'),"Die Einrichtung muss den festen lokalen ClubIQ-Ursprung verwenden");
   for(const fragment of ["getAuthorizedRfidBleReaders","getDevices","selectRfidBleReader","requestDevice","RfidBleReader"]){
     assert.ok(ble.includes(fragment),`Standardkonforme BLE-Geräteauswahl fehlt: ${fragment}`);
   }
@@ -144,12 +144,12 @@ test("RFID-Leser wird einfach eingerichtet und danach sicher per OTA aktualisier
     read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h"),read("Dockerfile"),read("db/schema.ts"),
     read("drizzle/0026_simple_rfid_ota.sql"),read("postgres/migrations/0003_rfid_firmware.sql"),read("app/rfid-firmware.ts")
   ]);
-  for(const fragment of ["Android-Auswahl einmalig öffnen","Nur neuen Leser mit ClubIQ verknüpfen","Jetzt neu verbinden","Firmwarestand unbekannt · Bluetooth einmal verbinden","neuer als App","Firmware aktualisieren",'action:"firmware"'])assert.ok(component.includes(fragment),`Vereinfachte App-Führung fehlt: ${fragment}`);
+  for(const fragment of ["Leser für die Einrichtung auswählen","Leser ins Kassen-WLAN aufnehmen","WLAN-Einrichtung prüfen","neuer als App","Firmware aktualisieren",'action:"firmware"'])assert.ok(component.includes(fragment),`Vereinfachte App-Führung fehlt: ${fragment}`);
   for(const fragment of ["LATEST_RFID_FIRMWARE","x-rfid-firmware-version",'command.block===-2?"firmware"',"RFID_FIRMWARE_UPDATE_QUEUED","firmwareUrl"])assert.ok(commands.includes(fragment),`OTA-Befehl fehlt: ${fragment}`);
   assert.ok(devices.includes("firmware_version firmwareVersion"),"Firmwarestand wird nicht angezeigt");
   for(const fragment of ["ESP8266httpUpdate.h","HTTPUpdate.h","ESPhttpUpdate.update","clubiqHttpUpdate.update","performFirmwareUpdate","reportDeviceCommandResult",'action == "firmware"',"StatusLedMode::Updating"])assert.ok(firmware.includes(fragment),`Firmware-OTA fehlt: ${fragment}`);
-  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.9.1"'),"Firmwareversion ist nicht eingebettet");
-  assert.ok(sharedVersion.includes('LATEST_RFID_FIRMWARE="1.9.1"'),"Zentrale OTA-Version fehlt");
+  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.9.2"'),"Firmwareversion ist nicht eingebettet");
+  assert.ok(sharedVersion.includes('LATEST_RFID_FIRMWARE="1.9.2"'),"Zentrale OTA-Version fehlt");
   assert.ok(component.includes('from "./rfid-firmware"')&&commands.includes('from "../../../rfid-firmware"'),"Oberfläche und OTA-Route verwenden nicht dieselbe Firmwareversion");
   assert.ok(!component.includes('const latestRfidFirmware='),"Die Oberfläche enthält weiterhin eine abweichende Firmwareversion");
   const setupSource=firmware.slice(firmware.indexOf("void setup()"));
@@ -161,67 +161,31 @@ test("RFID-Leser wird einfach eingerichtet und danach sicher per OTA aktualisier
   for(const source of [schema,d1Migration,postgresMigration])assert.ok(source.includes("firmware_version"),"Firmwarestand fehlt in einer Datenbanklaufzeit");
 });
 
-test("ESP32 überträgt Scans und Updates abgesichert direkt über das Tablet",async()=>{
-  const [component,page,ble,route,firmware,schema,d1Migration,postgresMigration]=await Promise.all([
-    read("app/RfidIntegration.tsx"),read("app/page.tsx"),read("app/rfid-ble.ts"),read("app/api/rfid/ble/route.ts"),
-    read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),read("db/schema.ts"),
-    read("drizzle/0027_secure_ble_runtime.sql"),read("postgres/migrations/0004_secure_ble_runtime.sql")
+test("ESP32 arbeitet nach einmaliger Bluetooth-Einrichtung selbstständig im Kassen-WLAN",async()=>{
+  const [component,page,ble,route,commands,timeRoute,firmware,config,caddy]=await Promise.all([
+    read("app/RfidIntegration.tsx"),read("app/page.tsx"),read("app/rfid-ble.ts"),read("app/api/rfid/route.ts"),
+    read("app/api/rfid/commands/route.ts"),read("app/api/rfid/time/route.ts"),
+    read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),read("hardware/NodeMCU-V3-RC522-Tablet/include/config.h"),read("deploy/docker/Caddyfile")
   ]);
-  for(const fragment of ["Keine WLAN-Daten am Leser nötig","RFID-Leser bereit","Bluetooth →","Nur neuen Leser mit ClubIQ verknüpfen","Jetzt neu verbinden"]){
-    assert.ok(component.includes(fragment),`BLE-Bedienführung fehlt: ${fragment}`);
-  }
-  for(const fragment of ["RfidBleRuntime","getDevices","preferredReader","Leser antwortet nicht auf den sicheren Sitzungsaufbau","getCharacteristic(OTA_UUID).catch(()=>null)","scheduleReconnect","heartbeatWatchdog","Keine Antwort vom Leser. Verbindung wird neu aufgebaut.","relayScan","scan_ack","uploadFirmware","crypto.subtle.digest","helloNonce","restartSession","setRfidBleDisplayState"]){
-    assert.ok(ble.includes(fragment),`Tablet-Vermittlung fehlt: ${fragment}`);
-  }
-  for(const fragment of ["ensureConnection","visibilitychange","pageshow","focus","online"]){
-    assert.ok(ble.includes(fragment)||component.includes(fragment),`Automatische BLE-Wiederverbindung fehlt: ${fragment}`);
-  }
-  for(const fragment of ["healthTimer","reconnect(reader?:RfidBleReader)","withTimeout","verwaiste","updateProgress","updatePhase","failActiveCommand"]){
-    assert.ok(ble.includes(fragment),`Überwachter BLE-Neuaufbau oder OTA-Fortschritt fehlt: ${fragment}`);
-  }
-  for(const fragment of ["connectionAttempt","attempt!==this.connectionAttempt","this.connectionAttempt+=1"]){
-    assert.ok(ble.includes(fragment),`Schutz gegen konkurrierende GATT-Verbindungen fehlt: ${fragment}`);
-  }
-  const runtimeConnect=ble.slice(ble.indexOf("private async connect()"),ble.indexOf("private scheduleReconnect"));
-  assert.ok(runtimeConnect.indexOf("if(gatt.connected)")<runtimeConnect.indexOf('addEventListener?.("gattserverdisconnected"'),"Der geplante Android-GATT-Neustart darf den Trennungs-Listener noch nicht auslösen");
-  for(const fragment of ["client_command_failure","RFID_FIRMWARE_UPDATE_FAILED","tablet_transport"]){
-    assert.ok(route.includes(fragment),`Sofortiger Abbruch eines fehlgeschlagenen Tablet-Updates fehlt: ${fragment}`);
-  }
-  for(const fragment of ["rfid-ota-progress",'<progress max="100"',"Jetzt neu verbinden","Android kennt den Leser · ClubIQ ist getrennt"]){
-    assert.ok(component.includes(fragment),`Sichtbarer OTA- oder Verbindungsstatus fehlt: ${fragment}`);
-  }
-  for(const fragment of ["directBleRuntimeMode","disableWifiForBleRuntime","WiFi.softAPdisconnect(true)","WiFi.disconnect(true, false)","WiFi.mode(WIFI_OFF)","transportUnavailable"]){
-    assert.ok(firmware.includes(fragment),`Stabiler Bluetooth-Direktbetrieb fehlt: ${fragment}`);
-  }
-  assert.ok(firmware.includes("if (directBleRuntimeMode()) return;"),"WLAN-Laufzeit wird im Bluetooth-Direktbetrieb nicht sicher gestoppt");
-  for(const fragment of ["Live-Verbindung wird aufgebaut","Sichere Bluetooth-Sitzung aktiv","Registrierter Leser wird direkt verbunden"]){
-    assert.ok(component.includes(fragment),`Echte BLE-Sitzungsanzeige fehlt: ${fragment}`);
-  }
-  assert.ok(page.includes('if(!activeProfile)return <><RfidBleBridge/><ProfileGateSecure'),"BLE-Leser startet nicht vor der Profilanmeldung");
-  for(const fragment of ["verifyHmac","`hello|${hardwareId}|${helloNonce}|${firmwareVersion}`","ble_session_counter","Veralteter Bluetooth-Scan","requireRole(request,[\"Vorstand\",\"Systemadmin\"])","official.byteLength!==size","SHA-256"]){
-    assert.ok(route.includes(fragment),`Serverseitige BLE-Sicherung fehlt: ${fragment}`);
-  }
-  for(const fragment of ["bleHmac","sendBleReady","blePendingScanReady","sendBlePendingScan","BLE_SCAN_RETRY_MS","session_expired","Update.begin","mbedtls_sha256","bleOtaExpectedSha","ESP_LE_AUTH_REQ_SC_BOND"]){
-    assert.ok(firmware.includes(fragment),`Firmware-Rückfallsicherung fehlt: ${fragment}`);
-  }
-  for(const source of [schema,d1Migration,postgresMigration]){
-    for(const fragment of ["ble_session_id","ble_session_counter","ble_session_expires_at"]){
-      assert.ok(source.includes(fragment),`BLE-Sitzungsfeld fehlt: ${fragment}`);
-    }
-  }
+  for(const fragment of ["Festes Kassen-WLAN","→ 2,4-GHz-WLAN →","Kassen-WLAN übertragen","Danach kein Bluetooth mehr nötig","WLAN dieses Lesers aktualisieren"])
+    assert.ok(component.includes(fragment),`Kassen-WLAN-Bedienführung fehlt: ${fragment}`);
+  assert.ok(!component.includes("rfidBleRuntime")&&!component.includes("Jetzt neu verbinden"),"Der instabile Bluetooth-Dauerbetrieb ist weiterhin in der Kassenoberfläche aktiv");
+  assert.ok(!page.includes("RfidBleBridge")&&!page.includes("setRfidBleDisplayState"),"Der laufende Kassenbetrieb hängt weiterhin vom Browser-Bluetooth ab");
+  for(const fragment of ["provisionRfidReader","KIOSK_API_URL","https://10.42.0.1/api/rfid","/rfid-ca.crt","approvePairing"])
+    assert.ok(ble.includes(fragment),`Einmalige sichere WLAN-Einrichtung fehlt: ${fragment}`);
+  for(const fragment of ["x-rfid-token","token_hash","last_seen_at","rfid_scans"])
+    assert.ok(route.includes(fragment),`Direkte Leser-Authentifizierung fehlt: ${fragment}`);
+  for(const fragment of ["x-rfid-firmware-version","firmwareUrl",'action:"display"'])
+    assert.ok(commands.includes(fragment),`WLAN-Steuerkanal fehlt: ${fragment}`);
+  for(const fragment of ["return false;","startReaderWifi","maintainStationWifi","WiFi.setAutoReconnect(true)","MAINTENANCE_AP_FALLBACK_MS","syncClockFromKiosk","KIOSK_TIME_URL","pushUidToVereinskasse","pollWriteCommand"])
+    assert.ok(firmware.includes(fragment)||config.includes(fragment),`Stabiler WLAN-Betrieb fehlt: ${fragment}`);
+  assert.ok(timeRoute.includes("Date.now()")&&caddy.includes("/clubiq-time"),"Der Offline-TLS-Start erhält keine lokale Uhrzeit vom Raspberry");
+  assert.ok(caddy.includes("https://{$CLUBIQ_KIOSK_IP:10.42.0.1}"),"Caddy stellt kein Zertifikat für die feste Kassenadresse bereit");
 });
 
-test("RFID-Ampel verbindet einen getrennten Leser ohne Umweg über den Adminbereich",async()=>{
-  const [component,style]=await Promise.all([read("app/RfidIntegration.tsx"),read("app/rfid.css")]);
-  for(const fragment of [
-    "rfidBleRuntime.subscribe(setBleStatus)",
-    "getAuthorizedRfidBleReaders()",
-    "selectRfidBleReader()",
-    "rfidBleRuntime.prefer(reader)",
-    "RFID getrennt",
-    "Neu verbinden"
-  ]){
-    assert.ok(component.includes(fragment),`Schnelle RFID-Wiederverbindung fehlt: ${fragment}`);
-  }
-  assert.ok(style.includes(".rfid-header-status.reconnectable")&&style.includes(".rfid-reconnect-cue"),"Die RFID-Ampel zeigt die direkte Wiederverbindung nicht sichtbar an");
+test("RFID-Ampel zeigt den serverseitigen Zustand ohne manuellen Bluetooth-Neuaufbau",async()=>{
+  const component=await read("app/RfidIntegration.tsx");
+  for(const fragment of ["RFID offline","Der Leser verbindet sich automatisch mit dem ClubIQ-Kassen-WLAN","RFID bereit","deviceCount"])
+    assert.ok(component.includes(fragment),`Automatischer RFID-Status fehlt: ${fragment}`);
+  assert.ok(!component.includes("reconnectBleDevice")&&!component.includes("rfid-reconnect-cue"),"Die Ampel verlangt weiterhin eine manuelle Bluetooth-Verbindung");
 });

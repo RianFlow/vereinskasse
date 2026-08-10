@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <time.h>
+#include <sys/time.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <EEPROM.h>
@@ -65,6 +66,7 @@ bool pairingActive = false;
 unsigned long lastPairingPollAt = 0;
 bool wifiSettingsStored = false;
 bool serverSettingsStored = false;
+bool maintenanceApActive = false;
 bool stationReconnectPending = false;
 unsigned long stationReconnectAt = 0;
 String lastPushState = "Noch keine Karte übertragen.";
@@ -177,6 +179,8 @@ String macSuffix();
 String hardwareId();
 bool directBleRuntimeMode();
 void startReaderWifi();
+void startMaintenanceAp();
+void stopMaintenanceAp();
 void maintainStationWifi();
 #if defined(CLUBIQ_ESP32_BLE)
 void disableWifiForBleRuntime();
@@ -696,6 +700,23 @@ bool clockReady() {
   return time(nullptr) > 1700000000;
 }
 
+bool syncClockFromKiosk() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  WiFiClient client;
+  HTTPClient clockRequest;
+  clockRequest.setTimeout(HTTPS_TIMEOUT_MS);
+  if (!clockRequest.begin(client, KIOSK_TIME_URL)) return false;
+  const int status = clockRequest.GET();
+  const String body = status == 200 ? clockRequest.getString() : "";
+  clockRequest.end();
+  const time_t epoch = static_cast<time_t>(strtoul(body.c_str(), nullptr, 10));
+  if (status != 200 || epoch <= 1700000000) return false;
+  timeval currentTime{epoch, 0};
+  settimeofday(&currentTime, nullptr);
+  lastPushState = "Sichere Uhrzeit vom lokalen ClubIQ-Server geladen.";
+  return clockReady();
+}
+
 bool beginVereinskasseRequest(const String &url) {
   if (!trustAnchorReady()) return false;
 #if defined(CLUBIQ_ESP32_BLE)
@@ -711,6 +732,10 @@ bool beginVereinskasseRequest(const String &url) {
 
 void beginClockSync() {
   if (timeSyncStarted || WiFi.status() != WL_CONNECTED) return;
+  if (syncClockFromKiosk()) {
+    timeSyncStarted = true;
+    return;
+  }
   configTime(0, 0, "pool.ntp.org", "time.cloudflare.com", "time.google.com");
   timeSyncStarted = true;
   lastPushState = "WLAN verbunden, sichere Uhrzeit wird geladen.";
@@ -722,7 +747,7 @@ bool pushUidToVereinskasse(const String &uid, const String &type, int blocks) {
     return false;
   }
   if (WiFi.status() != WL_CONNECTED) {
-    lastPushState = "Vereins-WLAN nicht verbunden.";
+    lastPushState = "ClubIQ-Kassen-WLAN nicht verbunden.";
     return false;
   }
   if (!clockReady()) {
@@ -899,7 +924,7 @@ void handleServerConnectionTest() {
     return;
   }
   if (WiFi.status() != WL_CONNECTED) {
-    json(409, "{\"error\":\"Der Leser ist nicht mit dem Vereins-WLAN verbunden.\"}");
+    json(409, "{\"error\":\"Der Leser ist nicht mit dem ClubIQ-Kassen-WLAN verbunden.\"}");
     return;
   }
   if (!clockReady()) {
@@ -1000,7 +1025,7 @@ void handlePairingStart() {
     return;
   }
   if (WiFi.status() != WL_CONNECTED) {
-    json(409, "{\"error\":\"Der Leser ist noch nicht mit dem Vereins-WLAN verbunden.\"}");
+    json(409, "{\"error\":\"Der Leser ist noch nicht mit dem ClubIQ-Kassen-WLAN verbunden.\"}");
     return;
   }
   if (!clockReady()) {
@@ -1223,17 +1248,21 @@ void handleWifiScan() {
 
 void maintainStationWifi() {
   if (directBleRuntimeMode()) return;
-  if (!stationConfigured()) return;
+  if (!stationConfigured()) {
+    startMaintenanceAp();
+    return;
+  }
   if (WiFi.status() == WL_CONNECTED) {
     wifiDisconnectedSince = 0;
+    if (maintenanceApActive) stopMaintenanceAp();
     if (!stationWasConnected) {
       stationWasConnected = true;
-      Serial.printf("Vereins-WLAN verbunden, IP: %s\n", WiFi.localIP().toString().c_str());
+      Serial.printf("ClubIQ-Kassen-WLAN verbunden, IP: %s\n", WiFi.localIP().toString().c_str());
     }
     beginClockSync();
     if (clockReady() && !clockWasReady) {
       clockWasReady = true;
-      lastPushState = "Vereins-WLAN und sichere Uhrzeit bereit.";
+      lastPushState = "ClubIQ-Kassen-WLAN und sichere Uhrzeit bereit.";
       setStatusLed(StatusLedMode::Ready);
       Serial.println(lastPushState);
     }
@@ -1242,18 +1271,22 @@ void maintainStationWifi() {
 
   const unsigned long now = millis();
   if (!wifiDisconnectedSince) wifiDisconnectedSince = now;
+  if (now - wifiDisconnectedSince >= MAINTENANCE_AP_FALLBACK_MS)
+    startMaintenanceAp();
   if (stationWasConnected) {
     stationWasConnected = false;
     clockWasReady = false;
     setStatusLed(StatusLedMode::Connecting);
-    Serial.println("Vereins-WLAN getrennt.");
+    Serial.println("ClubIQ-Kassen-WLAN getrennt.");
   }
   if (lastWifiAttempt && now - lastWifiAttempt < WIFI_RECONNECT_INTERVAL_MS) return;
   lastWifiAttempt = now;
   timeSyncStarted = false;
-  lastPushState = "Verbinde mit Vereins-WLAN.";
+  lastPushState = "Verbinde mit ClubIQ-Kassen-WLAN.";
   setStatusLed(StatusLedMode::Connecting);
-  Serial.printf("Verbinde mit Vereins-WLAN \"%s\" ...\n", clubWifiSsid.c_str());
+  Serial.printf("Verbinde mit ClubIQ-Kassen-WLAN \"%s\" ...\n", clubWifiSsid.c_str());
+  if (maintenanceApActive) WiFi.mode(WIFI_AP_STA);
+  else WiFi.mode(WIFI_STA);
   WiFi.begin(clubWifiSsid.c_str(), clubWifiPassword.c_str());
 }
 
@@ -1800,7 +1833,9 @@ class ClubIqBleServerCallbacks final : public BLEServerCallbacks {
       setStatusLed(WiFi.status() == WL_CONNECTED && clockReady()
                        ? StatusLedMode::Ready
                        : StatusLedMode::Pairing);
-      if (!displayOrderActive) showStatusDisplay("Bluetooth", "Tablet wird gesucht");
+      if (!displayOrderActive)
+        showStatusDisplay(WiFi.status() == WL_CONNECTED ? "ClubIQ-WLAN" : "WLAN getrennt",
+                          WiFi.status() == WL_CONNECTED ? "Leser ist bereit" : "Verbindung wird repariert");
     }
     BLEDevice::startAdvertising();
   }
@@ -2272,7 +2307,7 @@ void processBleCommand() {
   bleLastProgressAt = 0;
   scheduleStationReconnect();
   setStatusLed(StatusLedMode::Connecting);
-  showStatusDisplay("Bluetooth", "Verbinde Vereins-WLAN");
+  showStatusDisplay("Einrichtung", "Verbinde ClubIQ-WLAN");
   bleNotifyJson("{\"state\":\"wifi_connecting\",\"hardwareId\":\"" + hardwareId() + "\"}");
 }
 
@@ -2492,23 +2527,39 @@ String hardwareId() {
 }
 
 bool directBleRuntimeMode() {
-#if defined(CLUBIQ_ESP32_BLE)
-  return bleIdentityConfigured();
-#else
+  // Bluetooth dient nur noch der einmaligen Einrichtung und dem Notfallweg.
+  // Der laufende Kassenbetrieb geht immer direkt per WLAN zum Raspberry.
   return false;
-#endif
+}
+
+void startMaintenanceAp() {
+  if (maintenanceApActive) return;
+  WiFi.mode(WIFI_AP_STA);
+  if (!WiFi.softAP(apSsid.c_str(), apPassword.c_str(), 6, false, 2)) {
+    Serial.println("FEHLER: WLAN-AP konnte nicht gestartet werden.");
+    return;
+  }
+  maintenanceApActive = true;
+  Serial.printf("Wartungs-WLAN aktiv: %s, Adresse %s\n", apSsid.c_str(),
+                WiFi.softAPIP().toString().c_str());
+}
+
+void stopMaintenanceAp() {
+  if (!maintenanceApActive) return;
+  WiFi.softAPdisconnect(true);
+  maintenanceApActive = false;
+  WiFi.mode(WIFI_STA);
+  Serial.println("Wartungs-WLAN beendet; ClubIQ-Kassen-WLAN ist verbunden.");
 }
 
 void startReaderWifi() {
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_STA);
 #if !defined(CLUBIQ_ESP32_BLE)
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
 #endif
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
-  if (!WiFi.softAP(apSsid.c_str(), apPassword.c_str(), 6, false, 2)) {
-    Serial.println("FEHLER: WLAN-AP konnte nicht gestartet werden.");
-  }
+  if (!stationConfigured()) startMaintenanceAp();
   maintainStationWifi();
 }
 
@@ -2603,20 +2654,14 @@ void setup() {
   Serial.println("\n=== NodeMCU V3 NFC/RFID ===");
   Serial.printf("Firmware: %s\n", FIRMWARE_VERSION);
   Serial.printf("RC522 Version: 0x%02X\n", rfid.PCD_ReadRegister(MFRC522::VersionReg));
-#if defined(CLUBIQ_ESP32_BLE)
-  if (directBleRuntimeMode()) {
-    Serial.println("Betriebsart: Bluetooth direkt; Leser-WLAN ist deaktiviert.");
-    Serial.println("Scans, Display, Schreibauftraege und OTA laufen ueber das Tablet.");
-  } else
-#endif
-  {
+  if (maintenanceApActive) {
     Serial.printf("WLAN: %s\nWLAN-Kennwort: %s\n", apSsid.c_str(), apPassword.c_str());
     Serial.printf("Adresse: http://%s\nWeb-Benutzer: %s\nWeb-Kennwort: %s\n",
                   WiFi.softAPIP().toString().c_str(), webUser.c_str(), webPassword.c_str());
+  } else {
+    Serial.printf("Betriebsart: ClubIQ-WLAN direkt, SSID: %s\n", clubWifiSsid.c_str());
   }
-  if (directBleRuntimeMode()) {
-    Serial.println("Vereinskasse: sichere Bluetooth-Direktverbindung ist eingerichtet.");
-  } else if (!stationConfigured()) {
+  if (!stationConfigured()) {
     Serial.println("Vereinskasse: noch nicht eingerichtet (include/secrets.h fehlt oder WLAN leer).");
   } else if (!pushConfigured()) {
     Serial.println("Vereinskasse: WLAN eingetragen, aber Token oder Root-CA fehlt.");

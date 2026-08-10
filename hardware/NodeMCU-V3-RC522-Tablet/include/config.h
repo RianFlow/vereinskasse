@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr char FIRMWARE_VERSION[] = "1.9.1";
+constexpr char FIRMWARE_VERSION[] = "1.9.2";
 
 #if defined(CLUBIQ_ESP32_BLE)
 // ESP32-WROOM-32 / ESP32 DevKit: VSPI plus Pins ohne Boot-Strapping-Konflikte.
@@ -55,6 +55,8 @@ constexpr char CUSTOM_WEB_PASSWORD[] = "svbarverdarts";
 #endif
 
 constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 15000;
+constexpr unsigned long MAINTENANCE_AP_FALLBACK_MS = 60000;
+constexpr char KIOSK_TIME_URL[] = "http://10.42.0.1:8080/clubiq-time";
 constexpr unsigned long RFID_SCAN_INTERVAL_MS = 120;
 constexpr unsigned long RFID_REPEAT_GUARD_MS = 1500;
 // Karten-Schreibaufträge sind selten. Eine häufigere HTTPS-Abfrage würde den

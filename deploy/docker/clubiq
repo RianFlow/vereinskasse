@@ -62,7 +62,33 @@ set_setting() {
 }
 
 current_lan_ip() {
-  hostname -I | tr ' ' '\n' | awk '/^[0-9]+\./ && $0 !~ /^127\./ { print; exit }'
+  ip -4 -o address show dev eth0 scope global 2>/dev/null | awk '{ split($4,address,"/"); print address[1]; exit }'
+}
+
+setting() {
+  local key="$1"
+  sed -n "s/^${key}=//p" "$base/.env" | tail -n 1
+}
+
+kiosk_wifi_interface() {
+  local interface
+  interface="$(setting CLUBIQ_KIOSK_WIFI_INTERFACE)"
+  printf '%s\n' "${interface:-wlan0}"
+}
+
+kiosk_wifi_status() {
+  local interface connection
+  interface="$(kiosk_wifi_interface)"
+  connection="$(nmcli --terse --fields GENERAL.CONNECTION device show "$interface" 2>/dev/null | cut -d: -f2- || true)"
+  echo "Kassen-WLAN: ${connection:-(nicht aktiv)}"
+  if [[ "$connection" == "clubiq-kassen-wlan" ]]; then
+    nmcli --terse --fields GENERAL.DEVICE,GENERAL.STATE,IP4.ADDRESS device show "$interface" 2>/dev/null || true
+  fi
+  if ip -4 -o address show dev eth0 scope global >/dev/null 2>&1; then
+    echo "Internetweg: LAN verbunden ($(current_lan_ip))"
+  else
+    echo "Internetweg: kein LAN; die lokale Kasse funktioniert, Fernzugriff und Cloud-Dienste warten"
+  fi
 }
 
 show_help() {
@@ -79,6 +105,8 @@ Clubiq Ledger auf dem Raspberry verwalten
   clubiq aktualisieren           Sicherung, Update und automatischer Rückfall
   clubiq wiederherstellen DATEI  Sicherung erst prüfen, dann zurückspielen
   clubiq neue-datenbank          Nach Tests sauber und leer beginnen
+  clubiq kassen-wlan-einrichten  Festes 2,4-GHz-WLAN fuer Tablet und RFID einrichten
+  clubiq kassen-wlan-status      Kassen-WLAN und LAN-Uplink anzeigen
   clubiq netzwerk-aktualisieren  Aktuelle LAN-IP für Tablet-Zugriff übernehmen
   clubiq usb-freigeben [PFAD]    Bereits eingehängten USB-Datenträger freigeben
   clubiq r2-einrichten           Verschlüsselte Cloudflare-R2-Kopie einrichten
@@ -125,6 +153,8 @@ case "$command" in
     "${compose[@]}" exec -T backup sh -c 'cat /backups/local/.last-backup.json 2>/dev/null || echo "noch keine"'
     echo "Letzte R2-Sicherung:"
     "${compose[@]}" exec -T backup sh -c 'cat /backups/local/.last-r2-backup.json 2>/dev/null || echo "nicht eingerichtet"'
+    echo
+    if command -v nmcli >/dev/null 2>&1; then kiosk_wifi_status; else echo "Kassen-WLAN: NetworkManager noch nicht installiert"; fi
     ;;
   protokoll|logs)
     "${compose[@]}" logs --tail=200 -f app postgres proxy backup
@@ -194,6 +224,82 @@ case "$command" in
     "${compose[@]}" up -d app backup proxy
     trap - EXIT
     wait_for_app
+    ;;
+  kassen-wlan-einrichten|kiosk-wifi-setup)
+    [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo "Bitte mit sudo ausfuehren." >&2; exit 1; }
+    allow_without_lan=false
+    [[ "${2:-}" == "--ohne-lan" ]] && allow_without_lan=true
+    if ! ip -4 -o address show dev eth0 scope global >/dev/null 2>&1 && [[ "$allow_without_lan" != true ]]; then
+      echo "Vor der Umstellung bitte ein LAN-Kabel anschliessen. Sonst kann die laufende SSH-Verbindung abbrechen." >&2
+      echo "Direkt am Raspberry ist alternativ moeglich: sudo clubiq kassen-wlan-einrichten --ohne-lan" >&2
+      exit 1
+    fi
+    if ! command -v nmcli >/dev/null 2>&1; then
+      echo "NetworkManager wird fuer das feste Kassen-WLAN installiert."
+      apt-get update
+      apt-get install --yes network-manager
+    fi
+    systemctl enable --now NetworkManager
+    interface="$(kiosk_wifi_interface)"
+    nmcli device status | awk -v interface="$interface" '$1==interface && $2=="wifi" { found=1 } END { exit found?0:1 }' || {
+      echo "WLAN-Schnittstelle $interface wurde nicht gefunden." >&2
+      exit 1
+    }
+    default_ssid="$(setting CLUBIQ_KIOSK_WIFI_SSID)"
+    default_ssid="${default_ssid:-ClubIQ-Kasse}"
+    read -r -p "Name des Kassen-WLANs [$default_ssid]: " kiosk_ssid
+    kiosk_ssid="${kiosk_ssid:-$default_ssid}"
+    [[ "$kiosk_ssid" =~ ^[A-Za-z0-9._-]{3,32}$ ]] || {
+      echo "Der WLAN-Name darf nur Buchstaben, Zahlen, Punkt, Unterstrich und Bindestrich enthalten." >&2
+      exit 1
+    }
+    while true; do
+      read -r -s -p "Neues Kassen-WLAN-Kennwort (12 bis 63 Zeichen): " kiosk_password
+      echo
+      read -r -s -p "Kennwort wiederholen: " kiosk_password_repeat
+      echo
+      [[ "$kiosk_password" == "$kiosk_password_repeat" && ${#kiosk_password} -ge 12 && ${#kiosk_password} -le 63 ]] && break
+      echo "Die Kennwoerter muessen gleich sein und 12 bis 63 Zeichen haben."
+    done
+    country="$(setting CLUBIQ_KIOSK_WIFI_COUNTRY)"
+    country="${country:-DE}"
+    command -v rfkill >/dev/null 2>&1 && rfkill unblock wifi || true
+    command -v iw >/dev/null 2>&1 && iw reg set "$country" || true
+    nmcli radio wifi on
+    nmcli device set "$interface" managed yes
+    if nmcli --terse --fields NAME connection show | grep -Fxq "clubiq-kassen-wlan"; then
+      nmcli connection modify clubiq-kassen-wlan connection.interface-name "$interface" 802-11-wireless.ssid "$kiosk_ssid"
+    else
+      nmcli connection add type wifi ifname "$interface" con-name clubiq-kassen-wlan ssid "$kiosk_ssid"
+    fi
+    nmcli connection modify clubiq-kassen-wlan \
+      connection.autoconnect yes connection.autoconnect-priority 100 connection.autoconnect-retries 0 \
+      802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 802-11-wireless.powersave 2 \
+      802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.proto rsn \
+      802-11-wireless-security.pairwise ccmp 802-11-wireless-security.psk "$kiosk_password" \
+      ipv4.method shared ipv4.addresses 10.42.0.1/24 ipv4.never-default yes ipv6.method disabled
+    install -m 600 /dev/null "$base/secrets/kiosk_wifi_password"
+    printf '%s' "$kiosk_password" > "$base/secrets/kiosk_wifi_password"
+    unset kiosk_password kiosk_password_repeat
+    set_setting CLUBIQ_KIOSK_IP 10.42.0.1
+    set_setting CLUBIQ_KIOSK_WIFI_INTERFACE "$interface"
+    set_setting CLUBIQ_KIOSK_WIFI_SSID "$kiosk_ssid"
+    set_setting CLUBIQ_KIOSK_WIFI_COUNTRY "$country"
+    nmcli --wait 30 connection up clubiq-kassen-wlan ifname "$interface"
+    ip -4 -o address show dev "$interface" | grep -q '10\.42\.0\.1/24' || {
+      echo "Das Kassen-WLAN wurde angelegt, aber die feste Adresse 10.42.0.1 fehlt." >&2
+      exit 1
+    }
+    "${compose[@]}" up -d --force-recreate app proxy
+    wait_for_app || { echo "Das WLAN steht, aber die Kasse ist noch nicht erreichbar." >&2; exit 1; }
+    echo "Kassen-WLAN ist bereit: $kiosk_ssid"
+    echo "Tablet und RFID-Leser einmal damit verbinden."
+    echo "Kasse: https://10.42.0.1"
+    echo "Zertifikat: http://10.42.0.1:8080/vereinskasse-ca.crt"
+    ;;
+  kassen-wlan-status|kiosk-wifi-status)
+    command -v nmcli >/dev/null 2>&1 || { echo "NetworkManager ist nicht installiert." >&2; exit 1; }
+    kiosk_wifi_status
     ;;
   netzwerk-aktualisieren|network-refresh)
     lan_ip="$(current_lan_ip)"
@@ -310,7 +416,11 @@ case "$command" in
     tailscale serve status
     ;;
   zertifikat|certificate)
-    ip="$(hostname -I | awk '{print $1}')"
+    ip="$(current_lan_ip)"
+    kiosk_ip="$(setting CLUBIQ_KIOSK_IP)"
+    kiosk_ip="${kiosk_ip:-10.42.0.1}"
+    echo "Kassen-WLAN-Zertifikat: http://${kiosk_ip}:8080/vereinskasse-ca.crt"
+    echo "Kassen-WLAN: https://${kiosk_ip}"
     echo "Tablet-Zertifikat: http://${ip:-RASPBERRY-IP}:8080/vereinskasse-ca.crt"
     echo "Kasse: https://$(sed -n 's/^CLUBIQ_HOSTNAME=//p' "$base/.env" | tail -n 1)"
     echo "Kasse per IP: https://$(sed -n 's/^CLUBIQ_LAN_IP=//p' "$base/.env" | tail -n 1)"

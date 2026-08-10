@@ -6,7 +6,7 @@ Diese Ausgabe ist für Raspberry Pi OS 64-Bit auf einem Raspberry Pi 4B mit
 
 ## Was automatisch läuft
 
-- **App:** Clubiq Ledger Version 1.7.3 als ARM64-Container
+- **App:** Clubiq Ledger als versionierter ARM64-Container
 - **Datenbank:** PostgreSQL 17 in einem nur intern erreichbaren Docker-Netz
 - **HTTPS:** Caddy mit lokalem Zertifikat für Tablet, PWA und Kioskmodus
 - **Start nach Stromausfall:** alle dauerhaften Dienste starten selbst wieder
@@ -40,7 +40,8 @@ Im Raspberry Pi Imager:
 
 1. Raspberry Pi OS Lite **64-Bit** wählen.
 2. Hostname, zum Beispiel `vereinskasse`, festlegen.
-3. Benutzer, sicheres Kennwort, WLAN und SSH eintragen.
+3. Benutzer, sicheres Kennwort und SSH eintragen. Das vorläufige Heim-WLAN wird
+   später durch das feste Kassen-WLAN ersetzt.
 4. Wenn möglich den Raspberry später per LAN anschließen.
 5. Im Router seine IP-Adresse fest reservieren.
 
@@ -61,34 +62,55 @@ startet die Kasse. Falls das fertige GitHub-Image noch nicht öffentlich
 abrufbar ist, wird es einmalig direkt auf dem Raspberry gebaut; das dauert
 deutlich länger, ändert aber nichts an den Daten.
 
-## 2. Tablet verbinden
+## 2. Festes Kassen-WLAN einrichten
 
-Der Installationsassistent zeigt zwei Adressen an. Zuerst auf dem Tablet das
-lokale CA-Zertifikat laden, zum Beispiel:
+Den Raspberry zuerst per LAN verbinden. Dann einmal ausführen:
+
+```bash
+sudo clubiq kassen-wlan-einrichten
+```
+
+Der Assistent fragt nur Name und Kennwort ab und richtet auf `wlan0` ein
+dauerhaftes 2,4-GHz-WLAN ein. Voreinstellungen:
 
 ```text
-http://192.168.1.50:8080/vereinskasse-ca.crt
+WLAN: ClubIQ-Kasse
+Raspberry/Kasse: 10.42.0.1
+```
+
+Tablet und RFID-Leser bleiben anschließend in diesem Netz. Ohne LAN funktionieren
+Kasse, PostgreSQL, Mitglieder, Buchungen und RFID lokal weiter. Fernzugriff,
+E-Mail, R2-Sicherung und Updates warten, bis LAN wieder vorhanden ist. Ein zweites
+WLAN für den Internetzugang wird in dieser Ausbaustufe ausdrücklich nicht benutzt.
+
+Zustand prüfen:
+
+```bash
+sudo clubiq kassen-wlan-status
+```
+
+## 3. Tablet verbinden
+
+Das Tablet mit `ClubIQ-Kasse` verbinden. Zuerst das lokale CA-Zertifikat laden:
+
+```text
+http://10.42.0.1:8080/vereinskasse-ca.crt
 ```
 
 Das Zertifikat als vertrauenswürdiges **CA-Zertifikat** installieren.
 Danach die Kasse über den angezeigten Namen öffnen, typischerweise:
 
 ```text
-https://vereinskasse.local
+https://10.42.0.1
 ```
 
-Falls ein Tablet keine `.local`-Namen auflöst, funktioniert die zusätzlich
-angezeigte HTTPS-Adresse mit der aktuellen Raspberry-IP. Nach einem Umzug in
-ein anderes Netzwerk wird diese Adresse einmalig aktualisiert:
-
-```bash
-sudo clubiq netzwerk-aktualisieren
-```
+Die Adresse bleibt zuhause und im Vereinsheim gleich. Ein Wechsel des
+Vereinsrouter-WLANs ist für Tablet und Leser deshalb nicht mehr nötig.
 
 Über den Browser kann die PWA dann zum Startbildschirm hinzugefügt und im
 Vollbild-/Kioskmodus verwendet werden.
 
-## 3. Bedienung auf dem Raspberry
+## 4. Bedienung auf dem Raspberry
 
 ```bash
 sudo clubiq status
@@ -104,7 +126,7 @@ Version nicht innerhalb von zwei Minuten gesund, wird das vorherige App-Image
 automatisch wieder aktiviert. PostgreSQL und die Datenvolumes werden beim
 Update niemals gelöscht oder neu angelegt.
 
-## 4. USB-Stick als echte zweite Sicherung
+## 5. USB-Stick als echte zweite Sicherung
 
 Der Stick muss zuerst vom Betriebssystem dauerhaft unter
 `/mnt/vereinskasse-sicherung` eingehängt werden. Vorher mit `lsblk -f` die
@@ -123,7 +145,7 @@ sudo clubiq sicherungen
 Die Freigabemarkierung verhindert, dass bei einem nicht eingehängten Stick
 versehentlich wieder auf die SD-Karte „gesichert“ wird.
 
-## 5. Optional verschlüsselt zu Cloudflare R2
+## 6. Optional verschlüsselt zu Cloudflare R2
 
 1. In Cloudflare R2 einen **privaten** Bucket anlegen.
 2. Einen auf genau diesen Bucket beschränkten Token mit „Object Read & Write“
@@ -145,7 +167,7 @@ Nach einem vollständigen SD-/USB-Ausfall holt
 Sicherungsbereich; anschließend wird es mit `clubiq wiederherstellen` wie jede
 andere Sicherung geprüft und aktiviert.
 
-## 6. Wiederherstellung testen oder ausführen
+## 7. Wiederherstellung testen oder ausführen
 
 Zunächst vorhandene Archive anzeigen:
 
@@ -164,7 +186,7 @@ Erst nach der exakten Bestätigung `WIEDERHERSTELLEN` werden App und Sicherung
 kurz gestoppt und der geprüfte Stand aktiviert. Der vorige Datenbankstand und
 Belegspeicher bleiben als Rückfall erhalten.
 
-## 7. Privater Fernzugriff mit Tailscale
+## 8. Privater Fernzugriff mit Tailscale
 
 Tailscale muss zuerst auf dem Raspberry installiert, gestartet und im eigenen
 Tailnet angemeldet sein. Danach richtet Clubiq Ledger den Webzugang mit einem
@@ -192,7 +214,7 @@ nur Tailscale und die angezeigte HTTPS-Adresse. In den Tailscale-Zugriffsregeln
 sollte SSH ausschließlich für Florian freigegeben werden. **Tailscale Funnel
 nicht aktivieren**, da Funnel die Kasse öffentlich erreichbar machen würde.
 
-## 8. Rechnungen per E-Mail
+## 9. Rechnungen per E-Mail
 
 Der Versand läuft direkt vom Raspberry über einen vorhandenen SMTP-Zugang. Das
 Passwort wird als Docker-Secret gespeichert und weder an das Tablet noch an den
@@ -208,7 +230,7 @@ Zwei-Faktor-Anmeldung ist in der Regel ein eigenes App-Passwort erforderlich.
 Rechnungen lassen sich nur durch Kassenwart oder Vorstand und erst nach dem
 Festschreiben des Monats einzeln versenden. Jeder Versand wird protokolliert.
 
-## 9. Nach dem Probebetrieb leer beginnen
+## 10. Nach dem Probebetrieb leer beginnen
 
 ```bash
 sudo clubiq neue-datenbank

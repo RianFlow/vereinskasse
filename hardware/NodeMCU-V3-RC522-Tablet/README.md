@@ -2,11 +2,11 @@
 
 Ein RFID-Leser/-Schreiber für **MIFARE Classic** mit direkter Anbindung an die
 Vereinskasse. Für neue Geräte wird ein **ESP32-WROOM-32** empfohlen: Er lässt
-sich in Chrome auf einem Android-Tablet direkt aus ClubIQ per Bluetooth finden
-und vollständig einrichten. Der NodeMCU V3 (ESP8266) bleibt als kompatibler
+sich in Chrome auf einem Android-Tablet per Bluetooth finden und einmalig für
+das feste ClubIQ-Kassen-WLAN einrichten. Der NodeMCU V3 (ESP8266) bleibt als kompatibler
 Rückfall erhalten. Beide Varianten übertragen Kartenscans verschlüsselt an
 ClubIQ. Das Wartungs-WLAN unter `http://192.168.4.1` läuft beim ESP8266 dauerhaft
-und beim ESP32 nur bis zur abgeschlossenen Bluetooth-Einrichtung.
+und beim ESP32 nur ohne Kassen-WLAN beziehungsweise nach 60 Sekunden Ausfall.
 
 Kontostände, Beträge, Namen und Berechtigungen liegen ausschließlich in der
 Kassendatenbank. Die beschreibbaren Kartendaten werden dafür nicht vertraut.
@@ -99,7 +99,7 @@ blau und weiß. Derselbe Test kann auf der Wartungsseite unter
 Statusfarben:
 
 - orange pulsierend: Gerät startet
-- blau pulsierend: Vereins-WLAN oder sichere Uhrzeit noch nicht bereit
+- blau pulsierend: ClubIQ-Kassen-WLAN oder sichere Uhrzeit noch nicht bereit
 - gedämpft türkis: Leser bereit
 - violett: Chip erkannt bzw. Schreibvorgang läuft
 - violett pulsierend: erwarteten Chip zum Beschreiben auflegen
@@ -168,22 +168,21 @@ gebildet. Sie sind daher pro Gerät verschieden und bleiben nach Neustarts gleic
 Für ein höheres Schutzniveau eigene lange Kennwörter in `include/config.h`
 eintragen.
 
-## 4. ESP32 direkt in ClubIQ verbinden (Android)
+## 4. ESP32 ins feste ClubIQ-Kassen-WLAN aufnehmen (Android)
 
-Ab Version 1.8.0 erledigt die ClubIQ-App die gesamte Einrichtung und den
-laufenden Betrieb des ESP32.
-Voraussetzungen sind Chrome auf einem Android-Tablet, eingeschaltetes Bluetooth,
-die geöffnete sichere ClubIQ-Adresse und ein ESP32 mit dieser Firmware.
+Die App verwendet Bluetooth nur für die einmalige, geschützte Übertragung der
+WLAN- und Serverdaten. Im laufenden Betrieb kommuniziert der ESP32 direkt mit
+dem Raspberry; Chrome muss keine dauerhafte Bluetooth-Sitzung halten.
 
-1. Firmware 1.8.0 einmal per USB mit der Umgebung `esp32dev` aufspielen.
-2. Tablet mit dem Vereins-WLAN verbinden und ClubIQ öffnen.
-3. **Admin → Sicherheit → RFID-Leser** öffnen.
-4. **Android-Auswahl einmalig öffnen** drücken und im geschützten Android-Fenster
+1. Firmware 1.9.2 einmal per USB mit der Umgebung `esp32dev` aufspielen.
+2. Am Raspberry `sudo clubiq kassen-wlan-einrichten` ausführen.
+3. Tablet mit `ClubIQ-Kasse` verbinden und `https://10.42.0.1` öffnen.
+4. **Admin → RFID-Leser → ESP32 ins Kassen-WLAN** öffnen.
+5. **Leser für die Einrichtung auswählen** drücken und im Android-Fenster
    `ClubIQ-RFID-xxxxxx` auswählen.
-5. Einen leicht verständlichen Namen vergeben und **Ausgewählten Leser mit
-   ClubIQ verknüpfen** drücken.
-6. Bei **RFID-Leser bereit** ist die Einrichtung fertig. ClubIQ stellt die
-   Verbindung nach einem Neustart oder einer Unterbrechung automatisch wieder her.
+6. Lesername, WLAN-Name `ClubIQ-Kasse` und das Kennwort eingeben.
+7. **Leser ins Kassen-WLAN aufnehmen** drücken. Sobald der Leser online ist,
+   benötigt der Kassenbetrieb keine Bluetooth-Verbindung mehr.
 
 Ein bereits eingerichteter Leser bleibt für ClubIQ auffindbar. Bevor bestehende
 WLAN- oder Serverdaten überschrieben werden, zeigt sein Display
@@ -191,18 +190,16 @@ WLAN- oder Serverdaten überschrieben werden, zeigt sein Display
 Leser bestätigt die physische Anwesenheit; die Karte wird dabei nicht gebucht.
 Ohne diese Bestätigung verwirft die Firmware die Änderung nach 90 Sekunden.
 
-Das Tablet bleibt durchgehend im Vereins-WLAN. Der ESP32 selbst benötigt keine
-Zugangsdaten zum Vereins-WLAN: Scan, Kundendisplay, Schreiben, Neustart und OTA
-laufen direkt über die verschlüsselte Bluetooth-Verbindung. Das Tablet vermittelt
-zum Raspberry. Ein Wechsel zum Wartungs-WLAN, Zertifikats-Upload und Abtippen
-eines Codes entfallen. Nach erfolgreicher Kopplung schaltet die Firmware sowohl
-den ESP32-Access-Point als auch seine WLAN-Station aus. Dadurch konkurriert WLAN
-nicht mehr mit Bluetooth um den gemeinsamen 2,4-GHz-Funkteil.
+Tablet und ESP32 bleiben im festen 2,4-GHz-WLAN des Raspberry. Scan,
+Kundendisplay, Schreiben, Neustart und OTA laufen direkt über die mit dem
+lokalen ClubIQ-Zertifikat geprüfte HTTPS-Verbindung. Der Leser verbindet sich
+nach Stromausfall oder Funkunterbrechung selbstständig erneut. Ein erkannter,
+noch nicht bestätigter Scan bleibt bis zur erfolgreichen Übertragung im RAM.
+Geld, Kontostände und Berechtigungen bleiben ausschließlich in PostgreSQL.
 
-Die App verwendet kurzlebige, vom Raspberry signierte Sitzungen. Scans haben
-einen fortlaufenden Zähler und werden erst nach signierter Bestätigung verworfen.
-Nach Verbindungsabbrüchen sendet der Leser den ausstehenden Scan erneut. Geld,
-Kontostände und Berechtigungen bleiben ausschließlich in PostgreSQL.
+Nach 60 Sekunden ohne erreichbares Kassen-WLAN öffnet der ESP32 zusätzlich sein
+Wartungs-WLAN `NFC-Reader-xxxxxx`. Es dient nur Diagnose und Wiederherstellung;
+sobald `ClubIQ-Kasse` wieder erreichbar ist, wird es automatisch abgeschaltet.
 
 ### ESP8266 oder manueller Rückfall
 
@@ -219,11 +216,9 @@ Wartungsweg erhalten:
 6. **Kopplung starten**, anschließend in Clubiq Ledger den sechsstelligen Code
    beim wartenden Leser bestätigen.
 
-Beim Umzug vom Heimnetz in das Vereinsheim muss danach nur das Vereins-WLAN auf
-der Wartungsseite geändert werden. Solange derselbe Raspberry mit demselben
-Hostnamen verwendet wird, bleiben Serveradresse, Zertifikat, RFID-Zuordnungen
-und Datenbank unverändert. Das Vereins-WLAN muss direkte Verbindungen zwischen
-Raspberry und Leser erlauben; ein isoliertes Gastnetz ist ungeeignet.
+Beim Umzug vom Heimnetz in das Vereinsheim bleiben WLAN-Name, lokale Adresse,
+Zertifikat, RFID-Zuordnungen und Datenbank unverändert. Nur das LAN-Kabel des
+Raspberry wird an den dortigen Router angeschlossen.
 
 `include/secrets.h` wird durch `.gitignore` nicht in Git gespeichert. Der
 Geräte-Token und das WLAN-Kennwort werden nicht im seriellen Monitor ausgegeben.
@@ -236,19 +231,20 @@ anmelden. Für den echten Leser muss die Vereinskasse öffentlich erreichbar sei
 oder der Scan über einen lokalen Vermittlungsserver laufen. Die RFID-Route selbst
 bleibt durch den zufälligen Geräte-Token geschützt.
 
-Der ESP8266 und ein noch nicht per Bluetooth eingerichteter ESP32 arbeiten im
-kombinierten Wartungsmodus:
+Der ESP8266 und ein noch nicht eingerichteter ESP32 arbeiten im kombinierten
+Wartungsmodus:
 
 - Wartungs-WLAN `NFC-Reader-xxxxxx` für Diagnose, Lesen und Schreiben
-- Verbindung zum Vereins-WLAN für NTP-Zeit und HTTPS-Übertragung
+- Verbindung zum ClubIQ-Kassen-WLAN für lokale Uhrzeit und HTTPS-Übertragung
 - automatische Wiederverbindung nach WLAN-Ausfällen
 - kurze Wiederholungssperre gegen versehentliche Doppelscans
 - sichere Schreibaufträge aus dem Adminbereich mit UID-Prüfung und Rücklesen
 - geschützter Fernneustart aus der Geräteverwaltung
 
 Der lokale Status ist nach Anmeldung unter `http://192.168.4.1` sichtbar.
-Bei einem gekoppelten ESP32 ist diese lokale WLAN-Seite bewusst ausgeschaltet;
-Status, Schreiben, Neustart und Updates werden dann in ClubIQ bedient.
+Bei einem eingerichteten ESP32 erscheint die lokale WLAN-Seite erst nach einer
+Minute Verbindungsverlust; Status, Schreiben, Neustart und Updates werden in
+ClubIQ bedient.
 
 ### Beschreiben aus der Vereinskassen-App
 
@@ -268,23 +264,21 @@ Unter **Admin → Sicherheit → RFID-Leser** kann ein aktiver Leser mit
 **Neu starten** kontrolliert neu gestartet werden. Ein laufender
 Kartenschreibauftrag wird dabei nicht unterbrochen. Der Leser bestätigt den
 Auftrag zuerst am Kassenserver, startet anschließend neu und verbindet sich
-selbstständig wieder mit dem Tablet. Der ESP8266 verbindet sich stattdessen mit
-dem Vereins-WLAN. Dafür muss eine OTA-fähige Firmware einmal per USB auf den
-Leser übertragen worden sein.
+selbstständig wieder mit dem ClubIQ-Kassen-WLAN. Dafür muss eine OTA-fähige
+Firmware einmal per USB auf den Leser übertragen worden sein.
 
 ### Firmware später ohne USB aktualisieren
 
 Ab Version 1.6.0 meldet der Leser seinen Firmwarestand an ClubIQ. Unter
 **Admin → Sicherheit → RFID-Leser** erscheint bei einer neueren, im
 ClubIQ-Container enthaltenen Firmware die Schaltfläche **Firmware
-aktualisieren**. Der ESP8266 lädt die Binärdatei über seine geprüfte
-HTTPS-Verbindung. Beim gekoppelten ESP32 lädt das Tablet die Binärdatei von
-ClubIQ und überträgt sie über die verschlüsselte BLE-Sitzung. Beide installieren
-sie in den OTA-Bereich und starten anschließend neu.
+aktualisieren**. ESP8266 und ESP32 laden die passende Binärdatei selbst über ihre
+geprüfte HTTPS-Verbindung zum Raspberry, installieren sie in den OTA-Bereich und
+starten anschließend neu. Der sichtbare App-Status zeigt Auftrag, Installation
+und anschließende Wiederanmeldung.
 
-Für den direkten Bluetooth-Betrieb muss Version 1.8.0 auf dem ESP32 einmal per USB
-installiert werden. Danach überträgt die App weitere Versionen geprüft per BLE-OTA;
-der ESP32 prüft Größe und SHA-256-Prüfsumme vor dem Neustart.
+Für diesen stabilen WLAN-Betrieb muss Version 1.9.2 auf dem ESP32 einmal per USB
+installiert werden. Danach sind weitere Versionen ohne USB über WLAN möglich.
 Während eines Kartenauftrags oder eines noch nicht übertragenen Scans wird kein
 Update gestartet. Während der Installation die Stromversorgung nicht trennen.
 
@@ -356,22 +350,22 @@ Für breitere NFC-Kompatibilität ist ein PN532/PN7150 meist geeigneter.
   Einrichtungs-Bluetooth mehr aus.
 - Bluetooth ist im Browser nicht verfügbar: ClubIQ über die installierte und
   vertrauenswürdige HTTPS-Adresse öffnen, nicht über eine HTTP-Adresse.
-- Gekoppelter ESP32 zeigt „Tablet wird gesucht“: ClubIQ am Tablet in den
-  Vordergrund holen und oben an der RFID-Ampel **Neu verbinden** wählen. Die App
-  versucht die Wiederverbindung zusätzlich nach Standby und Netzwechsel selbst.
-- Das Wartungs-WLAN des gekoppelten ESP32 fehlt: Das ist im Bluetooth-
-  Direktbetrieb beabsichtigt. Für Scans und OTA wird es nicht benötigt.
-- Einrichtung bleibt bei WLAN stehen: nur ein 2,4-GHz-WLAN verwenden und
-  prüfen, dass es kein isoliertes Gastnetz ist.
+- ESP32 bleibt offline: prüfen, ob Raspberry und Tablet das WLAN `ClubIQ-Kasse`
+  sehen und `sudo clubiq kassen-wlan-status` ausführen.
+- Wartungs-WLAN fehlt: Es erscheint erst nach 60 Sekunden ohne erreichbares
+  ClubIQ-Kassen-WLAN und verschwindet nach erfolgreicher Wiederverbindung.
+- Einrichtung bleibt bei WLAN stehen: Kennwort prüfen und sicherstellen, dass
+  der Raspberry-Hotspot auf 2,4 GHz läuft.
 - `Version=0x00/0xFF`: Versorgung oder SPI-Leitungen prüfen; Kabel kürzen.
 - Karte wird nicht erkannt: Es muss 13,56 MHz/ISO 14443 A sein; mittig auflegen.
 - Authentifizierung fehlgeschlagen: falscher Schlüssel oder Access Bits.
 - Schreiben verweigert: geschützter Block, falsche Kartengröße oder Access Bits.
 - Tablet öffnet die Seite nicht: mobile Daten kurz deaktivieren und
   `http://192.168.4.1` ausdrücklich mit `http://` eingeben.
-- Vereins-WLAN bleibt getrennt: SSID/Kennwort in `include/secrets.h` prüfen;
-  2,4-GHz-WLAN verwenden.
-- „Warte auf sichere Uhrzeit“: Internetzugriff auf NTP ist noch nicht möglich.
+- Kassen-WLAN bleibt getrennt: WLAN-Einrichtung in ClubIQ wiederholen; bei einem
+  bereits registrierten Leser muss dazu eine Karte am Leser aufgelegt werden.
+- „Warte auf sichere Uhrzeit“: `http://10.42.0.1:8080/clubiq-time` und den
+  Raspberry-Status prüfen; Internet ist für die lokale Uhrzeit nicht nötig.
 - „Übertragung nicht eingerichtet“: Geräte-Token oder Root-CA fehlt.
 - HTTP 401/403: Geräte-Token ist falsch, deaktiviert oder der private
   Hosting-Zugang blockiert das Gerät.
