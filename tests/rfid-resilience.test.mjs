@@ -179,6 +179,11 @@ test("ESP32 überträgt Scans und Updates abgesichert direkt über das Tablet",a
   for(const fragment of ["healthTimer","reconnect(reader?:RfidBleReader)","withTimeout","verwaiste","updateProgress","updatePhase","failActiveCommand"]){
     assert.ok(ble.includes(fragment),`Überwachter BLE-Neuaufbau oder OTA-Fortschritt fehlt: ${fragment}`);
   }
+  for(const fragment of ["connectionAttempt","attempt!==this.connectionAttempt","this.connectionAttempt+=1"]){
+    assert.ok(ble.includes(fragment),`Schutz gegen konkurrierende GATT-Verbindungen fehlt: ${fragment}`);
+  }
+  const runtimeConnect=ble.slice(ble.indexOf("private async connect()"),ble.indexOf("private scheduleReconnect"));
+  assert.ok(runtimeConnect.indexOf("if(gatt.connected)")<runtimeConnect.indexOf('addEventListener?.("gattserverdisconnected"'),"Der geplante Android-GATT-Neustart darf den Trennungs-Listener noch nicht auslösen");
   for(const fragment of ["client_command_failure","RFID_FIRMWARE_UPDATE_FAILED","tablet_transport"]){
     assert.ok(route.includes(fragment),`Sofortiger Abbruch eines fehlgeschlagenen Tablet-Updates fehlt: ${fragment}`);
   }

@@ -238,6 +238,7 @@ class RfidBleRuntime {
   private running=false;
   private paused=false;
   private connecting=false;
+  private connectionAttempt=0;
   private openingSession=false;
   private handshakePending=false;
   private retryTimer:ReturnType<typeof setTimeout>|null=null;
@@ -324,37 +325,52 @@ class RfidBleRuntime {
     if(!this.running||this.paused)return;
     if(this.connecting){this.scheduleReconnect(250);return}
     if(this.server?.connected)return;
+    const attempt=++this.connectionAttempt;
     this.connecting=true;this.update({state:"connecting",message:"Bluetooth-Leser wird verbunden …"});
     try{
       const selectedReader=this.preferredReader;
       const readers=selectedReader?[selectedReader]:await getAuthorizedRfidBleReaders();
+      if(attempt!==this.connectionAttempt||!this.running||this.paused)return;
       const preferred=typeof localStorage==="undefined"?"":localStorage.getItem("clubiq-rfid-ble-reader")||"";
       const reader=selectedReader||readers.find(item=>item.id===preferred)||readers[0];
       if(!reader){this.update({state:"idle",message:"Noch kein Bluetooth-Leser für diese Kasse freigegeben."});this.scheduleReconnect(5000);return}
       this.preferredReader=reader;
-      this.device=reader.device;this.device.addEventListener?.("gattserverdisconnected",this.disconnected);
       // Android kann nach einem Seiten- oder Kassenneustart noch eine verwaiste
       // GATT-Verbindung anzeigen. Der kontrollierte Neuaufbau verhindert, dass
-      // Chrome an ihr ohne aktive ClubIQ-Sitzung festhält.
-      if(reader.device.gatt!.connected){reader.device.gatt!.disconnect();await delay(180)}
-      this.server=await withTimeout(reader.device.gatt!.connect(),9_000,"Android hat die Bluetooth-Verbindung nicht rechtzeitig freigegeben.");
-      const service=await withTimeout(this.server.getPrimaryService(SERVICE_UUID),7_000,"ClubIQ-Dienst am Leser wurde nicht gefunden.");
+      // Chrome an ihr ohne aktive ClubIQ-Sitzung festhält. Der Listener wird
+      // absichtlich erst danach gesetzt, damit dieses geplante Trennen nicht
+      // sofort einen zweiten, konkurrierenden Verbindungsversuch auslöst.
+      const gatt=reader.device.gatt!;
+      if(gatt.connected){gatt.disconnect();await delay(300)}
+      if(attempt!==this.connectionAttempt||!this.running||this.paused)return;
+      const server=await withTimeout(gatt.connect(),9_000,"Android hat die Bluetooth-Verbindung nicht rechtzeitig freigegeben.");
+      if(attempt!==this.connectionAttempt||!this.running||this.paused)return;
+      this.device=reader.device;
+      this.server=server;
+      this.device.addEventListener?.("gattserverdisconnected",this.disconnected);
+      const service=await withTimeout(server.getPrimaryService(SERVICE_UUID),7_000,"ClubIQ-Dienst am Leser wurde nicht gefunden.");
+      if(attempt!==this.connectionAttempt||!server.connected)return;
       [this.rx,this.tx]=await withTimeout(Promise.all([service.getCharacteristic(RX_UUID),service.getCharacteristic(TX_UUID)]),7_000,"ClubIQ-Datenkanal am Leser wurde nicht gefunden.");
+      if(attempt!==this.connectionAttempt||!server.connected)return;
       // Ältere BLE-Firmware kann bereits sicher scannen, besitzt aber noch
       // keine OTA-Characteristic. Das darf die Kassensitzung nicht blockieren.
       this.ota=await service.getCharacteristic(OTA_UUID).catch(()=>null);
       await this.tx.startNotifications();this.tx.addEventListener("characteristicvaluechanged",this.notification);
+      if(attempt!==this.connectionAttempt||!server.connected)return;
       this.retryDelay=800;this.update({state:"connecting",message:"Leser gefunden. Sichere Sitzung wird aufgebaut …",readerName:reader.name,otaSupported:Boolean(this.ota)});
       await this.beginHandshake();
     }catch(reason){
+      if(attempt!==this.connectionAttempt)return;
       const unsupported=reason instanceof Error&&/nicht unterstützt|HTTPS-Adresse/.test(reason.message);
       this.update({state:unsupported?"unsupported":"error",message:reason instanceof Error?reason.message:"Bluetooth-Verbindung fehlgeschlagen."});
       this.disconnect(false);if(!unsupported)this.scheduleReconnect();
-    }finally{this.connecting=false}
+    }finally{if(attempt===this.connectionAttempt)this.connecting=false}
   }
 
   private scheduleReconnect(delayMs?:number){if(!this.running||this.paused||this.retryTimer)return;const wait=delayMs??this.retryDelay;this.retryDelay=Math.min(this.retryDelay*2,10_000);this.retryTimer=setTimeout(()=>{this.retryTimer=null;void this.connect()},wait)}
   private disconnect(schedule=true){
+    this.connectionAttempt+=1;
+    this.connecting=false;
     if(this.retryTimer){clearTimeout(this.retryTimer);this.retryTimer=null}
     if(this.handshakeTimer){clearTimeout(this.handshakeTimer);this.handshakeTimer=null}
     if(this.heartbeatWatchdog){clearInterval(this.heartbeatWatchdog);this.heartbeatWatchdog=null}
