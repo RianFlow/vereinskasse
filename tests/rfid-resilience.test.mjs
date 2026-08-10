@@ -138,17 +138,20 @@ test("Android richtet den ESP32-Leser direkt und verschlüsselt per Bluetooth ei
 });
 
 test("RFID-Leser wird einfach eingerichtet und danach sicher per OTA aktualisiert",async()=>{
-  const [component,commands,devices,firmware,config,readerUi,dockerfile,schema,d1Migration,postgresMigration]=await Promise.all([
+  const [component,commands,devices,firmware,config,readerUi,dockerfile,schema,d1Migration,postgresMigration,sharedVersion]=await Promise.all([
     read("app/RfidIntegration.tsx"),read("app/api/rfid/commands/route.ts"),read("app/api/rfid/devices/route.ts"),
     read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),read("hardware/NodeMCU-V3-RC522-Tablet/include/config.h"),
     read("hardware/NodeMCU-V3-RC522-Tablet/include/web_ui.h"),read("Dockerfile"),read("db/schema.ts"),
-    read("drizzle/0026_simple_rfid_ota.sql"),read("postgres/migrations/0003_rfid_firmware.sql")
+    read("drizzle/0026_simple_rfid_ota.sql"),read("postgres/migrations/0003_rfid_firmware.sql"),read("app/rfid-firmware.ts")
   ]);
   for(const fragment of ["Android-Auswahl einmalig öffnen","Nur neuen Leser mit ClubIQ verknüpfen","Bluetooth verbinden","Firmwarestand unbekannt · Bluetooth einmal verbinden","neuer als App","Firmware aktualisieren",'action:"firmware"'])assert.ok(component.includes(fragment),`Vereinfachte App-Führung fehlt: ${fragment}`);
   for(const fragment of ["LATEST_RFID_FIRMWARE","x-rfid-firmware-version",'command.block===-2?"firmware"',"RFID_FIRMWARE_UPDATE_QUEUED","firmwareUrl"])assert.ok(commands.includes(fragment),`OTA-Befehl fehlt: ${fragment}`);
   assert.ok(devices.includes("firmware_version firmwareVersion"),"Firmwarestand wird nicht angezeigt");
   for(const fragment of ["ESP8266httpUpdate.h","HTTPUpdate.h","ESPhttpUpdate.update","clubiqHttpUpdate.update","performFirmwareUpdate","reportDeviceCommandResult",'action == "firmware"',"StatusLedMode::Updating"])assert.ok(firmware.includes(fragment),`Firmware-OTA fehlt: ${fragment}`);
   assert.ok(config.includes('FIRMWARE_VERSION[] = "1.9.1"'),"Firmwareversion ist nicht eingebettet");
+  assert.ok(sharedVersion.includes('LATEST_RFID_FIRMWARE="1.9.1"'),"Zentrale OTA-Version fehlt");
+  assert.ok(component.includes('from "./rfid-firmware"')&&commands.includes('from "../../../rfid-firmware"'),"Oberfläche und OTA-Route verwenden nicht dieselbe Firmwareversion");
+  assert.ok(!component.includes('const latestRfidFirmware='),"Die Oberfläche enthält weiterhin eine abweichende Firmwareversion");
   const setupSource=firmware.slice(firmware.indexOf("void setup()"));
   assert.ok(setupSource.indexOf("startBleProvisioning();")<setupSource.indexOf("startReaderWifi();"),"BLE muss vor dem WLAN initialisiert werden");
   assert.ok(!firmware.includes("WiFi.setSleep(false);"),"ESP32-WLAN darf den BLE-Start nicht durch eine zusätzliche Sleep-Umschaltung stören");
