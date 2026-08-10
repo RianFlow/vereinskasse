@@ -27,8 +27,10 @@ test("kapselt PostgreSQL und veröffentlicht nur den HTTPS-Zugang", async () => 
   assert.match(caddy, /Content-Type application\/x-x509-ca-cert/);
   assert.match(caddy, /Content-Disposition "attachment; filename=clubiq-ledger-ca\.crt"/);
   assert.match(caddy, /https:\/\/\{\$CLUBIQ_LAN_IP:127\.0\.0\.1\}/);
-  assert.match(caddy, /default_sni \{\$CLUBIQ_LAN_IP:127\.0\.0\.1\}/);
+  assert.match(caddy, /default_sni \{\$CLUBIQ_KIOSK_IP:10\.42\.0\.1\}/);
+  assert.match(caddy, /https:\/\/\{\$CLUBIQ_KIOSK_IP:10\.42\.0\.1\}/);
   assert.match(compose, /VINEXT_TRUSTED_HOSTS: .*CLUBIQ_LAN_IP/);
+  assert.match(compose, /VINEXT_TRUSTED_HOSTS: .*CLUBIQ_KIOSK_IP/);
 });
 
 test("stellt Tailscale Serve nur ueber einen lokalen Proxy-Eingang bereit", async () => {
@@ -181,5 +183,17 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(install, /Raspberry Pi OS 64-Bit/);
   assert.match(install, /download\.docker\.com\/linux\/debian/);
   assert.match(install, /CLUBIQ_LAN_IP/);
-  assert.match(readme, /clubiq netzwerk-aktualisieren/);
+  assert.match(readme, /clubiq kassen-wlan-einrichten/);
+});
+
+test("richtet ein dauerhaftes 2,4-GHz-Kassen-WLAN mit LAN als einzigem Uplink ein", async () => {
+  const [manager, install, environment, caddy] = await Promise.all([
+    read("deploy/docker/clubiq"),read("deploy/docker/install.sh"),read("deploy/docker/.env.example"),read("deploy/docker/Caddyfile")
+  ]);
+  for(const fragment of ["kassen-wlan-einrichten|kiosk-wifi-setup","802-11-wireless.mode ap","802-11-wireless.band bg","802-11-wireless.channel 6","ipv4.method shared","10.42.0.1/24","--ohne-lan"])
+    assert.ok(manager.includes(fragment),`Kassen-WLAN-Einrichtung fehlt: ${fragment}`);
+  assert.ok(manager.includes("ip -4 -o address show dev eth0"),"Internet darf nicht versehentlich über ein zweites WLAN erwartet werden");
+  assert.ok(install.includes("network-manager"),"NetworkManager wird nicht installiert");
+  assert.ok(environment.includes("CLUBIQ_KIOSK_WIFI_SSID=ClubIQ-Kasse")&&environment.includes("CLUBIQ_KIOSK_IP=10.42.0.1"),"Stabile Kassen-WLAN-Vorgaben fehlen");
+  assert.ok(caddy.includes("/clubiq-time"),"Der RFID-Leser kann offline keine lokale Startzeit laden");
 });

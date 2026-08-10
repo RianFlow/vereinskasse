@@ -23,7 +23,7 @@ architecture="$(dpkg --print-architecture)"
 install_docker() {
   echo "Docker wird aus dem offiziellen Paketarchiv installiert."
   apt-get update
-  apt-get install --yes ca-certificates curl git openssl avahi-daemon
+  apt-get install --yes ca-certificates curl git openssl avahi-daemon network-manager
   apt-get remove --yes docker.io docker-compose docker-doc docker-buildx podman-docker containerd runc 2>/dev/null || true
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
@@ -50,7 +50,7 @@ else
     apt-get install --yes docker-compose-plugin
   }
   apt-get update
-  apt-get install --yes git openssl avahi-daemon curl
+  apt-get install --yes git openssl avahi-daemon curl network-manager
 fi
 systemctl enable --now avahi-daemon
 

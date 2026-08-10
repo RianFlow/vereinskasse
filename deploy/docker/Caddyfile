@@ -1,20 +1,34 @@
 {
   admin off
   auto_https disable_redirects
-  default_sni {$CLUBIQ_LAN_IP:127.0.0.1}
+  default_sni {$CLUBIQ_KIOSK_IP:10.42.0.1}
 }
 
 http://:8080 {
-  @certificate path /vereinskasse-ca.crt /root.crt
-  rewrite @certificate /root.crt
-  root * /data/caddy/pki/authorities/local
-  file_server
-  header {
-    Content-Type application/x-x509-ca-cert
-    Content-Disposition "attachment; filename=clubiq-ledger-ca.crt"
-    Cache-Control "no-store"
-    X-Content-Type-Options "nosniff"
+  @readerClock path /clubiq-time
+  handle @readerClock {
+    rewrite * /api/rfid/time
+    reverse_proxy app:3000 {
+      header_up Host {$CLUBIQ_HOSTNAME:vereinskasse.local}
+      header_up X-Forwarded-Proto http
+    }
+    header Cache-Control "no-store"
   }
+
+  @certificate path /vereinskasse-ca.crt /root.crt
+  handle @certificate {
+    rewrite * /root.crt
+    root * /data/caddy/pki/authorities/local
+    file_server
+    header {
+      Content-Type application/x-x509-ca-cert
+      Content-Disposition "attachment; filename=clubiq-ledger-ca.crt"
+      Cache-Control "no-store"
+      X-Content-Type-Options "nosniff"
+    }
+  }
+
+  respond 404
 }
 
 # Ausschliesslich auf dem Raspberry-Loopback veroeffentlicht. Tailscale Serve
@@ -38,7 +52,7 @@ http://{$CLUBIQ_HOSTNAME:vereinskasse.local} {
   redir https://{$CLUBIQ_HOSTNAME:vereinskasse.local}{uri} permanent
 }
 
-https://{$CLUBIQ_HOSTNAME:vereinskasse.local}, https://{$CLUBIQ_LAN_IP:127.0.0.1} {
+https://{$CLUBIQ_HOSTNAME:vereinskasse.local}, https://{$CLUBIQ_LAN_IP:127.0.0.1}, https://{$CLUBIQ_KIOSK_IP:10.42.0.1} {
   tls internal
   encode zstd gzip
   @rfidCertificate path /rfid-ca.crt

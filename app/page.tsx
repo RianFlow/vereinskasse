@@ -6,8 +6,7 @@ import { TabletNumberField } from "./TabletNumberField";
 import { RandomRewardsPanel } from "./RandomRewardsPanel";
 import { ProductIcon, productIconOptions } from "./ProductIcon";
 import { ProductManager } from "./ProductManager";
-import { RfidAdminLogin, RfidBalanceLookup, RfidBleBridge, RfidDevicePanel, RfidMemberCardDialog, RfidProfileLogin, RfidScanner, RfidShiftLogin } from "./RfidIntegration";
-import { setRfidBleDisplayState } from "./rfid-ble";
+import { RfidAdminLogin, RfidBalanceLookup, RfidDevicePanel, RfidMemberCardDialog, RfidProfileLogin, RfidScanner, RfidShiftLogin } from "./RfidIntegration";
 import { IconArrowLeft,IconCalendarEvent,IconCashBanknote,IconGift,IconHome2,IconMaximize,IconMinimize,IconMoon,IconNfc,IconPackage,IconPlus,IconReceiptEuro,IconSearch,IconSettings,IconShieldLock,IconSun,IconTicket,IconUserCircle,IconUsers,IconUsersGroup } from "@tabler/icons-react";
 import { APP_NAME, APP_SLOGAN } from "./app-info";
 
@@ -183,13 +182,6 @@ export default function Home() {
     let lastDisplaySync=0;
     const syncDisplay=()=>{
       lastDisplaySync=Date.now();
-      setRfidBleDisplayState({
-        state:displayActive?"cart":"idle",
-        customerName:displayCustomerName,
-        itemsText:displayItems,
-        itemCount,
-        totalCents:Math.round(total*100)
-      });
       fetch("/api/rfid/display",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({
         state:displayActive?"cart":"idle",
         customerName:displayCustomerName,
@@ -235,9 +227,8 @@ export default function Home() {
   };
 
   if(splashVisible)return <main className={`profile-loading clubiq-splash ${splashLeaving?"leaving":""}`} aria-label={`${APP_NAME} wird vorbereitet`}><Image src="/brand/clubiq-ledger-splash.png" alt={`${APP_NAME} – ${APP_SLOGAN}`} fill sizes="100vw" priority unoptimized/><strong className="sr-only">{APP_NAME} wird vorbereitet</strong></main>;
-  if(!activeProfile)return <><RfidBleBridge/><ProfileGateSecure profiles={profiles}/></>;
+  if(!activeProfile)return <ProfileGateSecure profiles={profiles}/>;
   return <MembersContext.Provider value={clubMembers}><main className="app kiosk-design light" style={{"--green":activeProfile.color} as React.CSSProperties}>
-    <RfidBleBridge/>
     <header>
       <div className="brand clubiq-app-brand"><span className="clubiq-header-symbol"><Image src="/brand/clubiq-ledger-symbol-gold.svg" alt="" width={46} height={46} priority unoptimized/></span><div><strong>{APP_NAME}</strong><small className="clubiq-header-slogan">{APP_SLOGAN}</small><button className="profile-switch" onClick={async()=>{await fetch("/api/profile-session",{method:"DELETE"});location.reload()}}>{activeProfile.name} <span>wechseln</span></button></div></div>
       <span className="screen-title">{view==="admin"?"Hauptmenü":operationMode==="club"?"Vereinsabend":"Veranstaltung"}</span>

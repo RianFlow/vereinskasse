@@ -114,7 +114,7 @@ services:
       CLUBIQ_SMTP_FROM: ${CLUBIQ_SMTP_FROM:-}
       CLUBIQ_SMTP_REPLY_TO: ${CLUBIQ_SMTP_REPLY_TO:-}
       VINEXT_TRUST_PROXY: "1"
-      VINEXT_TRUSTED_HOSTS: ${CLUBIQ_HOSTNAME:-vereinskasse.local},${CLUBIQ_LAN_IP:-127.0.0.1}
+      VINEXT_TRUSTED_HOSTS: ${CLUBIQ_HOSTNAME:-vereinskasse.local},${CLUBIQ_LAN_IP:-127.0.0.1},${CLUBIQ_KIOSK_IP:-10.42.0.1}
     secrets:
       - postgres_app_password
       - initial_profile_pin
@@ -154,6 +154,7 @@ services:
     environment:
       CLUBIQ_HOSTNAME: ${CLUBIQ_HOSTNAME:-vereinskasse.local}
       CLUBIQ_LAN_IP: ${CLUBIQ_LAN_IP:-127.0.0.1}
+      CLUBIQ_KIOSK_IP: ${CLUBIQ_KIOSK_IP:-10.42.0.1}
       TZ: ${TZ:-Europe/Berlin}
     ports:
       - "80:80"

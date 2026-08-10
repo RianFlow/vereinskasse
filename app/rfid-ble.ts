@@ -1,6 +1,7 @@
 const SERVICE_UUID="4a4f0001-7b5a-4f52-8844-434c55424951";
 const RX_UUID="4a4f0002-7b5a-4f52-8844-434c55424951";
 const TX_UUID="4a4f0003-7b5a-4f52-8844-434c55424951";
+const KIOSK_API_URL="https://10.42.0.1/api/rfid";
 
 type BluetoothValueEvent=Event&{target:{value?:DataView|null}};
 type BluetoothCharacteristic={
@@ -38,7 +39,7 @@ const progressMessages:Record<string,string>={
   ready:"Leser gefunden. Einstellungen werden sicher übertragen …",
   confirmation_required:"Sicherheitsfreigabe: Jetzt eine RFID-Karte am Leser auflegen.",
   physical_confirmed:"Karte erkannt. Die neue Verbindung wird eingerichtet …",
-  wifi_connecting:"Leser verbindet sich mit dem Vereins-WLAN …",
+  wifi_connecting:"Leser verbindet sich mit ClubIQ-Kasse …",
   securing_connection:"Sichere ClubIQ-Verbindung wird aufgebaut …",
   retrying_server:"ClubIQ wird erneut gesucht …",
   pairing:"Leser gefunden. Sichere Freigabe läuft automatisch …",
@@ -164,11 +165,10 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
     const certificateResponse=await fetch("/rfid-ca.crt",{cache:"no-store"});
     const rootCa=await certificateResponse.text();
     if(!certificateResponse.ok||!rootCa.includes("BEGIN CERTIFICATE"))throw new Error("Das ClubIQ-Zertifikat konnte nicht geladen werden.");
-    const apiUrl=`${location.origin}/api/rfid`;
     await writeFrame(rx,{
       type:"provision",version:1,
       name:base64(input.name),ssid:base64(input.ssid),password:base64(input.password),
-      apiUrl:base64(apiUrl),rootCa:base64(rootCa)
+      apiUrl:base64(KIOSK_API_URL),rootCa:base64(rootCa)
     });
     onProgress({state:"transferred",message:"Einstellungen übertragen. Der Leser verbindet sich jetzt …"});
     await Promise.race([

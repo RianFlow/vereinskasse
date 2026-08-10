@@ -6,10 +6,10 @@ type SmtpConfig={host:string;port:number;security:SmtpSecurity;user:string;passw
 
 const clean=(value:unknown)=>String(value||"").trim();
 const validMailbox=(value:string)=>value.length<=320&&!/[\r\n]/.test(value)&&/^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/.test(value.replace(/^.*<([^>]+)>.*$/,"$1"));
+const runtimeImport=(specifier:string)=>import(/* @vite-ignore */ specifier);
 
 async function readPassword(path:string){
-  const moduleName="node:fs/promises";
-  const fs=await import(moduleName) as {readFile:(file:string,encoding:string)=>Promise<string>};
+  const fs=await runtimeImport("node:fs/promises") as {readFile:(file:string,encoding:string)=>Promise<string>};
   return (await fs.readFile(path,"utf8")).trim();
 }
 
@@ -38,8 +38,7 @@ export function smtpPublicStatus():SmtpPublicStatus{
 
 async function transporter(){
   const config=await smtpConfig();
-  const moduleName="nodemailer";
-  const imported=await import(moduleName) as {default?:{createTransport:(options:Record<string,unknown>)=>unknown};createTransport?:(options:Record<string,unknown>)=>unknown};
+  const imported=await runtimeImport("nodemailer") as {default?:{createTransport:(options:Record<string,unknown>)=>unknown};createTransport?:(options:Record<string,unknown>)=>unknown};
   const createTransport=imported.default?.createTransport||imported.createTransport;
   if(!createTransport)throw new Error("SMTP_LIBRARY_UNAVAILABLE");
   const transport=createTransport({

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { IconAlertCircle, IconBluetooth, IconCheck, IconCopy, IconNfc, IconRefresh, IconWifi } from "@tabler/icons-react";
-import { getAuthorizedRfidBleReaders, pairRfidBleReader, rfidBleRuntime, selectRfidBleReader, type RfidBleReader, type RfidBleRuntimeStatus } from "./rfid-ble";
+import { getAuthorizedRfidBleReaders, provisionRfidReader, selectRfidBleReader, type RfidBleReader } from "./rfid-ble";
 import { LATEST_RFID_FIRMWARE } from "./rfid-firmware";
 
 type Member={id:string;name:string;role:string;initials:string;active?:boolean};
@@ -16,24 +16,6 @@ type ScannerState=
 
 let rfidAudioContext:AudioContext|null=null;
 
-export function RfidBleBridge(){
-  useEffect(()=>{
-    const wake=()=>{if(document.visibilityState==="visible")rfidBleRuntime.ensureConnection()};
-    rfidBleRuntime.start();
-    document.addEventListener("visibilitychange",wake);
-    window.addEventListener("pageshow",wake);
-    window.addEventListener("focus",wake);
-    window.addEventListener("online",wake);
-    return()=>{
-      document.removeEventListener("visibilitychange",wake);
-      window.removeEventListener("pageshow",wake);
-      window.removeEventListener("focus",wake);
-      window.removeEventListener("online",wake);
-      rfidBleRuntime.stop();
-    };
-  },[]);
-  return null;
-}
 async function playRfidRecognitionTone(){
   try{
     rfidAudioContext??=new AudioContext();
@@ -56,12 +38,9 @@ async function playRfidRecognitionTone(){
 
 export function RfidScanner({onSelect}:{members:Member[];onSelect:(member:Member)=>void}){
   const [state,setState]=useState<ScannerState>({kind:"waiting",deviceCount:0});
-  const [bleStatus,setBleStatus]=useState<RfidBleRuntimeStatus>(()=>rfidBleRuntime.snapshot());
-  const [reconnecting,setReconnecting]=useState(false);
   const stateRef=useRef(state),onSelectRef=useRef(onSelect),holdUntil=useRef(0);
   useEffect(()=>{stateRef.current=state},[state]);
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
-  useEffect(()=>rfidBleRuntime.subscribe(setBleStatus),[]);
 
   useEffect(()=>{
     let stopped=false,busy=false;
@@ -93,51 +72,20 @@ export function RfidScanner({onSelect}:{members:Member[];onSelect:(member:Member
 
   const dismiss=()=>{holdUntil.current=0;setState({kind:"waiting",deviceCount:state.deviceCount})};
 
-  const reconnect=async()=>{
-    if(reconnecting)return;
-    setReconnecting(true);holdUntil.current=0;
-    try{
-      const readers=await getAuthorizedRfidBleReaders();
-      const preferredId=typeof localStorage!=="undefined"?localStorage.getItem("clubiq-rfid-ble-reader"):null;
-      const reader=readers.find(candidate=>candidate.id===preferredId)||readers[0]||await selectRfidBleReader();
-      rfidBleRuntime.prefer(reader);
-      setState({kind:"waiting",deviceCount:stateRef.current.deviceCount});
-    }catch(reason){
-      setState({kind:"error",deviceCount:stateRef.current.deviceCount,message:reason instanceof Error?reason.message:"Bluetooth-Verbindung konnte nicht gestartet werden."});
-    }finally{
-      setReconnecting(false);
-    }
-  };
-
-  const bleKnown=Boolean(bleStatus.readerName||bleStatus.hardwareId);
-  const reconnectable=state.kind!=="recognized"&&state.kind!=="unknown"&&bleStatus.state!=="unsupported"&&(
-    bleStatus.state==="error"||bleStatus.state==="connecting"&&bleKnown||!state.deviceCount&&bleStatus.state==="idle"
-  );
-
   const copy=state.kind==="recognized"
     ?{title:`${state.member.name.split(" ")[0]} erkannt`,detail:`${state.member.name} ist ausgewählt. Anderes Mitglied scannen: nächste Karte auflegen.`}
     :state.kind==="unknown"
       ?{title:"Unbekannte Karte",detail:`UID ${state.scan.uid} kann im Adminbereich beim Mitglied zugeordnet werden.`}
       :state.kind==="error"
         ?{title:"RFID-Fehler",detail:state.message}
-        :reconnecting
-          ?{title:"RFID verbindet",detail:"Die Verbindung zum Kartenleser wird neu aufgebaut."}
-          :bleStatus.state==="online"
-            ?{title:"RFID bereit",detail:`${bleStatus.readerName||"RFID-Leser"} ist verbunden · Karte auflegen.`}
-            :bleStatus.state==="connecting"
-              ?{title:"RFID verbindet",detail:bleKnown?"Automatischer Neuaufbau läuft · antippen für sofortigen Versuch.":"Bluetooth-Leser wird gesucht."}
-              :bleStatus.state==="error"
-                ?{title:"RFID getrennt",detail:"Antippen, um den Kartenleser sofort neu zu verbinden."}
-                :state.deviceCount
+        :state.deviceCount
           ?{title:"RFID bereit",detail:`${state.deviceCount===1?"RFID-Leser bereit":`${state.deviceCount} RFID-Leser bereit`} · Karte auflegen.`}
-                  :{title:"RFID offline",detail:bleStatus.state==="unsupported"?"Dieser Browser unterstützt Bluetooth-Leser nicht.":"Antippen, um den Kartenleser neu zu verbinden."};
+          :{title:"RFID offline",detail:"Der Leser verbindet sich automatisch mit dem ClubIQ-Kassen-WLAN."};
 
-  const light=state.kind==="recognized"||state.kind==="waiting"&&(bleStatus.state==="online"||Boolean(state.deviceCount))&&bleStatus.state!=="error"&&bleStatus.state!=="connecting"?"green":state.kind==="unknown"||reconnecting||bleStatus.state==="connecting"?"yellow":"red";
-  const activate=()=>{if(reconnectable)void reconnect();else dismiss()};
-  return <button type="button" className={`rfid-header-status ${state.kind} ${light}${reconnectable?" reconnectable":""}${reconnecting?" reconnecting":""}`} onClick={activate} aria-live="polite" aria-label={`${copy.title}. ${copy.detail}`} title={copy.detail}>
+  const light=state.kind==="recognized"||state.kind==="waiting"&&Boolean(state.deviceCount)?"green":state.kind==="unknown"?"yellow":"red";
+  return <button type="button" className={`rfid-header-status ${state.kind} ${light}`} onClick={dismiss} aria-live="polite" aria-label={`${copy.title}. ${copy.detail}`} title={copy.detail}>
     <span className="rfid-traffic-light" aria-hidden="true"><i/><i/><i/></span>
     <span className="rfid-status-copy"><strong>{copy.title}</strong><small>{copy.detail}</small></span>
-    {reconnectable&&<span className="rfid-reconnect-cue" aria-hidden="true"><IconRefresh size={14}/><b>Neu verbinden</b></span>}
   </button>;
 }
 
@@ -168,7 +116,7 @@ export function RfidAdminLogin({expectedMemberId,requiredRole,onVerified}:{expec
         }else if(data.state==="mismatch"){
           holdUntil.current=Date.now()+3500;setState("mismatch");setMessage(`Die Karte gehört zu ${data.member?.name||"einer anderen Person"}.`);
         }else if(Date.now()>=holdUntil.current){
-          const online=Number(data.deviceCount||0)>0;setState("waiting");setMessage(online?"Leser ist online. Admin-Chip jetzt auflegen.":"Kein RFID-Leser online. Strom und Vereins-WLAN prüfen.");
+          const online=Number(data.deviceCount||0)>0;setState("waiting");setMessage(online?"Leser ist online. Admin-Chip jetzt auflegen.":"Kein RFID-Leser online. Strom und Kassen-WLAN prüfen.");
         }
       }catch(reason){
         if(!stopped){setState("error");setMessage(reason instanceof Error?reason.message:"RFID-Anmeldung fehlgeschlagen")}
@@ -201,7 +149,7 @@ export function RfidShiftLogin({onVerified}:{onVerified:(member:Member)=>void}){
           finished.current=true;setState("success");setMessage(`✓ ${data.member.name} öffnet die Kasse.`);void playRfidRecognitionTone();
           setTimeout(()=>{if(!stopped)onVerifiedRef.current(data.member)},300);
         }else if(data.state==="unknown"){setState("unknown");setMessage("Diese Karte ist noch keinem aktiven Mitglied zugeordnet.")}
-        else{const online=Number(data.deviceCount||0)>0;setState("waiting");setMessage(online?"Leser ist bereit. Mitgliedschip jetzt auflegen.":"Kein RFID-Leser online. Strom und Vereins-WLAN prüfen.")}
+        else{const online=Number(data.deviceCount||0)>0;setState("waiting");setMessage(online?"Leser ist bereit. Mitgliedschip jetzt auflegen.":"Kein RFID-Leser online. Strom und Kassen-WLAN prüfen.")}
       }catch(reason){if(!stopped){setState("error");setMessage(reason instanceof Error?reason.message:"RFID-Anmeldung fehlgeschlagen")}}
       finally{busy=false}
     };
@@ -283,7 +231,7 @@ export function RfidMemberCardDialog({member,onClose,onSaved}:{member:Member;onC
   useEffect(()=>{
     if(phase!=="scan")return;
     let stopped=false,busy=false;
-    const poll=async()=>{if(stopped||busy)return;busy=true;try{const response=await fetch("/api/rfid",{cache:"no-store"}),data=await response.json();if(!response.ok)throw new Error(data.error);if(data.scan&&!stopped){setScan(data.scan);setPhase("ready");setMessage(`Karte ${data.scan.uid} erkannt.`);void playRfidRecognitionTone()}else if(!stopped)setMessage(Number(data.deviceCount||0)>0?"Leser ist online. Karte jetzt auflegen.":"Kein RFID-Leser online. Strom, Vereins-WLAN und Firmware prüfen.")}catch(reason){if(!stopped)setMessage(reason instanceof Error?reason.message:"Lesefehler")}finally{busy=false}};
+    const poll=async()=>{if(stopped||busy)return;busy=true;try{const response=await fetch("/api/rfid",{cache:"no-store"}),data=await response.json();if(!response.ok)throw new Error(data.error);if(data.scan&&!stopped){setScan(data.scan);setPhase("ready");setMessage(`Karte ${data.scan.uid} erkannt.`);void playRfidRecognitionTone()}else if(!stopped)setMessage(Number(data.deviceCount||0)>0?"Leser ist online. Karte jetzt auflegen.":"Kein RFID-Leser online. Strom, Kassen-WLAN und Firmware prüfen.")}catch(reason){if(!stopped)setMessage(reason instanceof Error?reason.message:"Lesefehler")}finally{busy=false}};
     poll();const timer=setInterval(poll,1000);return()=>{stopped=true;clearInterval(timer)};
   },[phase]);
   const watch=async(id:string)=>{
@@ -319,72 +267,51 @@ const firmwareNeedsUpdate=(value?:string|null)=>value?compareFirmware(value,LATE
 
 export function RfidDevicePanel(){
   const [devices,setDevices]=useState<Device[]>([]),[cards,setCards]=useState<CardMapping[]>([]),[pairings,setPairings]=useState<Pairing[]>([]),[pairCodes,setPairCodes]=useState<Record<string,string>>({});
-  const [name,setName]=useState("RFID-Leser Vereinsheim"),[token,setToken]=useState(""),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false),[pairingBusy,setPairingBusy]=useState<string|null>(null),[restarting,setRestarting]=useState<string|null>(null),[updating,setUpdating]=useState<string|null>(null),[copied,setCopied]=useState(false);
-  const [bleName,setBleName]=useState("RFID-Leser Vereinsheim"),[bleBusy,setBleBusy]=useState(false),[bleState,setBleState]=useState("idle"),[bleMessage,setBleMessage]=useState("Leser einschalten und in der Nähe des Tablets bereithalten.");
+  const [name,setName]=useState("RFID-Leser Vereinsheim"),[token,setToken]=useState(""),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false),[pairingBusy,setPairingBusy]=useState<string|null>(null),[restarting,setRestarting]=useState<string|null>(null),[updating,setUpdating]=useState<string|null>(null),[updatePhase,setUpdatePhase]=useState(""),[copied,setCopied]=useState(false);
+  const [bleName,setBleName]=useState("RFID-Leser Vereinsheim"),[kioskSsid,setKioskSsid]=useState("ClubIQ-Kasse"),[kioskPassword,setKioskPassword]=useState(""),[bleBusy,setBleBusy]=useState(false),[bleState,setBleState]=useState("idle"),[bleMessage,setBleMessage]=useState("Leser einschalten und für die einmalige Einrichtung bereithalten.");
   const [setupMode,setSetupMode]=useState<"esp8266"|"esp32">("esp32"),[bleSupport,setBleSupport]=useState<"checking"|"ready"|"unavailable">("checking");
   const [bleReaders,setBleReaders]=useState<RfidBleReader[]>([]),[bleReader,setBleReader]=useState<RfidBleReader|null>(null),[bleSearchBusy,setBleSearchBusy]=useState(false);
-  const [runtimeStatus,setRuntimeStatus]=useState<RfidBleRuntimeStatus>(()=>rfidBleRuntime.snapshot());
+  const [statusClock,setStatusClock]=useState(0);
   const selectedBleSuffix=bleReader?.name.match(/^ClubIQ-RFID-([0-9A-F]{6})$/i)?.[1]?.toUpperCase()||"";
   const selectedRegisteredDevice=selectedBleSuffix?devices.find(device=>device.hardwareId===`ESP32-${selectedBleSuffix}`):undefined;
   const load=async()=>{try{const [deviceResponse,pairResponse]=await Promise.all([fetch("/api/rfid/devices",{cache:"no-store"}),fetch("/api/rfid/pair",{cache:"no-store"})]),[deviceData,pairData]=await Promise.all([deviceResponse.json(),pairResponse.json()]);if(!deviceResponse.ok)throw new Error(deviceData.error);if(!pairResponse.ok)throw new Error(pairData.error);setDevices(deviceData.devices||[]);setCards(deviceData.cards||[]);setPairings(pairData.pairings||[])}catch(reason){setError(reason instanceof Error?reason.message:"RFID-Leser konnten nicht geladen werden")}};
   useEffect(()=>{let stopped=false;const refresh=()=>{if(!stopped)void load()};refresh();const timer=setInterval(refresh,2000);return()=>{stopped=true;clearInterval(timer)}},[]);
+  useEffect(()=>{const refreshClock=()=>setStatusClock(Date.now());refreshClock();const timer=setInterval(refreshClock,15_000);return()=>clearInterval(timer)},[]);
   useEffect(()=>{const timer=window.setTimeout(()=>setBleSupport(window.isSecureContext&&(navigator as Navigator&{bluetooth?:unknown}).bluetooth?"ready":"unavailable"),0);return()=>window.clearTimeout(timer)},[]);
-  useEffect(()=>rfidBleRuntime.subscribe(setRuntimeStatus),[]);
   useEffect(()=>{if(setupMode!=="esp32"||bleSupport!=="ready")return;let stopped=false;void getAuthorizedRfidBleReaders().then(readers=>{if(stopped)return;setBleReaders(readers);if(readers.length===1)setBleReader(current=>current||readers[0])}).catch(()=>undefined);return()=>{stopped=true}},[setupMode,bleSupport]);
   const create=async()=>{if(name.trim().length<3||busy)return;setBusy(true);setError("");try{const response=await fetch("/api/rfid/devices",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:name.trim()})}),data=await response.json();if(!response.ok)throw new Error(data.error);setToken(data.token);setCopied(false);setName("RFID-Leser Vereinsheim");await load()}catch(reason){setError(reason instanceof Error?reason.message:"Einrichtung fehlgeschlagen")}finally{setBusy(false)}};
-  const searchBleReader=async()=>{if(bleSearchBusy||bleBusy)return;setBleSearchBusy(true);setError("");setBleState("searching");setBleMessage("Android-Geräteauswahl ist geöffnet. Dort einmal ClubIQ-RFID-… antippen.");try{const reader=await selectRfidBleReader();setBleReaders(current=>[reader,...current.filter(item=>item.id!==reader.id)]);setBleReader(reader);rfidBleRuntime.prefer(reader);setBleState("selected");setBleMessage(`${reader.name} wurde für ClubIQ freigegeben. Ein bereits registrierter Leser verbindet sich jetzt automatisch.`)}catch(reason){const message=reason instanceof DOMException&&reason.name==="NotFoundError"?"Keine Auswahl getroffen. Leser einschalten und Android-Auswahl erneut öffnen.":reason instanceof Error?reason.message:"Bluetooth-Suche fehlgeschlagen";setBleState("error");setBleMessage(message)}finally{setBleSearchBusy(false)}};
-  const reconnectBleDevice=async(device:Device)=>{
-    if(bleSearchBusy||bleBusy)return;
-    setBleSearchBusy(true);setError("");setNotice("");
-    try{
-      const readers=await getAuthorizedRfidBleReaders(),suffix=device.hardwareId?.slice(-6).toUpperCase();
-      const reader=readers.find(candidate=>candidate.name.toUpperCase().endsWith(suffix||""));
-      if(reader){
-        setBleReaders(readers);setBleReader(reader);rfidBleRuntime.reconnect(reader);
-        setNotice(`${device.name} ist Android bereits bekannt. ClubIQ baut die sichere Verbindung jetzt neu auf.`);
-      }else{
-        const selected=await selectRfidBleReader();
-        setBleReaders(current=>[selected,...current.filter(item=>item.id!==selected.id)]);setBleReader(selected);rfidBleRuntime.reconnect(selected);
-        setNotice(`${device.name} wurde ausgewählt. ClubIQ baut die sichere Verbindung jetzt auf.`);
-      }
-    }catch(reason){setError(reason instanceof Error?reason.message:"Bluetooth-Verbindung konnte nicht neu aufgebaut werden")}
-    finally{setBleSearchBusy(false)}
-  };
-  const provisionBle=async()=>{if(!bleReader||bleBusy||bleName.trim().length<3)return;setBleBusy(true);setError("");setNotice("");try{await pairRfidBleReader(bleReader,{name:bleName.trim()},progress=>{setBleState(progress.state);setBleMessage(progress.message)});setNotice(`${bleName.trim()} ist per Bluetooth verbunden. Das Tablet stellt die Verbindung ab jetzt automatisch wieder her.`);await load()}catch(reason){setBleState("error");setBleMessage(reason instanceof Error?reason.message:"Bluetooth-Einrichtung fehlgeschlagen")}finally{setBleBusy(false)}};
+  const searchBleReader=async()=>{if(bleSearchBusy||bleBusy)return;setBleSearchBusy(true);setError("");setBleState("searching");setBleMessage("Android-Geräteauswahl ist geöffnet. Dort einmal ClubIQ-RFID-… antippen.");try{const reader=await selectRfidBleReader();setBleReaders(current=>[reader,...current.filter(item=>item.id!==reader.id)]);setBleReader(reader);setBleState("selected");setBleMessage(`${reader.name} ist für die einmalige WLAN-Einrichtung ausgewählt.`)}catch(reason){const message=reason instanceof DOMException&&reason.name==="NotFoundError"?"Keine Auswahl getroffen. Leser einschalten und Android-Auswahl erneut öffnen.":reason instanceof Error?reason.message:"Bluetooth-Suche fehlgeschlagen";setBleState("error");setBleMessage(message)}finally{setBleSearchBusy(false)}};
+  const provisionBle=async()=>{if(!bleReader||bleBusy||bleName.trim().length<3||kioskSsid.trim().length<3||kioskPassword.length<12)return;setBleBusy(true);setError("");setNotice("");try{await provisionRfidReader(bleReader,{name:bleName.trim(),ssid:kioskSsid.trim(),password:kioskPassword},progress=>{setBleState(progress.state);setBleMessage(progress.message)});setKioskPassword("");setNotice(`${bleName.trim()} ist eingerichtet und verbindet sich ab jetzt selbstständig mit ${kioskSsid.trim()}. Bluetooth wird im Kassenbetrieb nicht benötigt.`);await load()}catch(reason){setBleState("error");setBleMessage(reason instanceof Error?reason.message:"WLAN-Einrichtung fehlgeschlagen")}finally{setBleBusy(false)}};
   const approvePairing=async(pairing:Pairing)=>{const code=(pairCodes[pairing.id]||"").replace(/\D/g,"");if(code.length!==6||pairingBusy)return;setPairingBusy(pairing.id);setError("");setNotice("");try{const response=await fetch("/api/rfid/pair",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({id:pairing.id,code,name:pairing.name})}),data=await response.json();if(!response.ok)throw new Error(data.error);setPairCodes(current=>{const next={...current};delete next[pairing.id];return next});setNotice(`${pairing.name} wurde sicher freigegeben. Der Leser übernimmt die Anmeldung automatisch.`);await load()}catch(reason){setError(reason instanceof Error?reason.message:"Kopplung fehlgeschlagen")}finally{setPairingBusy(null)}};
   const rejectPairing=async(pairing:Pairing)=>{if(pairingBusy)return;setPairingBusy(pairing.id);setError("");try{const response=await fetch("/api/rfid/pair",{method:"DELETE",headers:{"content-type":"application/json"},body:JSON.stringify({id:pairing.id})}),data=await response.json();if(!response.ok)throw new Error(data.error);await load()}catch(reason){setError(reason instanceof Error?reason.message:"Kopplung konnte nicht verworfen werden")}finally{setPairingBusy(null)}};
   const toggle=async(device:Device)=>{const response=await fetch("/api/rfid/devices",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id:device.id,active:!Boolean(device.active)})}),data=await response.json();if(!response.ok){setError(data.error||"Änderung fehlgeschlagen");return}load()};
   const restart=async(device:Device)=>{if(restarting||!confirm(`${device.name} neu starten? Der Leser ist für etwa 15 Sekunden nicht verfügbar.`))return;setRestarting(device.id);setError("");setNotice("");try{const response=await fetch("/api/rfid/commands",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({deviceId:device.id})}),data=await response.json();if(!response.ok)throw new Error(data.error||"Neustart konnte nicht gesendet werden");const started=Date.now();const timer=setInterval(async()=>{try{const statusResponse=await fetch(`/api/rfid/commands?id=${encodeURIComponent(data.id)}`,{cache:"no-store"}),statusData=await statusResponse.json();if(!statusResponse.ok)throw new Error(statusData.error);if(statusData.command?.status==="succeeded"){clearInterval(timer);setRestarting(null);setNotice(`${device.name} startet neu. Die Verbindung sollte in etwa 15 Sekunden wieder bereit sein.`);setTimeout(load,15000)}else if(["failed","expired"].includes(statusData.command?.status)||Date.now()-started>40000){clearInterval(timer);setRestarting(null);setError(statusData.command?.error||"Der Leser hat den Neustartauftrag nicht rechtzeitig abgeholt.")}}catch(reason){clearInterval(timer);setRestarting(null);setError(reason instanceof Error?reason.message:"Neustartstatus konnte nicht geprüft werden")}},1000)}catch(reason){setRestarting(null);setError(reason instanceof Error?reason.message:"Neustart fehlgeschlagen")}};
   const updateFirmware=async(device:Device)=>{
     if(updating||!device.firmwareVersion)return;
-    if(device.hardwareId?.startsWith("ESP32-")&&runtimeStatus.otaSupported===false){
-      setError("Der Bluetooth-Updatekanal wurde nicht gefunden. Bitte zuerst ‚Neu verbinden‘ antippen und danach das Update erneut starten.");return;
-    }
     if(!confirm(`${device.name} auf Firmware ${LATEST_RFID_FIRMWARE} aktualisieren? Der Leser startet danach automatisch neu.`))return;
-    setUpdating(device.id);setError("");setNotice("");
+    setUpdating(device.id);setUpdatePhase("Updateauftrag wartet auf den Leser …");setError("");setNotice("");
     try{
       const response=await fetch("/api/rfid/commands",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({deviceId:device.id,action:"firmware"})}),data=await response.json();
       if(!response.ok)throw new Error(data.error||"Firmwareupdate konnte nicht gesendet werden");
-      const started=Date.now();
+      let remainingChecks=14*60;
       const timer=setInterval(async()=>{try{
+        remainingChecks-=1;
         const statusResponse=await fetch(`/api/rfid/commands?id=${encodeURIComponent(data.id)}`,{cache:"no-store"}),statusData=await statusResponse.json();
         if(!statusResponse.ok)throw new Error(statusData.error);
+        if(statusData.command?.status==="processing")setUpdatePhase("Firmware wird über das Kassen-WLAN installiert …");
         if(statusData.command?.status==="succeeded"){
-          clearInterval(timer);setUpdating(null);setNotice(`${device.name} hat Firmware ${LATEST_RFID_FIRMWARE} installiert und startet neu. ClubIQ verbindet ihn danach automatisch wieder.`);setTimeout(()=>{rfidBleRuntime.reconnect();void load()},12_000);
-        }else if(["failed","expired"].includes(statusData.command?.status)||Date.now()-started>14*60_000){
-          clearInterval(timer);setUpdating(null);setError(statusData.command?.error||"Das Firmwareupdate wurde nicht abgeschlossen.");
+          clearInterval(timer);setUpdating(null);setUpdatePhase("");setNotice(`${device.name} hat Firmware ${LATEST_RFID_FIRMWARE} installiert und startet neu. Er meldet sich danach selbstständig im Kassen-WLAN zurück.`);setTimeout(load,15_000);
+        }else if(["failed","expired"].includes(statusData.command?.status)||remainingChecks<=0){
+          clearInterval(timer);setUpdating(null);setUpdatePhase("");setError(statusData.command?.error||"Das Firmwareupdate wurde nicht abgeschlossen.");
         }
-      }catch(reason){clearInterval(timer);setUpdating(null);setError(reason instanceof Error?reason.message:"Updatestatus konnte nicht geprüft werden")}},1000);
-    }catch(reason){setUpdating(null);setError(reason instanceof Error?reason.message:"Firmwareupdate fehlgeschlagen")}
+      }catch(reason){clearInterval(timer);setUpdating(null);setUpdatePhase("");setError(reason instanceof Error?reason.message:"Updatestatus konnte nicht geprüft werden")}},1000);
+    }catch(reason){setUpdating(null);setUpdatePhase("");setError(reason instanceof Error?reason.message:"Firmwareupdate fehlgeschlagen")}
   };
   const unassign=async(card:CardMapping)=>{if(!confirm(`Karte ${card.uid} von ${card.memberName} trennen?`))return;const response=await fetch("/api/rfid/devices",{method:"DELETE",headers:{"content-type":"application/json"},body:JSON.stringify({uid:card.uid})}),data=await response.json();if(!response.ok){setError(data.error||"Zuordnung konnte nicht entfernt werden");return}load()};
   const copyToken=async()=>{try{await navigator.clipboard.writeText(token);setCopied(true)}catch{setError("Gerätekennung konnte nicht kopiert werden")}};
-  const endpoint=typeof location==="undefined"?"/api/rfid":`${location.origin}/api/rfid`;
+  const endpoint="https://10.42.0.1/api/rfid";
   const enabledDevices=devices.filter(device=>Boolean(device.active)).length;
   const updateCount=devices.filter(device=>firmwareNeedsUpdate(device.firmwareVersion)).length;
-  const registeredBleOnline=runtimeStatus.state==="online"&&devices.some(device=>Boolean(device.active)&&device.hardwareId===runtimeStatus.hardwareId);
-  const bleDisplayState=selectedRegisteredDevice?(runtimeStatus.state==="online"?"approved":runtimeStatus.state==="unsupported"?"error":runtimeStatus.state):bleState;
-  const bleDisplayMessage=selectedRegisteredDevice&&runtimeStatus.state==="online"?"Sichere Bluetooth-Sitzung aktiv. Leser ist wirklich einsatzbereit.":selectedRegisteredDevice?runtimeStatus.message:bleMessage;
   const copyEndpoint=async()=>{try{await navigator.clipboard.writeText(endpoint);setNotice("Serveradresse wurde kopiert.")}catch{setError("Serveradresse konnte nicht kopiert werden")}};
 
   return <div className="rfid-admin-shell">
@@ -393,50 +320,49 @@ export function RfidDevicePanel(){
 
     <section className="panel rfid-device-panel">
       <div className="panel-head"><div><p className="eyebrow">STATUS</p><h2>Verbundene Leser</h2><small>Hier siehst du sofort, welche Geräte einsatzbereit und aktuell sind.</small></div><span className={enabledDevices?"ready":"empty"}><IconNfc size={19}/>{enabledDevices} aktiv</span></div>
-      <div className="rfid-flow-strip"><span>RFID-Leser</span><b>→ Bluetooth →</b><span>Tablet-Kasse</span><b>→ WLAN →</b><span>Raspberry</span></div>
-      <div className={`rfid-ble-runtime ${runtimeStatus.state}`}><span><IconBluetooth size={20}/></span><div><strong>{runtimeStatus.state==="online"?"ClubIQ-Verbindung bereit":runtimeStatus.state==="connecting"?"Android-Freigabe vorhanden · ClubIQ verbindet":bleReaders.length?"Android kennt den Leser · ClubIQ ist getrennt":"Bluetooth-Status"}</strong><small>{runtimeStatus.message}</small></div><i/></div>
+      <div className="rfid-flow-strip"><span>RFID-Leser</span><b>→ 2,4-GHz-WLAN →</b><span>Raspberry</span><b>→ WLAN →</b><span>Tablet-Kasse</span></div>
+      <div className="rfid-ble-runtime online"><span><IconWifi size={20}/></span><div><strong>Festes Kassen-WLAN</strong><small>Leser und Tablet verwenden ClubIQ-Kasse. Internet ist für den laufenden Kassenbetrieb nicht erforderlich.</small></div><i/></div>
       <div className="rfid-summary-grid"><article><span>Registriert</span><strong>{devices.length}</strong></article><article><span>Aktiviert</span><strong>{enabledDevices}</strong></article><article className={updateCount?"attention":""}><span>Updates</span><strong>{updateCount}</strong></article><article><span>Karten</span><strong>{cards.length}</strong></article></div>
       <div className="rfid-device-list">{devices.map(device=>{
-        const isBleDevice=Boolean(device.hardwareId?.startsWith("ESP32-"));
-        const isBleOnline=isBleDevice&&runtimeStatus.state==="online"&&runtimeStatus.hardwareId===device.hardwareId;
-        const androidReaderKnown=isBleDevice&&bleReaders.some(reader=>reader.name.toUpperCase().endsWith(device.hardwareId!.slice(-6).toUpperCase()));
+        const isEsp32=Boolean(device.hardwareId?.startsWith("ESP32-"));
+        const lastSeen=device.lastSeenAt?new Date(device.lastSeenAt).getTime():0;
+        const isOnline=Boolean(device.active)&&statusClock>0&&lastSeen>statusClock-75_000;
         const needsUpdate=firmwareNeedsUpdate(device.firmwareVersion);
         const firmwareState=!device.firmwareVersion
-          ?isBleDevice?"Firmwarestand unbekannt · Bluetooth einmal verbinden":"Firmwarestand unbekannt · USB-Erstinstallation prüfen"
+          ?isEsp32?"Firmwarestand unbekannt · WLAN-Einrichtung prüfen":"Firmwarestand unbekannt · USB-Erstinstallation prüfen"
           :compareFirmware(device.firmwareVersion,LATEST_RFID_FIRMWARE)>0
             ?`Firmware ${device.firmwareVersion} · neuer als App`
             :`Firmware ${device.firmwareVersion}${needsUpdate?" · Update verfügbar":" · aktuell"}`;
-        const updatePercent=updating===device.id?Math.max(0,Math.min(100,runtimeStatus.updateProgress??0)):null;
-        return <article key={device.id} className={device.active?"":"inactive"}><span><IconNfc size={22}/></span><div><strong>{device.name}</strong><small>{device.hardwareId?`${device.hardwareId} · `:""}{isBleOnline?"ClubIQ verbunden und einsatzbereit":androidReaderKnown?"Android-Freigabe vorhanden · ClubIQ-Verbindung wird geprüft":device.lastSeenAt?`Zuletzt verbunden: ${new Date(device.lastSeenAt).toLocaleString("de-DE")}`:isBleDevice?"Noch keine aktive Bluetooth-Sitzung":"Noch kein Scan empfangen"}</small><small className="rfid-firmware-state">{firmwareState}</small></div><div className="rfid-device-actions">{isBleDevice&&!isBleOnline&&<button className="connect" disabled={!device.active||bleSearchBusy||bleBusy} onClick={()=>reconnectBleDevice(device)}><IconBluetooth size={17}/>{bleSearchBusy?"Verbindung wird aufgebaut …":androidReaderKnown?"Jetzt neu verbinden":"Bluetooth auswählen"}</button>}<button className="firmware" disabled={!device.active||!needsUpdate||Boolean(updating)||Boolean(restarting)||isBleDevice&&!isBleOnline} onClick={()=>updateFirmware(device)}><IconRefresh size={17}/>{updating===device.id?`${updatePercent} %`:"Firmware aktualisieren"}</button><button className="restart" disabled={!device.active||Boolean(restarting)||Boolean(updating)||isBleDevice&&!isBleOnline} onClick={()=>restart(device)}><IconRefresh size={17}/>{restarting===device.id?"Wird neu gestartet …":"Neu starten"}</button><button onClick={()=>toggle(device)}>{device.active?"Deaktivieren":"Aktivieren"}</button></div>{updatePercent!==null&&<div className="rfid-ota-progress" role="status" aria-live="polite"><div><strong>{runtimeStatus.updatePhase||"Updateauftrag wird vorbereitet"}</strong><span>{updatePercent} %</span></div><progress max="100" value={updatePercent}/><small>Tablet und Leser eingeschaltet lassen. Nach der Installation verbindet ClubIQ den Leser automatisch neu.</small></div>}</article>;
+        return <article key={device.id} className={device.active?"":"inactive"}><span><IconNfc size={22}/></span><div><strong>{device.name}</strong><small>{device.hardwareId?`${device.hardwareId} · `:""}{isOnline?"Im Kassen-WLAN verbunden und einsatzbereit":device.lastSeenAt?`Offline · zuletzt verbunden: ${new Date(device.lastSeenAt).toLocaleString("de-DE")}`:isEsp32?"Noch nicht im Kassen-WLAN angekommen":"Noch kein Scan empfangen"}</small><small className="rfid-firmware-state">{firmwareState}</small></div><div className="rfid-device-actions"><button className="firmware" disabled={!device.active||!needsUpdate||!isOnline||Boolean(updating)||Boolean(restarting)} onClick={()=>updateFirmware(device)}><IconRefresh size={17}/>{updating===device.id?"Update läuft …":"Firmware aktualisieren"}</button><button className="restart" disabled={!device.active||!isOnline||Boolean(restarting)||Boolean(updating)} onClick={()=>restart(device)}><IconRefresh size={17}/>{restarting===device.id?"Wird neu gestartet …":"Neu starten"}</button><button onClick={()=>toggle(device)}>{device.active?"Deaktivieren":"Aktivieren"}</button></div>{updating===device.id&&<div className="rfid-ota-progress" role="status" aria-live="polite"><div><strong>{updatePhase||"Updateauftrag wird vorbereitet"}</strong></div><progress/><small>Der Leser lädt das Update direkt über das Kassen-WLAN. Danach startet er neu und meldet sich selbstständig zurück.</small></div>}</article>;
       })}{!devices.length&&<div className="rfid-empty-state"><IconNfc size={30}/><strong>Noch kein RFID-Leser verbunden</strong><small>Wähle unten deinen vorhandenen ESP8266 oder einen neuen ESP32 aus.</small></div>}</div>
     </section>
 
     <section className="panel rfid-setup-panel">
       <div className="panel-head"><div><p className="eyebrow">LESER HINZUFÜGEN</p><h2>Wie möchtest du verbinden?</h2><small>Wähle den Gerätetyp. Es wird nur die dafür benötigte Anleitung angezeigt.</small></div></div>
       <div className="rfid-setup-picker" role="tablist" aria-label="RFID-Gerät auswählen">
-        <button role="tab" aria-selected={setupMode==="esp32"} className={setupMode==="esp32"?"active":""} onClick={()=>setSetupMode("esp32")}><span><IconBluetooth size={25}/></span><div><strong>ESP32 per App</strong><small>Neu einrichten oder sicher mit einer anderen Kasse verbinden</small></div></button>
+        <button role="tab" aria-selected={setupMode==="esp32"} className={setupMode==="esp32"?"active":""} onClick={()=>setSetupMode("esp32")}><span><IconWifi size={25}/></span><div><strong>ESP32 ins Kassen-WLAN</strong><small>Einmal per App einrichten, danach läuft er selbstständig</small></div></button>
         <button role="tab" aria-selected={setupMode==="esp8266"} className={setupMode==="esp8266"?"active":""} onClick={()=>setSetupMode("esp8266")}><span><IconWifi size={25}/></span><div><strong>Alter ESP8266</strong><small>Nur für den bisherigen Leser-WLAN-Notfallweg</small></div></button>
       </div>
 
       {setupMode==="esp8266"&&<div className="rfid-setup-content rfid-esp8266-setup" role="tabpanel">
         <div className="rfid-setup-heading"><span><IconWifi size={26}/></span><div><strong>Vorhandenen ESP8266 verbinden</strong><small>Bluetooth ist dafür nicht nötig. Die Einrichtung erfolgt einmalig über das WLAN des Lesers.</small></div></div>
-        <ol className="rfid-setup-steps"><li><span>1</span><div><strong>Zertifikat bereithalten</strong><small>Vor dem WLAN-Wechsel auf das Tablet herunterladen.</small><a href="/rfid-ca.crt" download="clubiq-ledger-ca.crt">ClubIQ-Zertifikat herunterladen</a></div></li><li><span>2</span><div><strong>Mit NFC-Reader-… verbinden</strong><small>Danach im Browser die Wartungsseite des Lesers öffnen.</small><a href="http://192.168.4.1" target="_blank" rel="noreferrer">192.168.4.1 öffnen</a></div></li><li><span>3</span><div><strong>Vereins-WLAN und Server speichern</strong><small>Diese Serveradresse im Leser verwenden:</small><div className="rfid-endpoint"><code>{endpoint}</code><button onClick={copyEndpoint}>Kopieren</button></div></div></li><li><span>4</span><div><strong>Kopplung hier freigeben</strong><small>Nach „Leser verbinden“ erscheint unten der sechsstellige Code.</small></div></li></ol>
+        <ol className="rfid-setup-steps"><li><span>1</span><div><strong>Zertifikat bereithalten</strong><small>Vor dem WLAN-Wechsel auf das Tablet herunterladen.</small><a href="/rfid-ca.crt" download="clubiq-ledger-ca.crt">ClubIQ-Zertifikat herunterladen</a></div></li><li><span>2</span><div><strong>Mit NFC-Reader-… verbinden</strong><small>Danach im Browser die Wartungsseite des Lesers öffnen.</small><a href="http://192.168.4.1" target="_blank" rel="noreferrer">192.168.4.1 öffnen</a></div></li><li><span>3</span><div><strong>Kassen-WLAN und Server speichern</strong><small>Diese Serveradresse im Leser verwenden:</small><div className="rfid-endpoint"><code>{endpoint}</code><button onClick={copyEndpoint}>Kopieren</button></div></div></li><li><span>4</span><div><strong>Kopplung hier freigeben</strong><small>Nach „Leser verbinden“ erscheint unten der sechsstellige Code.</small></div></li></ol>
         <div className="rfid-pairing-list">{pairings.map(pairing=><article key={pairing.id}><span><IconWifi size={22}/></span><div><strong>{pairing.name}</strong><small>{pairing.hardwareId} · gültig bis {new Date(pairing.expiresAt).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})}</small></div><input aria-label={`Kopplungscode für ${pairing.name}`} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-stelliger Code" value={pairCodes[pairing.id]||""} onChange={event=>setPairCodes(current=>({...current,[pairing.id]:event.target.value.replace(/\D/g,"").slice(0,6)}))}/><div><button className="secondary" disabled={Boolean(pairingBusy)} onClick={()=>rejectPairing(pairing)}>Verwerfen</button><button disabled={Boolean(pairingBusy)||(pairCodes[pairing.id]||"").length!==6} onClick={()=>approvePairing(pairing)}>{pairingBusy===pairing.id?"Wird gekoppelt …":"Freigeben"}</button></div></article>)}{!pairings.length&&<p className="rfid-pairing-wait"><IconNfc size={20}/> Noch kein Leser wartet auf Freigabe.</p>}</div>
       </div>}
 
       {setupMode==="esp32"&&<div className="rfid-setup-content" role="tabpanel">
         <div className="rfid-ble-setup">
-          <div className="rfid-ble-heading"><span><IconBluetooth size={24}/></span><div><strong>ESP32-Leser direkt verbinden</strong><small>Der Leser braucht danach kein Vereins-WLAN. Das Tablet verbindet ihn automatisch mit ClubIQ.</small></div><em className={bleSupport}>{bleSupport==="ready"?"Bluetooth bereit":bleSupport==="checking"?"Wird geprüft":"Browser ungeeignet"}</em></div>
+          <div className="rfid-ble-heading"><span><IconWifi size={24}/></span><div><strong>ESP32 einmal ins Kassen-WLAN aufnehmen</strong><small>Bluetooth überträgt nur die Zugangsdaten. Danach kommuniziert der Leser direkt mit dem Raspberry.</small></div><em className={bleSupport}>{bleSupport==="ready"?"Einrichtung bereit":bleSupport==="checking"?"Wird geprüft":"Browser ungeeignet"}</em></div>
           {bleSupport==="unavailable"&&<p className="rfid-ble-warning">Bitte diese Seite mit Chrome auf einem Android-Tablet über die sichere HTTPS-Adresse öffnen.</p>}
-          <section className="rfid-ble-device-step" aria-labelledby="rfid-ble-device-title"><div className="rfid-ble-step-title"><b>1</b><div><strong id="rfid-ble-device-title">BLE-Leser auswählen</strong><small>Beim ersten Zugriff zeigt Android einmal seine geschützte Gerätefreigabe.</small></div></div>{bleReaders.length>0&&<div className="rfid-ble-reader-list">{bleReaders.map(reader=><button key={reader.id} className={bleReader?.id===reader.id?"selected":""} onClick={()=>{setBleReader(reader);setBleState("selected");setBleMessage(`${reader.name} ist für die Verknüpfung ausgewählt.`)}}><span><IconBluetooth size={20}/></span><div><strong>{reader.name}</strong><small>{bleReader?.id===reader.id?"Ausgewählt":"Bereits für diese App freigegeben"}</small></div>{bleReader?.id===reader.id&&<IconCheck size={20}/>}</button>)}</div>}<button className="rfid-ble-search" disabled={bleSupport!=="ready"||bleSearchBusy||bleBusy} onClick={searchBleReader}><IconBluetooth size={20}/>{bleSearchBusy?"Android-Auswahl ist geöffnet …":"Android-Auswahl einmalig öffnen"}</button><small className="rfid-ble-browser-note">Android verlangt diese Auswahl aus Sicherheitsgründen genau einmal. Dort <b>ClubIQ-RFID-…</b> antippen. Danach verbindet und steuert ClubIQ den Leser selbstständig. Ist er schon mit einer Kasse verbunden, fordert ClubIQ zusätzlich eine Karte direkt am Leser an.</small></section>
-          <section className={`rfid-ble-config-step ${bleReader?"ready":"locked"}`} aria-labelledby="rfid-ble-config-title"><div className="rfid-ble-step-title"><b>2</b><div><strong id="rfid-ble-config-title">Mit ClubIQ verknüpfen</strong><small>{registeredBleOnline?"Sichere Sitzung aktiv und einsatzbereit":selectedRegisteredDevice?"Bereits registriert · Live-Verbindung wird aufgebaut":bleReader?`${bleReader.name} ausgewählt`:"Zuerst oben einen BLE-Leser auswählen"}</small></div></div><div className="rfid-ble-fields single"><label>Name des Lesers<input value={bleName} maxLength={60} autoComplete="off" disabled={!bleReader||Boolean(selectedRegisteredDevice)} onChange={event=>setBleName(event.target.value)} placeholder="z. B. Leser am Tresen"/></label></div><div className="rfid-ble-direct-note"><IconCheck size={18}/><span><strong>{registeredBleOnline?"Leser ist wirklich einsatzbereit":selectedRegisteredDevice?"Registrierung erkannt":"Keine WLAN-Daten am Leser nötig"}</strong><small>{registeredBleOnline?"Du kannst zur Kasse zurückkehren und sofort eine Karte auflegen.":selectedRegisteredDevice?"ClubIQ verbindet jetzt exakt den ausgewählten Leser und prüft danach die sichere Sitzung.":"Scans, Display, Chip-Schreiben und Updates laufen direkt über das Tablet."}</small></span></div><button className="rfid-ble-connect" disabled={Boolean(selectedRegisteredDevice)||!bleReader||bleSupport!=="ready"||bleBusy||bleSearchBusy||bleName.trim().length<3} onClick={provisionBle}><IconCheck size={20}/>{registeredBleOnline?"Sichere Sitzung ist aktiv":selectedRegisteredDevice?"Registrierter Leser wird direkt verbunden":bleBusy?"Leser wird verknüpft …":"Nur neuen Leser mit ClubIQ verknüpfen"}</button></section>
-          <div className={`rfid-ble-progress ${bleDisplayState}`} role="status"><span>{bleDisplayState==="approved"||bleDisplayState==="selected"?<IconCheck size={20}/>:bleDisplayState==="error"?<IconAlertCircle size={20}/>:<IconRefresh size={20}/>}</span><p>{bleDisplayMessage}</p></div>
+          <section className="rfid-ble-device-step" aria-labelledby="rfid-ble-device-title"><div className="rfid-ble-step-title"><b>1</b><div><strong id="rfid-ble-device-title">Leser einmal auswählen</strong><small>Android zeigt einmal seine geschützte Bluetooth-Gerätefreigabe.</small></div></div>{bleReaders.length>0&&<div className="rfid-ble-reader-list">{bleReaders.map(reader=><button key={reader.id} className={bleReader?.id===reader.id?"selected":""} onClick={()=>{setBleReader(reader);setBleState("selected");setBleMessage(`${reader.name} ist für die WLAN-Einrichtung ausgewählt.`)}}><span><IconBluetooth size={20}/></span><div><strong>{reader.name}</strong><small>{bleReader?.id===reader.id?"Ausgewählt":"Bereits für diese App freigegeben"}</small></div>{bleReader?.id===reader.id&&<IconCheck size={20}/>}</button>)}</div>}<button className="rfid-ble-search" disabled={bleSupport!=="ready"||bleSearchBusy||bleBusy} onClick={searchBleReader}><IconBluetooth size={20}/>{bleSearchBusy?"Android-Auswahl ist geöffnet …":"Leser für die Einrichtung auswählen"}</button><small className="rfid-ble-browser-note">Dort <b>ClubIQ-RFID-…</b> antippen. Bluetooth wird nur für diese Einrichtung verwendet. Bei einer erneuten Einrichtung verlangt der Leser zur Sicherheit eine RFID-Karte direkt am Gerät.</small></section>
+          <section className={`rfid-ble-config-step ${bleReader?"ready":"locked"}`} aria-labelledby="rfid-ble-config-title"><div className="rfid-ble-step-title"><b>2</b><div><strong id="rfid-ble-config-title">Kassen-WLAN übertragen</strong><small>{selectedRegisteredDevice?"Registrierter Leser · WLAN kann sicher geändert werden":bleReader?`${bleReader.name} ausgewählt`:"Zuerst oben einen Leser auswählen"}</small></div></div><div className="rfid-ble-fields"><label>Name des Lesers<input value={bleName} maxLength={60} autoComplete="off" disabled={!bleReader} onChange={event=>setBleName(event.target.value)} placeholder="z. B. Leser am Tresen"/></label><label>WLAN-Name<input value={kioskSsid} maxLength={32} autoCapitalize="none" autoComplete="off" disabled={!bleReader} onChange={event=>setKioskSsid(event.target.value)} placeholder="ClubIQ-Kasse"/></label><label>WLAN-Kennwort<input type="password" value={kioskPassword} minLength={12} maxLength={63} autoComplete="new-password" disabled={!bleReader} onChange={event=>setKioskPassword(event.target.value)} placeholder="Kennwort des Kassen-WLANs"/></label></div><div className="rfid-ble-direct-note"><IconCheck size={18}/><span><strong>Danach kein Bluetooth mehr nötig</strong><small>Scans, Display, Chip-Schreiben, Neustarts und Updates laufen direkt über das feste Kassen-WLAN.</small></span></div><button className="rfid-ble-connect" disabled={!bleReader||bleSupport!=="ready"||bleBusy||bleSearchBusy||bleName.trim().length<3||kioskSsid.trim().length<3||kioskPassword.length<12} onClick={provisionBle}><IconCheck size={20}/>{bleBusy?"WLAN wird übertragen …":selectedRegisteredDevice?"WLAN dieses Lesers aktualisieren":"Leser ins Kassen-WLAN aufnehmen"}</button></section>
+          <div className={`rfid-ble-progress ${bleState}`} role="status"><span>{bleState==="approved"||bleState==="selected"?<IconCheck size={20}/>:bleState==="error"?<IconAlertCircle size={20}/>:<IconRefresh size={20}/>}</span><p>{bleMessage}</p></div>
         </div>
       </div>}
     </section>
 
     <details className="panel rfid-collapsible"><summary><span><strong>Zugeordnete Mitgliedskarten</strong><small>Verlorene oder ersetzte Karten trennen</small></span><b>{cards.length}</b></summary>{cards.length>0?<div className="rfid-card-mappings">{cards.map(card=><article key={card.uid}><span>{card.memberName}</span><code>{card.uid}</code><button onClick={()=>unassign(card)}>Trennen</button></article>)}</div>:<p>Noch keine Mitgliedskarte zugeordnet.</p>}</details>
 
-    <details className="panel rfid-collapsible rfid-advanced"><summary><span><strong>Erweiterte Einrichtung</strong><small>Nur für ältere ESP8266-Leser und technische Notfälle</small></span></summary><div className="rfid-security-note"><strong>Die Karte speichert weder Geld noch Berechtigungen.</strong><small>Die UID erkennt nur die Person. Kontostände, Preise und Zugriffsrechte werden ausschließlich in PostgreSQL geprüft.</small></div><div className="rfid-device-create"><label>Bezeichnung<input value={name} maxLength={60} onChange={event=>setName(event.target.value)} placeholder="z. B. alter ESP8266-Leser"/></label><button disabled={busy||name.trim().length<3} onClick={create}>Notfall-Token erzeugen</button></div>{token&&<div className="rfid-token-once"><div><strong>Gerätekennung – nur jetzt sichtbar</strong><small>Ausschließlich für den manuellen WLAN-Rückfallweg.</small></div><div><code>{token}</code><button onClick={copyToken}>{copied?<IconCheck size={18}/>:<IconCopy size={18}/>} {copied?"Kopiert":"Kopieren"}</button></div></div>}<details className="rfid-network-help"><summary>Wie arbeitet der neue Bluetooth-Betrieb?</summary><p>Der ESP32 sendet signierte Scans direkt an das Tablet. Das Tablet überträgt sie über seine normale WLAN-Verbindung an den Raspberry. Der Leser selbst benötigt keine Zugangsdaten zum Vereins-WLAN.</p></details></details>
+    <details className="panel rfid-collapsible rfid-advanced"><summary><span><strong>Erweiterte Einrichtung</strong><small>Nur für ältere ESP8266-Leser und technische Notfälle</small></span></summary><div className="rfid-security-note"><strong>Die Karte speichert weder Geld noch Berechtigungen.</strong><small>Die UID erkennt nur die Person. Kontostände, Preise und Zugriffsrechte werden ausschließlich in PostgreSQL geprüft.</small></div><div className="rfid-device-create"><label>Bezeichnung<input value={name} maxLength={60} onChange={event=>setName(event.target.value)} placeholder="z. B. alter ESP8266-Leser"/></label><button disabled={busy||name.trim().length<3} onClick={create}>Notfall-Token erzeugen</button></div>{token&&<div className="rfid-token-once"><div><strong>Gerätekennung – nur jetzt sichtbar</strong><small>Ausschließlich für den manuellen WLAN-Rückfallweg.</small></div><div><code>{token}</code><button onClick={copyToken}>{copied?<IconCheck size={18}/>:<IconCopy size={18}/>} {copied?"Kopiert":"Kopieren"}</button></div></div>}<details className="rfid-network-help"><summary>Wie arbeitet der neue Kassen-WLAN-Betrieb?</summary><p>Der Raspberry stellt dauerhaft das 2,4-GHz-WLAN ClubIQ-Kasse bereit. Tablet und Leser bleiben in diesem Netz; der ESP32 überträgt signierte Scans direkt an den Raspberry. Ethernet wird nur für Internet, Fernzugriff, E-Mail, Sicherungen und Updates benötigt.</p></details></details>
   </div>;
 }
