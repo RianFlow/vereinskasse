@@ -21,7 +21,16 @@ type BluetoothApi={
 export type RfidBleProgress={state:string;message:string;hardwareId?:string};
 export type RfidBleProvisionInput={name:string;ssid:string;password:string};
 export type RfidBleReader={id:string;name:string;device:BluetoothDevice};
-export type RfidBleRuntimeStatus={state:"unsupported"|"idle"|"connecting"|"online"|"error";message:string;readerName?:string;hardwareId?:string;updatedAt:number};
+export type RfidBleRuntimeStatus={
+  state:"unsupported"|"idle"|"connecting"|"online"|"error";
+  message:string;
+  readerName?:string;
+  hardwareId?:string;
+  otaSupported?:boolean;
+  updateProgress?:number|null;
+  updatePhase?:string|null;
+  updatedAt:number;
+};
 
 const OTA_UUID="4a4f0004-7b5a-4f52-8844-434c55424951";
 
@@ -44,6 +53,10 @@ const base64=(value:string)=>{
 };
 
 const delay=(milliseconds:number)=>new Promise(resolve=>setTimeout(resolve,milliseconds));
+const withTimeout=<T>(promise:Promise<T>,milliseconds:number,message:string)=>Promise.race([
+  promise,
+  delay(milliseconds).then(()=>{throw new Error(message)})
+]);
 const randomHex=(bytes:number)=>Array.from(crypto.getRandomValues(new Uint8Array(bytes)),byte=>byte.toString(16).padStart(2,"0")).join("");
 
 const bluetoothApi=()=>{
@@ -230,6 +243,7 @@ class RfidBleRuntime {
   private retryTimer:ReturnType<typeof setTimeout>|null=null;
   private handshakeTimer:ReturnType<typeof setTimeout>|null=null;
   private heartbeatWatchdog:ReturnType<typeof setInterval>|null=null;
+  private healthTimer:ReturnType<typeof setInterval>|null=null;
   private retryDelay=800;
   private preferredReader:RfidBleReader|null=null;
   private device:BluetoothDevice|null=null;
@@ -259,8 +273,17 @@ class RfidBleRuntime {
   subscribe(listener:(status:RfidBleRuntimeStatus)=>void){this.listeners.add(listener);listener(this.status);return()=>{this.listeners.delete(listener)}}
   snapshot(){return this.status}
   private update(next:Partial<RfidBleRuntimeStatus>){this.status={...this.status,...next,updatedAt:Date.now()};for(const listener of this.listeners)listener(this.status)}
-  start(){if(this.running)return;this.running=true;this.paused=false;void this.connect()}
-  stop(){this.running=false;this.paused=false;this.disconnect()}
+  start(){
+    if(this.running)return;
+    this.running=true;this.paused=false;
+    this.healthTimer=setInterval(()=>this.ensureConnection(),10_000);
+    void this.connect();
+  }
+  stop(){
+    this.running=false;this.paused=false;
+    if(this.healthTimer){clearInterval(this.healthTimer);this.healthTimer=null}
+    this.disconnect();
+  }
   pause(){this.paused=true;this.disconnect()}
   resume(){this.paused=false;if(this.running)void this.connect()}
   ensureConnection(){
@@ -271,6 +294,16 @@ class RfidBleRuntime {
     this.update({state:"connecting",message:"Bluetooth-Leser wird nach der Pause neu verbunden …"});
     this.disconnect(false);
     this.scheduleReconnect(100);
+  }
+  reconnect(reader?:RfidBleReader){
+    if(reader){
+      if(typeof localStorage!=="undefined")localStorage.setItem("clubiq-rfid-ble-reader",reader.id);
+      this.preferredReader=reader;
+    }
+    this.retryDelay=800;this.paused=false;
+    this.update({state:"connecting",message:"Bekannter Leser wird direkt neu verbunden …",readerName:reader?.name||this.status.readerName,updateProgress:null,updatePhase:null});
+    this.disconnect(false);
+    if(this.running)this.scheduleReconnect(80);else this.start();
   }
   prefer(reader:RfidBleReader){
     if(typeof localStorage!=="undefined")localStorage.setItem("clubiq-rfid-ble-reader",reader.id);
@@ -300,14 +333,18 @@ class RfidBleRuntime {
       if(!reader){this.update({state:"idle",message:"Noch kein Bluetooth-Leser für diese Kasse freigegeben."});this.scheduleReconnect(5000);return}
       this.preferredReader=reader;
       this.device=reader.device;this.device.addEventListener?.("gattserverdisconnected",this.disconnected);
-      this.server=await reader.device.gatt!.connect();
-      const service=await this.server.getPrimaryService(SERVICE_UUID);
-      [this.rx,this.tx]=await Promise.all([service.getCharacteristic(RX_UUID),service.getCharacteristic(TX_UUID)]);
+      // Android kann nach einem Seiten- oder Kassenneustart noch eine verwaiste
+      // GATT-Verbindung anzeigen. Der kontrollierte Neuaufbau verhindert, dass
+      // Chrome an ihr ohne aktive ClubIQ-Sitzung festhält.
+      if(reader.device.gatt!.connected){reader.device.gatt!.disconnect();await delay(180)}
+      this.server=await withTimeout(reader.device.gatt!.connect(),9_000,"Android hat die Bluetooth-Verbindung nicht rechtzeitig freigegeben.");
+      const service=await withTimeout(this.server.getPrimaryService(SERVICE_UUID),7_000,"ClubIQ-Dienst am Leser wurde nicht gefunden.");
+      [this.rx,this.tx]=await withTimeout(Promise.all([service.getCharacteristic(RX_UUID),service.getCharacteristic(TX_UUID)]),7_000,"ClubIQ-Datenkanal am Leser wurde nicht gefunden.");
       // Ältere BLE-Firmware kann bereits sicher scannen, besitzt aber noch
       // keine OTA-Characteristic. Das darf die Kassensitzung nicht blockieren.
       this.ota=await service.getCharacteristic(OTA_UUID).catch(()=>null);
       await this.tx.startNotifications();this.tx.addEventListener("characteristicvaluechanged",this.notification);
-      this.retryDelay=800;this.update({state:"connecting",message:"Leser gefunden. Sichere Sitzung wird aufgebaut …",readerName:reader.name});
+      this.retryDelay=800;this.update({state:"connecting",message:"Leser gefunden. Sichere Sitzung wird aufgebaut …",readerName:reader.name,otaSupported:Boolean(this.ota)});
       await this.beginHandshake();
     }catch(reason){
       const unsupported=reason instanceof Error&&/nicht unterstützt|HTTPS-Adresse/.test(reason.message);
@@ -381,7 +418,7 @@ class RfidBleRuntime {
       if(!this.sessionId&&!this.openingSession){this.openingSession=true;try{this.hardwareId=hardwareId;await this.openSession(nonce,proof,firmwareVersion)}finally{this.openingSession=false}}return;
     }
     if(state==="session_ready"){
-      this.update({state:"online",message:"RFID-Leser bereit",hardwareId:this.hardwareId});
+      this.update({state:"online",message:"RFID-Leser bereit",hardwareId:this.hardwareId,otaSupported:Boolean(this.ota),updateProgress:null,updatePhase:null});
       this.lastReaderFrameAt=Date.now();
       if(this.heartbeatWatchdog)clearInterval(this.heartbeatWatchdog);
       this.heartbeatWatchdog=setInterval(()=>{
@@ -397,7 +434,10 @@ class RfidBleRuntime {
     if(state==="heartbeat"){void this.relayHeartbeat(frame);return}
     if(state==="command_result"){void this.relayCommandResult(frame);return}
     if(state==="ota_ready"){this.otaReadyResolve?.();this.otaReadyResolve=null;this.otaReadyReject=null;return}
-    if(state==="ota_progress"){this.update({state:"online",message:`Firmwareupdate: ${Number(frame.percent||0)} %`,hardwareId:this.hardwareId});return}
+    if(state==="ota_progress"){
+      const percent=Math.max(0,Math.min(100,Number(frame.percent||0)));
+      this.update({state:"online",message:`Firmwareupdate: ${percent} %`,hardwareId:this.hardwareId,updateProgress:percent,updatePhase:"Firmware wird installiert"});return;
+    }
     if(state==="error"){
       const error=new Error(String(frame.message||"Fehler am RFID-Leser."));this.otaReadyReject?.(error);this.otaReadyResolve=null;this.otaReadyReject=null;this.update({state:"error",message:error.message,hardwareId:this.hardwareId});
     }
@@ -436,7 +476,20 @@ class RfidBleRuntime {
       if(response.status===204)return;if(response.status===409){await this.restartSession();return}const data=await response.json();if(!response.ok)throw new Error(data.error||"RFID-Auftrag konnte nicht geladen werden.");
       const command=data.command as Record<string,unknown>;this.activeCommand=String(command.id||"");if(!this.activeCommand)return;
       if(command.action==="firmware")await this.uploadFirmware(command);else await this.authorizeAndSend(command,0,"");
-    }catch(reason){this.activeCommand="";this.update({state:"error",message:reason instanceof Error?reason.message:"RFID-Auftrag fehlgeschlagen.",hardwareId:this.hardwareId})}
+    }catch(reason){
+      const message=reason instanceof Error?reason.message:"RFID-Auftrag fehlgeschlagen.";
+      if(this.activeCommand)await this.failActiveCommand(message);
+      else this.update({state:"error",message,hardwareId:this.hardwareId,updateProgress:null,updatePhase:null});
+    }
+  }
+  private async failActiveCommand(error:string){
+    const commandId=this.activeCommand;
+    try{
+      await fetch("/api/rfid/ble",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"client_command_failure",hardwareId:this.hardwareId,sessionId:this.sessionId,commandId,error})});
+    }finally{
+      this.activeCommand="";
+      this.update({state:"error",message:error,hardwareId:this.hardwareId,updateProgress:null,updatePhase:null});
+    }
   }
   private async authorizeAndSend(command:Record<string,unknown>,size:number,sha256:string){
     const response=await fetch("/api/rfid/ble",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"authorize_command",hardwareId:this.hardwareId,sessionId:this.sessionId,commandId:command.id,size,sha256})});
@@ -444,20 +497,23 @@ class RfidBleRuntime {
     await this.send({type:"command",action:command.action,id:command.id,uid:command.uid,block:command.block,payload:command.payloadHex,expiresAt:command.expiresAt,size,sha256,authorization:data.authorization});
   }
   private async uploadFirmware(command:Record<string,unknown>){
-    if(!this.ota)throw new Error("Der Leser unterstützt noch keine Bluetooth-Updates.");
-    this.update({state:"online",message:"Firmware wird sicher vorbereitet …",hardwareId:this.hardwareId});
+    if(!this.ota)throw new Error("Der Bluetooth-Updatekanal fehlt. Leser einmal neu verbinden; bleibt der Hinweis bestehen, ist einmalig ein USB-Update nötig.");
+    this.update({state:"online",message:"Firmware wird sicher vorbereitet …",hardwareId:this.hardwareId,updateProgress:2,updatePhase:"Firmware wird vorbereitet"});
     const firmware=await fetch(String(command.firmwareUrl||""),{cache:"no-store"});if(!firmware.ok)throw new Error("Firmwaredatei konnte nicht geladen werden.");
     const bytes=new Uint8Array(await firmware.arrayBuffer());const digest=new Uint8Array(await crypto.subtle.digest("SHA-256",bytes));const sha256=[...digest].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+    this.update({state:"online",message:"Update wird vom Leser bestätigt …",hardwareId:this.hardwareId,updateProgress:7,updatePhase:"Sicherheitsprüfung"});
     const ready=new Promise<void>((resolve,reject)=>{this.otaReadyResolve=resolve;this.otaReadyReject=reject});
     await this.authorizeAndSend(command,bytes.length,sha256);await Promise.race([ready,delay(12_000).then(()=>{throw new Error("Leser hat das Firmwareupdate nicht gestartet.")})]);
     const writer=this.ota.writeValueWithResponse.bind(this.ota);
-    let chunkSize=180;
+    let chunkSize=180,lastPercent=7;
     for(let offset=0;offset<bytes.length;){
       const chunk=bytes.slice(offset,Math.min(offset+chunkSize,bytes.length));
       try{await writer(chunk)}catch(reason){if(chunkSize>18){chunkSize=18;continue}throw reason}
       offset+=chunk.length;
-      if(offset%18_000<chunk.length)this.update({state:"online",message:`Firmwareupdate: ${Math.floor(offset*100/bytes.length)} %`,hardwareId:this.hardwareId});
+      const percent=Math.min(94,8+Math.floor(offset*86/bytes.length));
+      if(percent!==lastPercent){lastPercent=percent;this.update({state:"online",message:`Firmware wird übertragen: ${percent} %`,hardwareId:this.hardwareId,updateProgress:percent,updatePhase:"Übertragung zum Leser"})}
     }
+    this.update({state:"online",message:"Firmware wird geprüft und installiert …",hardwareId:this.hardwareId,updateProgress:96,updatePhase:"Prüfung und Installation"});
     await this.send({type:"ota_end",id:command.id});
   }
   private async relayCommandResult(frame:RuntimeFrame){
@@ -466,7 +522,7 @@ class RfidBleRuntime {
       const response=await fetch("/api/rfid/ble",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"command_result",hardwareId:this.hardwareId,sessionId:this.sessionId,commandId:frame.commandId,success:frame.success,uid:frame.uid,value:frame.value||"",error:frame.error||"",signature:frame.signature})});
       const data=await response.json();if(!response.ok)throw new Error(data.error||"RFID-Ergebnis konnte nicht bestätigt werden.");
       await this.send({type:"command_ack",id:frame.commandId,status:data.status,acknowledgement:data.acknowledgement});
-      this.activeCommand="";this.update({state:"online",message:data.status==="succeeded"?"RFID-Auftrag abgeschlossen":"RFID-Auftrag fehlgeschlagen",hardwareId:this.hardwareId});
+      this.activeCommand="";this.update({state:"online",message:data.status==="succeeded"?"RFID-Auftrag abgeschlossen":"RFID-Auftrag fehlgeschlagen",hardwareId:this.hardwareId,updateProgress:data.status==="succeeded"?100:null,updatePhase:data.status==="succeeded"?"Update abgeschlossen":null});
     }catch(reason){this.update({state:"error",message:reason instanceof Error?reason.message:"RFID-Ergebnis konnte nicht gespeichert werden.",hardwareId:this.hardwareId})}
   }
 }

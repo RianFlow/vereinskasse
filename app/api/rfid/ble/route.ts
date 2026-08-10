@@ -102,6 +102,22 @@ export async function POST(request:Request){
       return Response.json({accepted:true,id:scan?.id,duplicate:counter===Number(device.bleSessionCounter||0),state,memberName:memberName||null,acknowledgement},{status:202,headers});
     }
 
+    if(action==="client_command_failure"){
+      if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401,headers});
+      const admin=await requireRole(request,["Vorstand","Systemadmin"]);
+      if(!admin)return Response.json({error:"Keine Berechtigung für RFID-Aufträge"},{status:403,headers});
+      const commandId=String(body.commandId||""),error=String(body.error||"Bluetooth-Übertragung fehlgeschlagen").replace(/[|\r\n]/g," ").slice(0,240);
+      if(!commandId||commandId.length>100)return Response.json({error:"RFID-Auftrag fehlt"},{status:400,headers});
+      const command=await env.DB.prepare("SELECT id,block,status FROM rfid_write_commands WHERE id=? AND device_id=?").bind(commandId,device.id).first<{id:string;block:number;status:string}>();
+      if(!command)return Response.json({error:"RFID-Auftrag nicht gefunden"},{status:404,headers});
+      if(!["succeeded","failed","expired"].includes(command.status)){
+        const now=new Date().toISOString(),auditAction=command.block===-2?"RFID_FIRMWARE_UPDATE_FAILED":command.block===-1?"RFID_RESTART_FAILED":"RFID_WRITE_FAILED";
+        const failed=await env.DB.prepare("UPDATE rfid_write_commands SET status='failed',error=?,completed_at=? WHERE id=? AND device_id=? AND status IN ('pending','processing')").bind(error,now,command.id,device.id).run();
+        if(failed.meta.changes)await env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),auditAction,"rfid_device",device.id,admin.id,JSON.stringify({profileId:device.profileId,commandId,error,source:"tablet_transport"}),now).run();
+      }
+      return Response.json({ok:true,status:"failed"},{headers});
+    }
+
     if(action==="authorize_command"){
       if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401,headers});
       const admin=await requireRole(request,["Vorstand","Systemadmin"]);
