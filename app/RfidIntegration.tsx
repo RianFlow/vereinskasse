@@ -271,10 +271,12 @@ export function RfidDevicePanel(){
   const [bleName,setBleName]=useState("RFID-Leser Vereinsheim"),[kioskSsid,setKioskSsid]=useState("ClubIQ-Kasse"),[kioskPassword,setKioskPassword]=useState(""),[bleBusy,setBleBusy]=useState(false),[bleState,setBleState]=useState("idle"),[bleMessage,setBleMessage]=useState("Leser einschalten und für die einmalige Einrichtung bereithalten.");
   const [setupMode,setSetupMode]=useState<"esp8266"|"esp32">("esp32"),[bleSupport,setBleSupport]=useState<"checking"|"ready"|"unavailable">("checking");
   const [bleReaders,setBleReaders]=useState<RfidBleReader[]>([]),[bleReader,setBleReader]=useState<RfidBleReader|null>(null),[bleSearchBusy,setBleSearchBusy]=useState(false);
+  const [statusClock,setStatusClock]=useState(0);
   const selectedBleSuffix=bleReader?.name.match(/^ClubIQ-RFID-([0-9A-F]{6})$/i)?.[1]?.toUpperCase()||"";
   const selectedRegisteredDevice=selectedBleSuffix?devices.find(device=>device.hardwareId===`ESP32-${selectedBleSuffix}`):undefined;
   const load=async()=>{try{const [deviceResponse,pairResponse]=await Promise.all([fetch("/api/rfid/devices",{cache:"no-store"}),fetch("/api/rfid/pair",{cache:"no-store"})]),[deviceData,pairData]=await Promise.all([deviceResponse.json(),pairResponse.json()]);if(!deviceResponse.ok)throw new Error(deviceData.error);if(!pairResponse.ok)throw new Error(pairData.error);setDevices(deviceData.devices||[]);setCards(deviceData.cards||[]);setPairings(pairData.pairings||[])}catch(reason){setError(reason instanceof Error?reason.message:"RFID-Leser konnten nicht geladen werden")}};
   useEffect(()=>{let stopped=false;const refresh=()=>{if(!stopped)void load()};refresh();const timer=setInterval(refresh,2000);return()=>{stopped=true;clearInterval(timer)}},[]);
+  useEffect(()=>{const refreshClock=()=>setStatusClock(Date.now());refreshClock();const timer=setInterval(refreshClock,15_000);return()=>clearInterval(timer)},[]);
   useEffect(()=>{const timer=window.setTimeout(()=>setBleSupport(window.isSecureContext&&(navigator as Navigator&{bluetooth?:unknown}).bluetooth?"ready":"unavailable"),0);return()=>window.clearTimeout(timer)},[]);
   useEffect(()=>{if(setupMode!=="esp32"||bleSupport!=="ready")return;let stopped=false;void getAuthorizedRfidBleReaders().then(readers=>{if(stopped)return;setBleReaders(readers);if(readers.length===1)setBleReader(current=>current||readers[0])}).catch(()=>undefined);return()=>{stopped=true}},[setupMode,bleSupport]);
   const create=async()=>{if(name.trim().length<3||busy)return;setBusy(true);setError("");try{const response=await fetch("/api/rfid/devices",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:name.trim()})}),data=await response.json();if(!response.ok)throw new Error(data.error);setToken(data.token);setCopied(false);setName("RFID-Leser Vereinsheim");await load()}catch(reason){setError(reason instanceof Error?reason.message:"Einrichtung fehlgeschlagen")}finally{setBusy(false)}};
@@ -291,14 +293,15 @@ export function RfidDevicePanel(){
     try{
       const response=await fetch("/api/rfid/commands",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({deviceId:device.id,action:"firmware"})}),data=await response.json();
       if(!response.ok)throw new Error(data.error||"Firmwareupdate konnte nicht gesendet werden");
-      const started=Date.now();
+      let remainingChecks=14*60;
       const timer=setInterval(async()=>{try{
+        remainingChecks-=1;
         const statusResponse=await fetch(`/api/rfid/commands?id=${encodeURIComponent(data.id)}`,{cache:"no-store"}),statusData=await statusResponse.json();
         if(!statusResponse.ok)throw new Error(statusData.error);
         if(statusData.command?.status==="processing")setUpdatePhase("Firmware wird über das Kassen-WLAN installiert …");
         if(statusData.command?.status==="succeeded"){
           clearInterval(timer);setUpdating(null);setUpdatePhase("");setNotice(`${device.name} hat Firmware ${LATEST_RFID_FIRMWARE} installiert und startet neu. Er meldet sich danach selbstständig im Kassen-WLAN zurück.`);setTimeout(load,15_000);
-        }else if(["failed","expired"].includes(statusData.command?.status)||Date.now()-started>14*60_000){
+        }else if(["failed","expired"].includes(statusData.command?.status)||remainingChecks<=0){
           clearInterval(timer);setUpdating(null);setUpdatePhase("");setError(statusData.command?.error||"Das Firmwareupdate wurde nicht abgeschlossen.");
         }
       }catch(reason){clearInterval(timer);setUpdating(null);setUpdatePhase("");setError(reason instanceof Error?reason.message:"Updatestatus konnte nicht geprüft werden")}},1000);
@@ -323,7 +326,7 @@ export function RfidDevicePanel(){
       <div className="rfid-device-list">{devices.map(device=>{
         const isEsp32=Boolean(device.hardwareId?.startsWith("ESP32-"));
         const lastSeen=device.lastSeenAt?new Date(device.lastSeenAt).getTime():0;
-        const isOnline=Boolean(device.active)&&lastSeen>Date.now()-75_000;
+        const isOnline=Boolean(device.active)&&statusClock>0&&lastSeen>statusClock-75_000;
         const needsUpdate=firmwareNeedsUpdate(device.firmwareVersion);
         const firmwareState=!device.firmwareVersion
           ?isEsp32?"Firmwarestand unbekannt · WLAN-Einrichtung prüfen":"Firmwarestand unbekannt · USB-Erstinstallation prüfen"
