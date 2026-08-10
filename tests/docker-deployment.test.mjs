@@ -31,6 +31,24 @@ test("kapselt PostgreSQL und veröffentlicht nur den HTTPS-Zugang", async () => 
   assert.match(compose, /VINEXT_TRUSTED_HOSTS: .*CLUBIQ_LAN_IP/);
 });
 
+test("stellt Tailscale Serve nur ueber einen lokalen Proxy-Eingang bereit", async () => {
+  const [compose, caddy, manager, readme] = await Promise.all([
+    read("deploy/docker/compose.yaml"),
+    read("deploy/docker/Caddyfile"),
+    read("deploy/docker/clubiq"),
+    read("deploy/docker/README.md"),
+  ]);
+  assert.match(compose, /"127\.0\.0\.1:8090:8090"/);
+  assert.doesNotMatch(compose, /\n\s+- "8090:8090"/);
+  assert.match(caddy, /http:\/\/:8090/);
+  assert.match(caddy, /header_up Host \{\$CLUBIQ_HOSTNAME:vereinskasse\.local\}/);
+  assert.match(caddy, /header_up X-Forwarded-Proto https/);
+  assert.match(manager, /tailscale serve --bg http:\/\/127\.0\.0\.1:8090/);
+  assert.match(manager, /fernzugriff-einrichten\|remote-access-setup/);
+  assert.match(readme, /Tailscale Funnel\s+nicht aktivieren/);
+  assert.match(readme, /weder eine Domain noch eine Portfreigabe/);
+});
+
 test("startet Datenbankabgleich, Migration, Bootstrap und Gesundheitsprüfung automatisch", async () => {
   const [entrypoint, admin, compose, reconcile, install, manager] = await Promise.all([
     read("deploy/docker/app-entrypoint.sh"),

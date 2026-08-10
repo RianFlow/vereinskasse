@@ -15,6 +15,7 @@ Diese Ausgabe ist für Raspberry Pi OS 64-Bit auf einem Raspberry Pi 4B mit
   Stände werden zu Tages- und Monatsständen verdichtet
 - **Zweitsicherung:** optional auf USB, aber nur nach Prüfung des Mountpoints
 - **Außer-Haus-Kopie:** optional verschlüsselt in einem privaten Cloudflare-R2-Bucket
+- **Privater Fernzugriff:** optional per Tailscale, ohne Router-Portfreigabe
 - **Wiederherstellung:** Prüfsumme, Test-Rücksicherung und Rückfall-Datenbank
 - **Updates:** Sicherung vor dem Update und automatischer Rückfall bei Fehlern
 - **Speicherschutz:** begrenzte Container-Protokolle, damit die SD nicht vollläuft
@@ -163,7 +164,35 @@ Erst nach der exakten Bestätigung `WIEDERHERSTELLEN` werden App und Sicherung
 kurz gestoppt und der geprüfte Stand aktiviert. Der vorige Datenbankstand und
 Belegspeicher bleiben als Rückfall erhalten.
 
-## 7. Nach dem Probebetrieb leer beginnen
+## 7. Privater Fernzugriff mit Tailscale
+
+Tailscale muss zuerst auf dem Raspberry installiert, gestartet und im eigenen
+Tailnet angemeldet sein. Danach richtet Clubiq Ledger den Webzugang mit einem
+Befehl ein:
+
+```bash
+sudo clubiq fernzugriff-einrichten
+```
+
+Der Befehl zeigt anschließend eine HTTPS-Adresse mit der Endung `.ts.net` an.
+Diese Adresse funktioniert nur auf Geräten, die in Tailscale angemeldet und
+dort freigegeben sind. Es ist weder eine Domain noch eine Portfreigabe im
+Router erforderlich. PostgreSQL, Docker und der lokale Zertifikatsdownload
+werden dadurch nicht nach außen geöffnet.
+
+Zustand und Adresse lassen sich jederzeit erneut anzeigen:
+
+```bash
+sudo clubiq fernzugriff-status
+```
+
+Florian kann den Raspberry außerdem über seine Tailscale-IP warten, zum
+Beispiel mit `ssh svbarverdarts@100.70.203.61`. Der Kassenwart braucht dagegen
+nur Tailscale und die angezeigte HTTPS-Adresse. In den Tailscale-Zugriffsregeln
+sollte SSH ausschließlich für Florian freigegeben werden. **Tailscale Funnel
+nicht aktivieren**, da Funnel die Kasse öffentlich erreichbar machen würde.
+
+## 8. Nach dem Probebetrieb leer beginnen
 
 ```bash
 sudo clubiq neue-datenbank

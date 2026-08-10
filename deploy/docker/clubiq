@@ -77,6 +77,8 @@ Clubiq Ledger auf dem Raspberry verwalten
   clubiq r2-einrichten           Verschlüsselte Cloudflare-R2-Kopie einrichten
   clubiq r2-pruefen              R2-Sicherung sofort testen
   clubiq r2-laden [SNAPSHOT]     Letztes R2-Archiv lokal bereitstellen
+  clubiq fernzugriff-einrichten  Privaten HTTPS-Zugang ueber Tailscale aktivieren
+  clubiq fernzugriff-status      Adresse und Zustand des Fernzugriffs anzeigen
   clubiq zertifikat              Adresse des Tablet-Zertifikats anzeigen
 HELP
 }
@@ -231,6 +233,38 @@ case "$command" in
     ;;
   r2-laden|r2-restore)
     "${compose[@]}" exec -T backup /app/deploy/docker/r2-restore-latest.sh "${2:-latest}"
+    ;;
+  fernzugriff-einrichten|remote-access-setup)
+    command -v tailscale >/dev/null || {
+      echo "Tailscale ist nicht installiert. Zuerst Tailscale auf dem Raspberry einrichten." >&2
+      exit 1
+    }
+    tailscale_ip="$(tailscale ip -4 2>/dev/null | head -n 1)"
+    [[ -n "$tailscale_ip" ]] || {
+      echo "Der Raspberry ist noch nicht bei Tailscale angemeldet. Zuerst 'sudo tailscale up' ausfuehren." >&2
+      exit 1
+    }
+    "${compose[@]}" up -d --force-recreate proxy
+    for attempt in $(seq 1 30); do
+      if curl --fail --silent --max-time 3 http://127.0.0.1:8090/api/profiles >/dev/null; then
+        break
+      fi
+      [[ "$attempt" -lt 30 ]] || {
+        echo "Der private App-Eingang auf 127.0.0.1:8090 ist nicht erreichbar." >&2
+        exit 1
+      }
+      sleep 1
+    done
+    tailscale serve --bg http://127.0.0.1:8090
+    echo "Privater Fernzugriff ist aktiviert. Er ist nur fuer angemeldete Tailscale-Geraete erreichbar:"
+    tailscale serve status
+    ;;
+  fernzugriff-status|remote-access-status)
+    command -v tailscale >/dev/null || {
+      echo "Tailscale ist nicht installiert." >&2
+      exit 1
+    }
+    tailscale serve status
     ;;
   zertifikat|certificate)
     ip="$(hostname -I | awk '{print $1}')"
