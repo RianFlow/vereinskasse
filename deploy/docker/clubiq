@@ -13,6 +13,13 @@ require_installation() {
   command -v docker >/dev/null || { echo "Docker ist nicht installiert." >&2; exit 1; }
 }
 
+ensure_optional_secrets() {
+  local secret
+  for secret in r2_access_key_id r2_secret_access_key smtp_password; do
+    [[ -f "$base/secrets/$secret" ]] || install -m 600 /dev/null "$base/secrets/$secret"
+  done
+}
+
 wait_for_app() {
   local attempt hostname_setting
   hostname_setting="$(sed -n 's/^CLUBIQ_HOSTNAME=//p' "$base/.env" | tail -n 1)"
@@ -77,6 +84,8 @@ Clubiq Ledger auf dem Raspberry verwalten
   clubiq r2-einrichten           Verschlüsselte Cloudflare-R2-Kopie einrichten
   clubiq r2-pruefen              R2-Sicherung sofort testen
   clubiq r2-laden [SNAPSHOT]     Letztes R2-Archiv lokal bereitstellen
+  clubiq email-einrichten        SMTP-Zugang fuer Rechnungs-E-Mails einrichten
+  clubiq email-pruefen           Verbindung zum Mailserver testen (ohne Versand)
   clubiq fernzugriff-einrichten  Privaten HTTPS-Zugang ueber Tailscale aktivieren
   clubiq fernzugriff-status      Adresse und Zustand des Fernzugriffs anzeigen
   clubiq zertifikat              Adresse des Tablet-Zertifikats anzeigen
@@ -84,6 +93,7 @@ HELP
 }
 
 require_installation
+ensure_optional_secrets
 command="${1:-hilfe}"
 
 case "$command" in
@@ -233,6 +243,39 @@ case "$command" in
     ;;
   r2-laden|r2-restore)
     "${compose[@]}" exec -T backup /app/deploy/docker/r2-restore-latest.sh "${2:-latest}"
+    ;;
+  email-einrichten|email-setup)
+    read -r -p "SMTP-Server (z. B. smtp.gmail.com): " smtp_host
+    read -r -p "SMTP-Port [587]: " smtp_port
+    smtp_port="${smtp_port:-587}"
+    read -r -p "Sicherheit [starttls/tls, Standard starttls]: " smtp_security
+    smtp_security="${smtp_security:-starttls}"
+    read -r -p "SMTP-Benutzername: " smtp_user
+    read -r -s -p "SMTP-Passwort oder App-Passwort: " smtp_password
+    echo
+    read -r -p "Absender-E-Mail: " smtp_sender
+    read -r -p "Antwortadresse (leer = Absender): " smtp_reply
+    [[ "$smtp_host" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Ungueltiger SMTP-Server." >&2; exit 1; }
+    [[ "$smtp_port" =~ ^[0-9]+$ && "$smtp_port" -ge 1 && "$smtp_port" -le 65535 ]] || { echo "Ungueltiger SMTP-Port." >&2; exit 1; }
+    [[ "$smtp_security" == "starttls" || "$smtp_security" == "tls" ]] || { echo "Sicherheit muss starttls oder tls sein." >&2; exit 1; }
+    [[ -n "$smtp_user" && -n "$smtp_password" ]] || { echo "SMTP-Zugangsdaten duerfen nicht leer sein." >&2; exit 1; }
+    [[ "$smtp_sender" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || { echo "Ungueltige Absender-E-Mail." >&2; exit 1; }
+    [[ -z "$smtp_reply" || "$smtp_reply" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || { echo "Ungueltige Antwortadresse." >&2; exit 1; }
+    printf '%s' "$smtp_password" > "$base/secrets/smtp_password"
+    chmod 600 "$base/secrets/smtp_password"
+    set_setting CLUBIQ_SMTP_HOST "$smtp_host"
+    set_setting CLUBIQ_SMTP_PORT "$smtp_port"
+    set_setting CLUBIQ_SMTP_SECURITY "$smtp_security"
+    set_setting CLUBIQ_SMTP_USER "$smtp_user"
+    set_setting CLUBIQ_SMTP_FROM "Clubiq Ledger <$smtp_sender>"
+    set_setting CLUBIQ_SMTP_REPLY_TO "${smtp_reply:-$smtp_sender}"
+    unset smtp_password
+    "${compose[@]}" up -d --no-deps --force-recreate app
+    wait_for_app || { echo "Die Kasse ist nach der E-Mail-Einrichtung nicht erreichbar." >&2; exit 1; }
+    "${compose[@]}" exec -T app node /app/raspberry/smtp-check.mjs
+    ;;
+  email-pruefen|email-check)
+    "${compose[@]}" exec -T app node /app/raspberry/smtp-check.mjs
     ;;
   fernzugriff-einrichten|remote-access-setup)
     command -v tailscale >/dev/null || {

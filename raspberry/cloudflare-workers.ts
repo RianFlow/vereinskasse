@@ -347,4 +347,11 @@ export const env = {
   VEREINSKASSE_DATABASE_PROVIDER: databaseProvider,
   VEREINSKASSE_DATABASE_PATH: databasePath,
   VEREINSKASSE_BACKUP_DIR: objectDirectory,
+  CLUBIQ_SMTP_HOST: process.env.CLUBIQ_SMTP_HOST || "",
+  CLUBIQ_SMTP_PORT: process.env.CLUBIQ_SMTP_PORT || "587",
+  CLUBIQ_SMTP_SECURITY: process.env.CLUBIQ_SMTP_SECURITY || "starttls",
+  CLUBIQ_SMTP_USER: process.env.CLUBIQ_SMTP_USER || "",
+  CLUBIQ_SMTP_PASSWORD_FILE: process.env.CLUBIQ_SMTP_PASSWORD_FILE || "",
+  CLUBIQ_SMTP_FROM: process.env.CLUBIQ_SMTP_FROM || "",
+  CLUBIQ_SMTP_REPLY_TO: process.env.CLUBIQ_SMTP_REPLY_TO || "",
 };

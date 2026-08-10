@@ -106,11 +106,19 @@ services:
       <<: *app-environment
       VEREINSKASSE_INITIAL_PROFILE_PIN_FILE: /run/secrets/initial_profile_pin
       VEREINSKASSE_POSTGRES_POOL_SIZE: ${POSTGRES_POOL_SIZE:-10}
+      CLUBIQ_SMTP_HOST: ${CLUBIQ_SMTP_HOST:-}
+      CLUBIQ_SMTP_PORT: ${CLUBIQ_SMTP_PORT:-587}
+      CLUBIQ_SMTP_SECURITY: ${CLUBIQ_SMTP_SECURITY:-starttls}
+      CLUBIQ_SMTP_USER: ${CLUBIQ_SMTP_USER:-}
+      CLUBIQ_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      CLUBIQ_SMTP_FROM: ${CLUBIQ_SMTP_FROM:-}
+      CLUBIQ_SMTP_REPLY_TO: ${CLUBIQ_SMTP_REPLY_TO:-}
       VINEXT_TRUST_PROXY: "1"
       VINEXT_TRUSTED_HOSTS: ${CLUBIQ_HOSTNAME:-vereinskasse.local},${CLUBIQ_LAN_IP:-127.0.0.1}
     secrets:
       - postgres_app_password
       - initial_profile_pin
+      - smtp_password
     volumes:
       - app_data:/data
     expose:
@@ -282,3 +290,5 @@ secrets:
     file: ./secrets/r2_access_key_id
   r2_secret_access_key:
     file: ./secrets/r2_secret_access_key
+  smtp_password:
+    file: ./secrets/smtp_password

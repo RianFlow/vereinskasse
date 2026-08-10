@@ -74,6 +74,7 @@ create_random_secret "$base/secrets/postgres_app_password"
 create_random_secret "$base/secrets/restic_password"
 [[ -f "$base/secrets/r2_access_key_id" ]] || : > "$base/secrets/r2_access_key_id"
 [[ -f "$base/secrets/r2_secret_access_key" ]] || : > "$base/secrets/r2_secret_access_key"
+[[ -f "$base/secrets/smtp_password" ]] || : > "$base/secrets/smtp_password"
 chmod 600 "$base/secrets/"*
 
 if [[ ! -s "$base/secrets/initial_profile_pin" ]]; then

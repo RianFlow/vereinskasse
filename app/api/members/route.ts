@@ -3,12 +3,13 @@ import { hasRole, requireRole } from "../session";
 import { requireProfile } from "../profile-session";
 import { protectAccessCode } from "../member-access";
 
-const safe=(includeContacts=false)=>env.DB.prepare(`SELECT m.id,m.name,m.role,m.initials,m.active,${includeContacts?"m.whatsapp_number":"NULL"} whatsappNumber,${includeContacts?"CASE WHEN m.whatsapp_consent_at IS NULL THEN 0 ELSE 1 END":"0"} whatsappOptIn,CASE WHEN m.code LIKE 'NOLOGIN-%' THEN 0 ELSE 1 END hasAccess,l.status lifecycleStatus,l.left_at leftAt,l.privacy_review_at privacyReviewAt FROM members m LEFT JOIN member_lifecycle l ON l.member_id=m.id WHERE m.id NOT IN ('M-1042','M-1088','M-1137','M-1201','M-1214','M-1228','M-1240') ORDER BY m.name`).all();
+const safe=(includeContacts=false)=>env.DB.prepare(`SELECT m.id,m.name,m.role,m.initials,m.active,${includeContacts?"m.whatsapp_number":"NULL"} whatsappNumber,${includeContacts?"CASE WHEN m.whatsapp_consent_at IS NULL THEN 0 ELSE 1 END":"0"} whatsappOptIn,${includeContacts?"m.invoice_email":"NULL"} invoiceEmail,${includeContacts?"CASE WHEN m.invoice_email_consent_at IS NULL THEN 0 ELSE 1 END":"0"} invoiceEmailOptIn,CASE WHEN m.code LIKE 'NOLOGIN-%' THEN 0 ELSE 1 END hasAccess,l.status lifecycleStatus,l.left_at leftAt,l.privacy_review_at privacyReviewAt FROM members m LEFT JOIN member_lifecycle l ON l.member_id=m.id WHERE m.id NOT IN ('M-1042','M-1088','M-1137','M-1201','M-1214','M-1228','M-1240') ORDER BY m.name`).all();
 const allowedRoles=["Mitglied","Vorstand","Kassenwart","Systemadmin"];
 const normalizeWhatsappNumber=(value:string)=>{
   const compact=value.trim().replace(/[\s()./-]/g,"").replace(/^00/,"+");
   return /^\+[1-9]\d{7,14}$/.test(compact)?compact:null;
 };
+const normalizeEmail=(value:string)=>{const email=value.trim().toLocaleLowerCase("de-DE");return email.length<=254&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)?email:null};
 const safeMemberError=(error:unknown)=>{
   const message=error instanceof Error?error.message:"";
   if(message.includes("UNIQUE"))return "Dieser Admin-Code wird bereits verwendet";
@@ -26,7 +27,7 @@ export async function POST(request:Request){
   try{
     const [admin,profile]=await Promise.all([requireRole(request,["Vorstand"]),requireProfile(request)]);
     if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:403});
-    const b=await request.json() as {action:string;id?:string;name?:string;firstName?:string;lastName?:string;role?:string;roles?:string[];code?:string;note?:string;whatsappNumber?:string;whatsappOptIn?:boolean};
+    const b=await request.json() as {action:string;id?:string;name?:string;firstName?:string;lastName?:string;role?:string;roles?:string[];code?:string;note?:string;whatsappNumber?:string;whatsappOptIn?:boolean;invoiceEmail?:string;invoiceEmailOptIn?:boolean};
     const now=new Date().toISOString();
 
     if(b.action==="bootstrap"){
@@ -66,16 +67,19 @@ export async function POST(request:Request){
 
     if(b.action==="set_contact"){
       if(!b.id)return Response.json({error:"Mitglied fehlt"},{status:400});
-      const member=await env.DB.prepare("SELECT id,name,whatsapp_number whatsappNumber,whatsapp_consent_at whatsappConsentAt FROM members WHERE id=? AND active=1").bind(b.id).first<{id:string;name:string;whatsappNumber:string|null;whatsappConsentAt:string|null}>();
+      const member=await env.DB.prepare("SELECT id,name,whatsapp_number whatsappNumber,whatsapp_consent_at whatsappConsentAt,invoice_email invoiceEmail,invoice_email_consent_at invoiceEmailConsentAt FROM members WHERE id=? AND active=1").bind(b.id).first<{id:string;name:string;whatsappNumber:string|null;whatsappConsentAt:string|null;invoiceEmail:string|null;invoiceEmailConsentAt:string|null}>();
       if(!member)return Response.json({error:"Mitglied nicht gefunden"},{status:404});
       const whatsappNumber=b.whatsappOptIn?normalizeWhatsappNumber(b.whatsappNumber||""):null;
       if(b.whatsappOptIn&&!whatsappNumber)return Response.json({error:"Bitte die WhatsApp-Nummer mit Ländervorwahl eingeben, zum Beispiel +49 170 1234567"},{status:400});
       const whatsappConsentAt=b.whatsappOptIn?(member.whatsappConsentAt||now):null;
+      const invoiceEmail=b.invoiceEmailOptIn?normalizeEmail(b.invoiceEmail||""):null;
+      if(b.invoiceEmailOptIn&&!invoiceEmail)return Response.json({error:"Bitte eine vollständige E-Mail-Adresse eingeben."},{status:400});
+      const invoiceEmailConsentAt=b.invoiceEmailOptIn?(member.invoiceEmailConsentAt||now):null;
       await env.DB.batch([
-        env.DB.prepare("UPDATE members SET whatsapp_number=?,whatsapp_consent_at=? WHERE id=?").bind(whatsappNumber,whatsappConsentAt,member.id),
-        env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"MEMBER_CONTACT_CHANGED","member",member.id,admin.id,JSON.stringify({profileId:profile.id,whatsappOptIn:Boolean(b.whatsappOptIn),numberChanged:member.whatsappNumber!==whatsappNumber}),now)
+        env.DB.prepare("UPDATE members SET whatsapp_number=?,whatsapp_consent_at=?,invoice_email=?,invoice_email_consent_at=? WHERE id=?").bind(whatsappNumber,whatsappConsentAt,invoiceEmail,invoiceEmailConsentAt,member.id),
+        env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"MEMBER_CONTACT_CHANGED","member",member.id,admin.id,JSON.stringify({profileId:profile.id,whatsappOptIn:Boolean(b.whatsappOptIn),numberChanged:member.whatsappNumber!==whatsappNumber,invoiceEmailOptIn:Boolean(b.invoiceEmailOptIn),emailChanged:member.invoiceEmail!==invoiceEmail}),now)
       ]);
-      return Response.json({ok:true,member:{id:member.id,whatsappNumber,whatsappOptIn:Boolean(b.whatsappOptIn)}});
+      return Response.json({ok:true,member:{id:member.id,whatsappNumber,whatsappOptIn:Boolean(b.whatsappOptIn),invoiceEmail,invoiceEmailOptIn:Boolean(b.invoiceEmailOptIn)}});
     }
 
     if(b.action==="set_roles"){

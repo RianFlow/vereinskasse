@@ -192,7 +192,23 @@ nur Tailscale und die angezeigte HTTPS-Adresse. In den Tailscale-Zugriffsregeln
 sollte SSH ausschließlich für Florian freigegeben werden. **Tailscale Funnel
 nicht aktivieren**, da Funnel die Kasse öffentlich erreichbar machen würde.
 
-## 8. Nach dem Probebetrieb leer beginnen
+## 8. Rechnungen per E-Mail
+
+Der Versand läuft direkt vom Raspberry über einen vorhandenen SMTP-Zugang. Das
+Passwort wird als Docker-Secret gespeichert und weder an das Tablet noch an den
+Browser ausgeliefert. Einrichten und anschließend ohne Testnachricht prüfen:
+
+```bash
+sudo clubiq email-einrichten
+sudo clubiq email-pruefen
+```
+
+Port `587` verwendet `STARTTLS`; Port `465` verwendet `tls`. Bei Anbietern mit
+Zwei-Faktor-Anmeldung ist in der Regel ein eigenes App-Passwort erforderlich.
+Rechnungen lassen sich nur durch Kassenwart oder Vorstand und erst nach dem
+Festschreiben des Monats einzeln versenden. Jeder Versand wird protokolliert.
+
+## 9. Nach dem Probebetrieb leer beginnen
 
 ```bash
 sudo clubiq neue-datenbank
