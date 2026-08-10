@@ -116,6 +116,7 @@ jobs:
           printf '246802' > secrets/initial_profile_pin
           : > secrets/r2_access_key_id
           : > secrets/r2_secret_access_key
+          : > secrets/smtp_password
           USB_BACKUP_PATH=/tmp/clubiq-usb docker compose up -d postgres app
           for attempt in $(seq 1 60); do
             state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' clubiq-ledger-app-1)

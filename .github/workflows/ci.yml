@@ -31,6 +31,7 @@ jobs:
           touch deploy/docker/secrets/restic_password
           touch deploy/docker/secrets/r2_access_key_id
           touch deploy/docker/secrets/r2_secret_access_key
+          touch deploy/docker/secrets/smtp_password
           docker compose --project-directory deploy/docker --env-file deploy/docker/.env \
             -f deploy/docker/compose.yaml config --quiet
       - run: npm run lint

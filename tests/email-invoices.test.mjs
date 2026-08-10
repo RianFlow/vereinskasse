@@ -41,10 +41,12 @@ test("member consent and invoice UI are explicit",async()=>{
 });
 
 test("raspberry CLI configures and verifies SMTP without sending",async()=>{
-  const [cli,install]=await Promise.all([read("deploy/docker/clubiq"),read("deploy/docker/install.sh")]);
+  const [cli,install,ci,container]=await Promise.all([read("deploy/docker/clubiq"),read("deploy/docker/install.sh"),read(".github/workflows/ci.yml"),read(".github/workflows/container.yml")]);
   assert.match(cli,/email-einrichten\|email-setup/);
   assert.match(cli,/email-pruefen\|email-check/);
   assert.match(cli,/secrets\/smtp_password/);
   assert.match(cli,/node \/app\/raspberry\/smtp-check\.mjs/);
   assert.match(install,/secrets\/smtp_password/);
+  assert.match(ci,/touch deploy\/docker\/secrets\/smtp_password/);
+  assert.match(container,/: > secrets\/smtp_password/);
 });
