@@ -9,9 +9,10 @@ type PairingRequest={
 
 const noStore={"cache-control":"no-store"};
 const hash=async(value:string)=>[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+const constantTimeEqual=(left:string,right:string)=>{if(left.length!==right.length)return false;let difference=0;for(let index=0;index<left.length;index++)difference|=left.charCodeAt(index)^right.charCodeAt(index);return difference===0};
 const hardwareId=(value:unknown)=>{
   const normalized=String(value||"").trim().toUpperCase();
-  return /^ESP(?:8266|32)-[0-9A-F]{6}$/.test(normalized)?normalized:null;
+  return /^ESP32-[0-9A-F]{6}$/.test(normalized)?normalized:null;
 };
 const pairingCode=(value:unknown)=>{
   const normalized=String(value||"").replace(/\s+/g,"");
@@ -33,8 +34,9 @@ export async function POST(request:Request){
     const tokenHash=await hash(secret),codeHash=await hash(`${idValue}:${code}`);
     const existing=await env.DB.prepare("SELECT id,code_hash codeHash,token_hash tokenHash,status,expires_at expiresAt FROM rfid_pairing_requests WHERE hardware_id=?").bind(idValue).first<{id:string;codeHash:string;tokenHash:string;status:string;expiresAt:string}>();
     if(existing?.status==="pending"&&existing.expiresAt>now){
-      if(existing.tokenHash===tokenHash&&existing.codeHash===codeHash)return Response.json({state:"pending",id:existing.id,hardwareId:idValue,expiresAt:existing.expiresAt},{status:202,headers:noStore});
-      return Response.json({error:"Für diesen Leser läuft bereits eine Kopplung. Bitte den angezeigten Code verwenden oder zehn Minuten warten."},{status:409,headers:noStore});
+      if(constantTimeEqual(existing.tokenHash,tokenHash)&&constantTimeEqual(existing.codeHash,codeHash))return Response.json({state:"pending",id:existing.id,hardwareId:idValue,expiresAt:existing.expiresAt},{status:202,headers:noStore});
+      // Nach Stromausfall darf derselbe physische Leser sofort einen neuen Code
+      // erzeugen. Freigegeben wird weiterhin nur der Code auf seinem Display.
     }
     if(!existing){
       const pending=await env.DB.prepare("SELECT COUNT(*) count FROM rfid_pairing_requests WHERE status='pending' AND expires_at>?").bind(now).first<{count:number}>();
@@ -90,7 +92,7 @@ export async function PUT(request:Request){
     if(!pairing)return Response.json({error:"Kopplung nicht gefunden"},{status:404,headers:noStore});
     const now=new Date().toISOString();
     if(pairing.status!=="pending"||pairing.expiresAt<=now)return Response.json({error:"Diese Kopplung ist nicht mehr gültig. Am Leser bitte neu starten."},{status:410,headers:noStore});
-    if(await hash(`${pairing.hardwareId}:${code}`)!==pairing.codeHash){
+    if(!constantTimeEqual(await hash(`${pairing.hardwareId}:${code}`),pairing.codeHash)){
       const attempts=Number(pairing.failedAttempts||0)+1,status=attempts>=5?"rejected":"pending";
       await env.DB.batch([
         env.DB.prepare("UPDATE rfid_pairing_requests SET failed_attempts=?,status=? WHERE id=? AND status='pending'").bind(attempts,status,pairing.id),

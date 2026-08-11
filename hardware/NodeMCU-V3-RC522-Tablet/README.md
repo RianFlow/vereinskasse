@@ -1,27 +1,24 @@
 # ClubIQ-RFID-Leser – ESP32 D1 mini
 
 Diese Firmware unterstützt ausschließlich den WEMOS/LOLIN ESP32 D1 mini.
-Andere Leserplattformen und ein Leser-eigenes Wartungs-WLAN werden nicht
-unterstützt.
+Die frühere ESP8266- und Browser-Bluetooth-Verbindung ist entfernt.
 
 ## Betriebsablauf
 
-1. Ohne gültige Einstellungen startet der Leser nur Bluetooth.
-2. In ClubIQ unter **Admin > RFID-Leser** wird der ESP32 D1 mini ausgewählt.
-3. Die App überträgt Name, 2,4-GHz-Kassen-WLAN, Serveradresse und Root-Zertifikat zunächst nur in den Arbeitsspeicher.
-4. Der Leser verbindet das WLAN, erhält eine IP, lädt die lokale Uhrzeit und prüft Zertifikat, Hardwarekennung und Gerätetoken direkt am Raspberry.
-5. Erst nach dieser Bestätigung speichert er die Werte und startet neu.
-6. Danach läuft nur WLAN. Scans, Display, Chip-Schreiben, Neustart und OTA gehen
-   direkt zwischen Leser und Raspberry.
-7. Erst eine neue Meldung desselben Lesers am Raspberry gilt in der App als Erfolg.
+1. Ohne gültige Einstellung startet der Leser `ClubIQ-Setup-…` mit einem im
+   Display angezeigten Zufallskennwort.
+2. Tablet oder Handy verbindet sich einmalig mit diesem WLAN und öffnet die
+   automatisch angebotene Einrichtungsseite. Ersatzadresse: `http://192.168.4.1`.
+3. Das 2,4-GHz-Kassen-WLAN wird aus der WLAN-Liste ausgewählt und gespeichert.
+4. Der Leser startet neu, lädt das Root-Zertifikat vom Raspberry und zeigt einen
+   sechsstelligen Kopplungscode an.
+5. Der Code wird in ClubIQ unter **Admin > RFID-Leser** freigegeben.
+6. Danach laufen Scans, Display, Chip-Schreiben, Neustart und OTA direkt über WLAN.
 
-Bluetooth und WLAN laufen nur für den begrenzten Verbindungstest gleichzeitig.
-Im normalen Kassenbetrieb ist Bluetooth abgeschaltet. Bleibt das
-Kassen-WLAN 90 Sekunden unerreichbar, beendet der ESP32 WLAN und bietet für fünf
-Minuten die Bluetooth-Wiederherstellung an. Ohne Änderung startet er danach neu
-und versucht wieder das gespeicherte WLAN. Ein reiner Serverausfall aktiviert
-Bluetooth nicht. So übersteht der Leser Raspberry- und App-Neustarts ohne
-manuelles Eingreifen; zugleich lässt sich das WLAN später ohne USB ändern.
+Bleibt das Kassen-WLAN 90 Sekunden unerreichbar oder wird in ClubIQ **WLAN
+ändern** gewählt, öffnet der ESP32 das geschützte Setup-WLAN erneut. Die alte
+funktionierende Konfiguration wird erst durch eine neue gespeicherte Auswahl
+ersetzt.
 
 ## Anschlüsse
 
@@ -62,21 +59,21 @@ Leser die signalisierte ClubIQ-Firmware direkt über das Kassen-WLAN.
 - kleines WLAN-Symbol: Verbindung zum Kassen-WLAN
 - kleines Serversymbol: sichere Verbindung zum Raspberry
 - „RFID bereit“: Leser kann Karten annehmen
-- „Einrichtung“: in ClubIQ einmalig per Bluetooth auswählen
+- „Setup“: mit dem angezeigten `ClubIQ-Setup-…`-WLAN verbinden
+- „Kopplung“: sechsstelligen Code in ClubIQ freigeben
 
 ## Stabilitätsregeln
 
-- BLE und WLAN nur während der einmaligen, zeitlich begrenzten Prüfung
-- neue Zugangsdaten erst nach IP-, Zeit-, TLS- und Serverprüfung speichern
+- kennwortgeschütztes, zeitlich begrenztes Captive Portal
+- WLAN aus einer gescannten Liste auswählen statt fehleranfällig abtippen
 - bei Fehlern die zuletzt funktionierende Konfiguration behalten
 - WLAN-Autoreconnect und gepufferte RFID-Scans
 - lokaler Zeitabgleich vor TLS
 - verifiziertes Root-Zertifikat, niemals `setInsecure()`
-- zeitlich begrenzte Bluetooth-Wiederherstellung nur bei WLAN-Ausfall
-- automatische Rückkehr zum gespeicherten WLAN ohne Benutzereingriff
-- App-Erfolg erst nach serverseitig frischem `last_seen_at`
+- sechsstellige physische Kopplungsfreigabe und individuelles Gerätetoken
+- automatische Rückkehr zum gespeicherten WLAN
 
 Vor der Einrichtung kann der Raspberry mit `sudo clubiq rfid-netz-pruefen`
 getestet werden. Referenzen: PlatformIO-Board `wemos_d1_mini32`,
 [Arduino-ESP32 WiFi-Events](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
-und [Espressif Wi-Fi Provisioning](https://docs.espressif.com/projects/esp-idf/en/v5.1/esp32/api-reference/provisioning/wifi_provisioning.html).
+und [WiFiManager](https://github.com/tzapu/WiFiManager).

@@ -3,8 +3,8 @@
 // Diese Datei als include/secrets.h kopieren und dort die Werte eintragen.
 // secrets.h wird von Git ignoriert.
 
-// Optionale Rückfallwerte. Normalerweise werden alle Werte einmalig über die
-// ClubIQ-App per Bluetooth eingerichtet und dauerhaft im ESP32 gespeichert.
+// Optionale Rückfallwerte. Normalerweise werden die WLAN-Daten einmalig über
+// das kennwortgeschützte ClubIQ-Setup-Portal ausgewählt und gespeichert.
 constexpr char CLUB_WIFI_SSID[] = "";
 constexpr char CLUB_WIFI_PASSWORD[] = "";
 

@@ -1,37 +1,40 @@
 # ESP32-D1-mini-RFID-Leser anbinden
 
-Der ClubIQ-Leser wird einmalig per Bluetooth eingerichtet und arbeitet danach
-eigenständig im festen 2,4-GHz-Kassen-WLAN des Raspberry Pi.
+Der ClubIQ-Leser wird einmalig über ein geschütztes Einrichtungs-WLAN
+konfiguriert und arbeitet danach selbstständig im festen
+2,4-GHz-Kassen-WLAN des Raspberry Pi.
 
 Die UID ist nur die Kartenkennung. Mitglied, Rechte, Rechnungen und Kontostände
 liegen ausschließlich in PostgreSQL. Jeder Leser besitzt ein eigenes geheimes
 Gerätetoken; TLS wird gegen das lokale ClubIQ-Root-Zertifikat geprüft.
 
-## Geprüfte Zustandsfolge
+## Einmalige Einrichtung
 
-`Bluetooth → WLAN-Daten nur vormerken → 2,4-GHz-WLAN verbinden → IP erhalten → lokale Uhrzeit laden → TLS-Zertifikat prüfen → am Raspberry anmelden → Einstellungen speichern → Neustart`
+1. Der Leser startet das WLAN `ClubIQ-Setup-…` und zeigt dessen zufälliges
+   Kennwort im Display an.
+2. Tablet oder Handy verbindet sich mit diesem WLAN. Die Einrichtungsseite
+   öffnet sich normalerweise automatisch; andernfalls `http://192.168.4.1`
+   aufrufen.
+3. `ClubIQ-Kasse` beziehungsweise `BarverKasse` aus der gefundenen WLAN-Liste
+   auswählen und das Kennwort eintragen.
+4. Der Leser speichert die Einstellung, beendet sein Setup-WLAN und startet neu.
+5. Er lädt das lokale Root-Zertifikat vom Raspberry und zeigt einen
+   sechsstelligen Kopplungscode an.
+6. In **Admin > RFID-Leser** den exakt am Leser angezeigten Code freigeben.
 
-Bluetooth bleibt ausschließlich während dieser einmaligen Prüfung aktiv. Die
-App zeigt jeden erreichten Zustand an. Erst wenn der Raspberry das individuelle
-Gerätetoken und die Hardwarekennung über HTTPS bestätigt hat, speichert der
-Leser die neuen Daten dauerhaft und startet in den reinen WLAN-Dauerbetrieb.
+Erst diese physische Codebestätigung erzeugt das individuelle Gerätetoken.
+Falsche Codes werden protokolliert und nach fünf Versuchen gesperrt.
 
-Schlägt ein Schritt fehl, bleibt der Einrichtungsdialog geöffnet und zeigt die
-konkrete Ursache an: WLAN nicht gefunden, Anmeldung abgewiesen, keine IP,
-Zeitdienst nicht erreichbar, Zertifikatsfehler oder ungültiges Gerätetoken. Die
-zuletzt funktionierende WLAN- und Serverkonfiguration bleibt dabei erhalten.
+## Dauerbetrieb und Wiederherstellung
 
-Nach dem Neustart verlangt die App zusätzlich eine frische Meldung genau dieses
-Lesers am Raspberry. Eine alte Registrierung, eine Bluetooth-Trennung oder die
-bloße Anzeige „verbunden“ gelten nicht als Erfolg.
+Im Dauerbetrieb verwendet der Leser nur das feste Kassen-WLAN. WLAN-Autoreconnect,
+gepufferte Scans und eine regelmäßige RC522-Prüfung sorgen dafür, dass kurze
+Ausfälle ohne Eingriff überstanden werden. Bleibt das gespeicherte WLAN 90
+Sekunden unerreichbar oder wird in ClubIQ **WLAN ändern** ausgelöst, öffnet der
+Leser sein geschütztes Setup-WLAN erneut. Die letzte funktionierende Einstellung
+bleibt erhalten, bis eine neue Verbindung wirklich gespeichert wurde.
 
-Bei einer späteren WLAN-Änderung muss am Gerät einmal eine RFID-Karte aufgelegt
-werden. Ist nur das Kassen-WLAN 90 Sekunden lang nicht erreichbar, öffnet der
-Leser Bluetooth für fünf Minuten. Ohne neue Einstellungen startet er danach
-automatisch neu und versucht wieder das gespeicherte WLAN. Ein bloßer Neustart
-des Raspberry oder der Anwendung schaltet den Leser nicht in Bluetooth um.
-
-Der Raspberry-Netzweg lässt sich vor der Lesereinrichtung separat prüfen:
+Der Raspberry-Netzweg lässt sich vorher separat prüfen:
 
 ```bash
 sudo clubiq rfid-netz-pruefen
@@ -41,13 +44,11 @@ Der Test prüft das feste 2,4-GHz-Kassen-WLAN, den lokalen Zeitdienst, das
 ClubIQ-Root-Zertifikat und die RFID-API. Er verschickt keine Buchung und ändert
 keine Leserdaten.
 
-Die Zustandsfolge folgt dem offiziellen Espressif-Provisioning-Verfahren: Ein
-Provisioning-Dienst bleibt bis zur erfolgreichen WLAN-Prüfung verfügbar und
-unterscheidet insbesondere „Access Point nicht gefunden“ von
-„Authentifizierung fehlgeschlagen“. Die Firmware wertet außerdem die offiziellen
-Arduino-ESP32-WLAN-Ereignisse für „IP erhalten“ und „Verbindung getrennt“ aus.
+Das Verfahren entspricht dem etablierten SoftAP-/Captive-Portal-Muster für
+WLAN-Geräte und vermeidet Android-Web-Bluetooth- und GATT-Verbindungsprobleme.
 
 Referenzen:
 
-- [Espressif Wi-Fi Provisioning](https://docs.espressif.com/projects/esp-idf/en/v5.1/esp32/api-reference/provisioning/wifi_provisioning.html)
-- [Arduino-ESP32 Wi-Fi API und Ereignisse](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
+- [Espressif Wi-Fi Provisioning](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/provisioning/provisioning.html)
+- [WiFiManager Captive Portal](https://github.com/tzapu/WiFiManager)
+- [Arduino-ESP32 Wi-Fi API](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
