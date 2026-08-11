@@ -102,6 +102,26 @@ constexpr unsigned long BLE_PHYSICAL_CONFIRMATION_MS = 90000;
 String bleHelloNonce;
 String blePairTokenHash;
 String blePairProof;
+enum class BleWifiVerificationPhase {
+  Idle,
+  Connecting,
+  Clock,
+  Server,
+  Verified
+};
+BleWifiVerificationPhase bleWifiVerificationPhase = BleWifiVerificationPhase::Idle;
+String bleCandidateSsid, bleCandidatePassword, bleCandidateApiUrl, bleCandidateRootCa;
+String blePreviousApiUrl, blePreviousRootCa;
+unsigned long bleWifiVerificationStartedAt = 0;
+unsigned long bleWifiPhaseStartedAt = 0;
+unsigned long bleWifiLastAttemptAt = 0;
+uint8_t bleWifiServerAttempts = 0;
+volatile int bleWifiDisconnectReason = 0;
+volatile bool bleWifiGotIp = false;
+constexpr unsigned long BLE_WIFI_CONNECT_TIMEOUT_MS = 45000;
+constexpr unsigned long BLE_CLOCK_TIMEOUT_MS = 15000;
+constexpr unsigned long BLE_SERVER_RETRY_MS = 2500;
+constexpr uint8_t BLE_SERVER_MAX_ATTEMPTS = 3;
 #endif
 
 enum class StatusLedMode {
@@ -136,6 +156,7 @@ void disableWifiForBleRuntime();
 void startBleSetupMode(bool recoveryFromWifi = false);
 void processBleRestart();
 void processBleRecoveryTimeout();
+void processBleWifiVerification();
 void bleNotifyJson(const String &payload);
 void rejectBleProvisioning(const String &message);
 bool bleIdentityConfigured();
@@ -146,6 +167,21 @@ String bleHmac(const String &message, const String &token = "");
 bool verifyBleHmac(const String &message, const String &signature,
                    const String &token = "");
 #endif
+
+void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+#if defined(CLUBIQ_ESP32_BLE)
+  if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+    bleWifiGotIp = true;
+    bleWifiDisconnectReason = 0;
+  } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    bleWifiGotIp = false;
+    bleWifiDisconnectReason = info.wifi_sta_disconnected.reason;
+  }
+#else
+  (void)event;
+  (void)info;
+#endif
+}
 
 uint32_t secureRandomWord() {
   return esp_random();
@@ -1919,6 +1955,171 @@ void rejectBleProvisioning(const String &message) {
   bleNotifyJson("{\"state\":\"error\",\"message\":\"" + jsonEscape(message) + "\"}");
 }
 
+String wifiProvisioningFailureMessage(int reason) {
+  switch (reason) {
+    case WIFI_REASON_NO_AP_FOUND:
+      return "Das Kassen-WLAN wurde nicht gefunden. Raspberry-WLAN und 2,4-GHz-Empfang pruefen.";
+    case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:
+      return "Das WLAN-Kennwort wurde abgelehnt. Kennwort in ClubIQ erneut eingeben.";
+    case WIFI_REASON_ASSOC_FAIL:
+      return "Der Raspberry hat die WLAN-Anmeldung abgelehnt. Kassen-WLAN kurz neu starten und erneut versuchen.";
+    default:
+      return "Der Leser konnte dem Kassen-WLAN nicht beitreten (WLAN-Fehler " +
+             String(reason) + ").";
+  }
+}
+
+void restoreBleProvisioningRuntime() {
+  resetVereinskasseConnection();
+  WiFi.setAutoReconnect(false);
+  WiFi.disconnect(true, false);
+  WiFi.mode(WIFI_OFF);
+  vereinskasseApiUrl = blePreviousApiUrl;
+  vereinskasseRootCa = blePreviousRootCa;
+  rebuildVereinskasseTrustAnchor();
+  bleCandidateSsid = "";
+  bleCandidatePassword = "";
+  bleCandidateApiUrl = "";
+  bleCandidateRootCa = "";
+  blePreviousApiUrl = "";
+  blePreviousRootCa = "";
+  bleWifiVerificationPhase = BleWifiVerificationPhase::Idle;
+  bleWifiVerificationStartedAt = 0;
+  bleWifiPhaseStartedAt = 0;
+  bleWifiLastAttemptAt = 0;
+  bleWifiServerAttempts = 0;
+  bleWifiGotIp = false;
+  bleWifiDisconnectReason = 0;
+  timeSyncStarted = false;
+  clockWasReady = false;
+}
+
+void failBleWifiVerification(const String &message) {
+  restoreBleProvisioningRuntime();
+  rejectBleProvisioning(message);
+}
+
+void startBleWifiVerification(const String &ssid, const String &password,
+                              const String &apiUrl, const String &rootCa) {
+  bleCandidateSsid = ssid;
+  bleCandidatePassword = password;
+  bleCandidateApiUrl = apiUrl;
+  bleCandidateRootCa = rootCa;
+  blePreviousApiUrl = vereinskasseApiUrl;
+  blePreviousRootCa = vereinskasseRootCa;
+  vereinskasseApiUrl = apiUrl;
+  vereinskasseRootCa = rootCa;
+  rebuildVereinskasseTrustAnchor();
+  resetVereinskasseConnection();
+  bleWifiVerificationPhase = BleWifiVerificationPhase::Connecting;
+  bleWifiVerificationStartedAt = millis();
+  bleWifiPhaseStartedAt = bleWifiVerificationStartedAt;
+  bleWifiLastAttemptAt = 0;
+  bleWifiServerAttempts = 0;
+  bleWifiGotIp = false;
+  bleWifiDisconnectReason = 0;
+  timeSyncStarted = false;
+  clockWasReady = false;
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  setStatusLed(StatusLedMode::Connecting);
+  showStatusDisplay("WLAN-Test", "Kassen-WLAN wird geprueft");
+  bleNotifyJson("{\"state\":\"wifi_connecting\",\"hardwareId\":\"" + hardwareId() +
+                "\",\"message\":\"Leser verbindet sich testweise mit dem Kassen-WLAN.\"}");
+}
+
+int verifyProvisioningServer() {
+  if (!clockReady() || !beginVereinskasseRequest(bleCandidateApiUrl + "/health")) return -1000;
+  vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
+  vereinskasseHttps.addHeader("X-RFID-Hardware-Id", hardwareId());
+  vereinskasseHttps.addHeader("X-RFID-Firmware-Version", FIRMWARE_VERSION);
+  const int status = vereinskasseHttps.GET();
+  vereinskasseHttps.end();
+  return status;
+}
+
+void processBleWifiVerification() {
+  if (bleWifiVerificationPhase == BleWifiVerificationPhase::Idle ||
+      bleWifiVerificationPhase == BleWifiVerificationPhase::Verified) return;
+  const unsigned long now = millis();
+  if (bleWifiVerificationPhase == BleWifiVerificationPhase::Connecting) {
+    if (WiFi.status() == WL_CONNECTED && bleWifiGotIp) {
+      bleWifiVerificationPhase = BleWifiVerificationPhase::Clock;
+      bleWifiPhaseStartedAt = now;
+      bleWifiLastAttemptAt = 0;
+      showStatusDisplay("WLAN verbunden", WiFi.localIP().toString());
+      bleNotifyJson("{\"state\":\"wifi_connected\",\"hardwareId\":\"" + hardwareId() +
+                    "\",\"message\":\"Kassen-WLAN verbunden, IP " +
+                    jsonEscape(WiFi.localIP().toString()) + ".\"}");
+      return;
+    }
+    if (now - bleWifiVerificationStartedAt >= BLE_WIFI_CONNECT_TIMEOUT_MS) {
+      failBleWifiVerification(wifiProvisioningFailureMessage(bleWifiDisconnectReason));
+    }
+    return;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    failBleWifiVerification(wifiProvisioningFailureMessage(bleWifiDisconnectReason));
+    return;
+  }
+  if (bleWifiVerificationPhase == BleWifiVerificationPhase::Clock) {
+    if ((!bleWifiLastAttemptAt || now - bleWifiLastAttemptAt >= BLE_SERVER_RETRY_MS) &&
+        syncClockFromKiosk()) {
+      bleWifiVerificationPhase = BleWifiVerificationPhase::Server;
+      bleWifiPhaseStartedAt = now;
+      bleWifiLastAttemptAt = 0;
+      showStatusDisplay("Server-Test", "HTTPS wird geprueft");
+      bleNotifyJson("{\"state\":\"clock_ready\",\"hardwareId\":\"" + hardwareId() +
+                    "\",\"message\":\"Raspberry-Uhrzeit geladen. Sichere Verbindung wird geprueft.\"}");
+      return;
+    }
+    bleWifiLastAttemptAt = now;
+    if (now - bleWifiPhaseStartedAt >= BLE_CLOCK_TIMEOUT_MS) {
+      failBleWifiVerification("WLAN ist verbunden, aber der lokale Raspberry-Zeitdienst ist nicht erreichbar.");
+    }
+    return;
+  }
+  if (bleWifiVerificationPhase != BleWifiVerificationPhase::Server ||
+      (bleWifiLastAttemptAt && now - bleWifiLastAttemptAt < BLE_SERVER_RETRY_MS)) return;
+  bleWifiLastAttemptAt = now;
+  ++bleWifiServerAttempts;
+  const int status = verifyProvisioningServer();
+  if (status == 200) {
+    if (!saveWifiSettings(bleCandidateSsid, bleCandidatePassword) ||
+        !saveServerSettings(bleCandidateApiUrl, rfidDeviceToken, bleCandidateRootCa)) {
+      failBleWifiVerification("Die geprueften Einstellungen konnten nicht dauerhaft gespeichert werden.");
+      return;
+    }
+    bleWifiVerificationPhase = BleWifiVerificationPhase::Verified;
+    bleSetupInProgress = false;
+    blePairingSent = false;
+    bleLastProgressAt = 0;
+    serverAuthenticated = true;
+    setStatusLed(StatusLedMode::Success, 1400);
+    showStatusDisplay("Bereit", "Raspberry erreicht");
+    bleNotifyJson("{\"state\":\"settings_verified\",\"hardwareId\":\"" + hardwareId() +
+                  "\",\"message\":\"WLAN, Zertifikat und Raspberry wurden erfolgreich geprueft.\"}");
+    bleRestartPending = true;
+    bleRestartAt = millis() + 2200;
+    return;
+  }
+  if (status == 401 || status == 403) {
+    failBleWifiVerification("Der Raspberry hat die sichere Leserkennung abgelehnt. Leser in ClubIQ deaktivieren und neu einrichten.");
+    return;
+  }
+  if (bleWifiServerAttempts >= BLE_SERVER_MAX_ATTEMPTS) {
+    const String detail = status < 0
+        ? String(HTTPClient::errorToString(status).c_str())
+        : "HTTP " + String(status);
+    failBleWifiVerification("Kassenserver per HTTPS nicht erreichbar (" + detail + ").");
+  }
+}
+
 void processBleCommand() {
   if (!bleCommandPending) return;
   if (bleRecoveryRestartAt) bleRecoveryRestartAt = millis() + BLE_RECOVERY_WINDOW_MS;
@@ -1951,11 +2152,10 @@ void processBleCommand() {
     const String approval = jsonStringField(body, "approval");
     const String message = "activate|" + hardwareId() + "|" + blePairTokenHash;
     if (!pairingSecret.length() || !verifyBleHmac(message, approval, pairingSecret) ||
-        !saveServerSettings("", pairingSecret, "") || !saveWifiSettings("", "")) {
+        !saveServerSettings(vereinskasseApiUrl, pairingSecret, vereinskasseRootCa)) {
       rejectBleProvisioning("Bluetooth-Freigabe konnte nicht sicher gespeichert werden.");
       return;
     }
-    disableWifiForBleRuntime();
     pairingSecret = "";
     blePairTokenHash = "";
     blePairProof = "";
@@ -2004,24 +2204,11 @@ void processBleCommand() {
   // bleibt dessen geheime Geraetekennung erhalten. Nur ein neuer oder nicht
   // mehr freigegebener Leser durchlaeuft anschliessend die Kopplung erneut.
   const bool reuseExistingIdentity = bleIdentityConfigured();
-  const String existingDeviceToken = reuseExistingIdentity ? rfidDeviceToken : String("");
-  if (!saveWifiSettings(ssid, password) ||
-      !saveServerSettings(apiUrl, existingDeviceToken, rootCa)) {
-    rejectBleProvisioning("Einstellungen konnten nicht gespeichert werden.");
-    return;
-  }
   pairingDeviceName = requestedName;
   pairingSecret = "";
-  bleSetupInProgress = false;
-  blePairingSent = false;
   bleReuseExistingIdentity = reuseExistingIdentity;
   bleLastProgressAt = 0;
-  setStatusLed(StatusLedMode::Success, 1200);
-  showStatusDisplay("Gespeichert", "Neustart ins WLAN");
-  bleNotifyJson("{\"state\":\"settings_saved\",\"hardwareId\":\"" +
-                hardwareId() + "\",\"message\":\"Einstellungen gespeichert. Leser startet jetzt ins Kassen-WLAN.\"}");
-  bleRestartPending = true;
-  bleRestartAt = millis() + 1500;
+  startBleWifiVerification(ssid, password, apiUrl, rootCa);
 }
 
 bool bleIdentityConfigured() {
@@ -2099,6 +2286,7 @@ void processBlePhysicalConfirmation() {
 
 void processBleProvisioning() {
   processBleCommand();
+  processBleWifiVerification();
   if (!bleClientConnected) return;
   const unsigned long now = millis();
   processBlePhysicalConfirmation();
@@ -2110,6 +2298,7 @@ void processBleProvisioning() {
     }
     return;
   }
+  if (bleWifiVerificationPhase != BleWifiVerificationPhase::Idle) return;
   serverFailureSince = 0;
   if (!bleRestartPending && (!bleLastProgressAt || now - bleLastProgressAt > 5000)) {
     bleLastProgressAt = now;
@@ -2242,6 +2431,7 @@ void startBleSetupMode(bool recoveryFromWifi) {
 void setup() {
   Serial.begin(115200);
   delay(300);
+  WiFi.onEvent(onWifiEvent);
   enableWatchdog();
   statusPixels.begin();
   statusPixels.setBrightness(STATUS_LED_BRIGHTNESS);

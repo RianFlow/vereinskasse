@@ -30,9 +30,13 @@ export type RfidBleReader={id:string;name:string;device:BluetoothDevice};
 const progressMessages:Record<string,string>={
   ready:"Leser gefunden. Sichere Einrichtung wird vorbereitet …",
   confirmation_required:"Sicherheitsfreigabe: Jetzt eine RFID-Karte am Leser auflegen.",
-  physical_confirmed:"Karte erkannt. Einstellungen werden gespeichert …",
+  physical_confirmed:"Karte erkannt. Verbindung wird jetzt geprüft …",
   pair_offer:"Leser wird sicher in ClubIQ registriert …",
   approved:"Leser ist registriert. Kassen-WLAN wird übertragen …",
+  wifi_connecting:"Leser prüft das Kassen-WLAN …",
+  wifi_connected:"Kassen-WLAN verbunden. Raspberry wird geprüft …",
+  clock_ready:"Lokale Uhrzeit geladen. HTTPS-Verbindung wird geprüft …",
+  settings_verified:"WLAN, Zertifikat und Raspberry sind geprüft. Leser startet neu …",
   settings_saved:"Einstellungen gespeichert. Leser startet neu …"
 };
 
@@ -83,8 +87,8 @@ async function loadRegisteredDevices(){
 }
 
 async function waitForWifiReader(hardwareId:string,baselineLastSeen:number,startedAt:number,onProgress:(progress:RfidBleProgress)=>void){
-  const deadline=Date.now()+90_000;
-  onProgress({state:"wifi_connecting",message:"Leser startet neu und verbindet sich mit dem Kassen-WLAN …",hardwareId});
+  const deadline=Date.now()+30_000;
+  onProgress({state:"restarting",message:"Verbindung wurde geprüft. Leser startet jetzt in den Dauerbetrieb …",hardwareId});
   while(Date.now()<deadline){
     await delay(1000);
     const devices=await loadRegisteredDevices();
@@ -95,7 +99,7 @@ async function waitForWifiReader(hardwareId:string,baselineLastSeen:number,start
       return;
     }
   }
-  throw new Error("Die Einstellungen wurden gespeichert, aber der Leser hat den Raspberry nicht erreicht. WLAN-Kennwort, 2,4-GHz-Empfang und Stromversorgung prüfen.");
+  throw new Error("Der Verbindungstest war erfolgreich, aber der Leser meldet sich nach dem Neustart nicht erneut. Stromversorgung und Abstand zum Raspberry prüfen.");
 }
 
 export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProvisionInput,onProgress:(progress:RfidBleProgress)=>void){
@@ -114,7 +118,7 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
   const [rx,tx]=await Promise.all([service.getCharacteristic(RX_UUID),service.getCharacteristic(TX_UUID)]);
   await tx.startNotifications();
 
-  let receiveBuffer="",hardwareId="",provisionSent=false,pairRequested=false,pairing=false,settled=false,baselineLastSeen=0;
+  let receiveBuffer="",hardwareId="",provisionSent=false,pairRequested=false,pairing=false,settled=false,disconnectRecoveryStarted=false,baselineLastSeen=0;
   let resolveStored:()=>void=()=>undefined,rejectStored:(reason:Error)=>void=()=>undefined;
   const stored=new Promise<void>((resolve,reject)=>{resolveStored=resolve;rejectStored=reject});
   const decoder=new TextDecoder();
@@ -125,6 +129,30 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
     settled=true;
     rejectStored(reason instanceof Error?reason:new Error("Bluetooth-Einrichtung fehlgeschlagen."));
   };
+  const recoverVerifiedDisconnect=async()=>{
+    if(disconnectRecoveryStarted||settled)return;
+    disconnectRecoveryStarted=true;
+    onProgress({state:"verifying",message:"Bluetooth wurde getrennt. ClubIQ prüft, ob der Leser den Raspberry bereits sicher erreicht …",hardwareId:hardwareId||undefined});
+    const deadline=Date.now()+80_000;
+    while(!settled&&Date.now()<deadline){
+      await delay(1000);
+      if(!hardwareId)continue;
+      try{
+        const devices=await loadRegisteredDevices();
+        const device=devices.find(entry=>entry.hardwareId===hardwareId&&Boolean(entry.active));
+        const seenAt=device?.lastSeenAt?Date.parse(device.lastSeenAt):0;
+        if(device&&seenAt>baselineLastSeen&&seenAt>=startedAt-5000){
+          settled=true;
+          resolveStored();
+          return;
+        }
+      }catch{
+        // Ein kurzer App- oder WLAN-Aussetzer darf die Geräteprüfung nicht
+        // abbrechen. Erst der feste Endzeitpunkt entscheidet über den Fehler.
+      }
+    }
+    finishError(new Error("Bluetooth wurde während des Verbindungstests getrennt und der Leser hat den Raspberry danach nicht erreicht. Bitte WLAN-Kennwort und 2,4-GHz-Empfang prüfen und erneut versuchen."));
+  };
   const sendProvision=async()=>{
     if(provisionSent)return;
     if(hardwareId){
@@ -133,7 +161,7 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
       baselineLastSeen=existing?.lastSeenAt?Date.parse(existing.lastSeenAt):0;
     }
     provisionSent=true;
-    onProgress({state:"transferring",message:"WLAN und ClubIQ-Zertifikat werden sicher gespeichert …",hardwareId:hardwareId||undefined});
+    onProgress({state:"transferring",message:"WLAN und ClubIQ-Zertifikat werden übertragen und vor dem Speichern geprüft …",hardwareId:hardwareId||undefined});
     await writeFrame(rx,{
       type:"provision",version:2,
       name:base64(input.name),ssid:base64(input.ssid),password:base64(input.password),
@@ -165,7 +193,7 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
       return;
     }
     if(state==="approved"&&pairing){await sendProvision();return}
-    if(state==="settings_saved"){
+    if(state==="settings_verified"||state==="settings_saved"){
       if(!settled){settled=true;resolveStored()}
     }
   };
@@ -186,10 +214,10 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
     }
   };
   const disconnected=()=>{
-    // Nach dem Speichern startet der ESP32 absichtlich neu. Falls Android die
-    // letzte Benachrichtigung verschluckt, bestätigt anschließend der
-    // Kassenserver eindeutig, ob die Einrichtung wirklich erfolgreich war.
-    if(provisionSent&&!settled){settled=true;resolveStored()}
+    // Android kann die letzte Benachrichtigung beim ESP-Neustart verschlucken.
+    // Eine Trennung ist deshalb niemals allein ein Erfolg: Erst eine frische,
+    // authentifizierte Meldung desselben Lesers am Raspberry bestätigt ihn.
+    if(provisionSent&&!settled)void recoverVerifiedDisconnect();
     else if(!settled)finishError(new Error("Bluetooth wurde vor dem Speichern getrennt. Bitte erneut verbinden."));
   };
   tx.addEventListener("characteristicvaluechanged",listener);
@@ -197,7 +225,7 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
 
   try{
     await writeFrame(rx,{type:"hello",nonce:randomHex(24)});
-    await Promise.race([stored,delay(60_000).then(()=>{throw new Error("Der Leser hat die WLAN-Einstellungen nicht rechtzeitig bestätigt.")})]);
+    await Promise.race([stored,delay(85_000).then(()=>{throw new Error("Der Leser hat den geprüften WLAN- und Serveraufbau nicht rechtzeitig bestätigt.")})]);
   }finally{
     tx.removeEventListener("characteristicvaluechanged",listener);
     device.removeEventListener?.("gattserverdisconnected",disconnected);

@@ -34,28 +34,35 @@ test("unterstützt nur noch den ESP32 D1 mini",async()=>{
   assert.ok(component.includes("ESP32 D1 mini")&&!component.includes('useState<"esp8266"'));
 });
 
-test("trennt Bluetooth-Einrichtung und WLAN-Laufzeit strikt",async()=>{
+test("prüft WLAN und Raspberry während der einmaligen Bluetooth-Einrichtung",async()=>{
   const [firmware,config,ble]=await Promise.all([
     read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),read("hardware/NodeMCU-V3-RC522-Tablet/include/config.h"),read("app/rfid-ble.ts")
   ]);
-  for(const fragment of ["startBleSetupMode","disableWifiForBleRuntime","WiFi.mode(WIFI_OFF)","bleRestartPending","settings_saved","ESP.restart()"])
-    assert.ok(firmware.includes(fragment),`Getrennte Zustandsfolge fehlt: ${fragment}`);
+  for(const fragment of ["startBleSetupMode","startBleWifiVerification","processBleWifiVerification","BleWifiVerificationPhase::Connecting","wifiProvisioningFailureMessage","settings_verified","ESP.restart()"])
+    assert.ok(firmware.includes(fragment),`Geprüfte Zustandsfolge fehlt: ${fragment}`);
   const bleLoop=firmware.slice(firmware.indexOf("void loop()"));
   assert.ok(!firmware.includes("#include <WebServer.h>")&&!firmware.includes("server.handleClient()"),"Der alte Leser-Webserver darf nicht mehr gebaut werden");
   assert.ok(bleLoop.indexOf("if (bleProvisioningStarted)")<bleLoop.indexOf("maintainStationWifi()"));
-  assert.ok(bleLoop.includes("return;"),"BLE-Einrichtung muss vor dem WLAN-Pfad zurückkehren");
+  assert.ok(bleLoop.includes("return;"),"BLE-Einrichtung muss ihren kontrollierten Prüfpfad vor dem Dauerbetrieb ausführen");
   assert.ok(config.includes("WIFI_BLE_RECOVERY_START_MS = 90000"));
   assert.ok(config.includes("BLE_RECOVERY_WINDOW_MS = 5UL * 60UL * 1000UL"));
   assert.ok(firmware.includes("processBleRecoveryTimeout()"));
   assert.ok(!firmware.includes("Kassenserver laenger nicht erreichbar; Bluetooth-Einrichtung wird aktiviert"));
   assert.ok(!config.includes("MAINTENANCE_AP_FALLBACK_MS"));
-  assert.ok(ble.includes('type:"provision",version:2')&&ble.includes("waitForWifiReader"));
+  assert.ok(ble.includes('type:"provision",version:2')&&ble.includes("waitForWifiReader")&&ble.includes('state==="settings_verified"'));
+  assert.ok(ble.includes("recoverVerifiedDisconnect")&&ble.includes("disconnectRecoveryStarted"));
+  assert.ok(!ble.includes("if(provisionSent&&!settled){settled=true;resolveStored()}"),"Eine Bluetooth-Trennung darf nicht als Einrichtungserfolg gelten");
 });
 
-test("bestätigt die WLAN-Einrichtung erst nach einer neuen Raspberry-Meldung",async()=>{
-  const ble=await read("app/rfid-ble.ts");
-  for(const fragment of ["baselineLastSeen","seenAt>baselineLastSeen","loadRegisteredDevices","lastSeenAt","90_000","wifi_connecting"])
+test("bestätigt die WLAN-Einrichtung erst nach TLS-Prüfung und neuer Raspberry-Meldung",async()=>{
+  const [ble,firmware,health]=await Promise.all([read("app/rfid-ble.ts"),read("hardware/NodeMCU-V3-RC522-Tablet/src/main.cpp"),read("app/api/rfid/health/route.ts")]);
+  for(const fragment of ["baselineLastSeen","seenAt>baselineLastSeen","loadRegisteredDevices","lastSeenAt","30_000","settings_verified"])
     assert.ok(ble.includes(fragment),`Serverseitige Erfolgsprüfung fehlt: ${fragment}`);
+  for(const fragment of ["/health","syncClockFromKiosk","X-RFID-Hardware-Id","BLE_SERVER_MAX_ATTEMPTS"])
+    assert.ok(firmware.includes(fragment),`Firmware-Prüfung fehlt: ${fragment}`);
+  for(const fragment of ["token_hash=? AND hardware_id=?","nur lesend","serverTime"])
+    assert.ok(health.includes(fragment),`Authentifizierte Gesundheitsprüfung fehlt: ${fragment}`);
+  assert.ok(!health.includes("UPDATE rfid_devices"),"Die Provisioning-Prüfung darf den späteren Online-Zeitstempel nicht vorwegnehmen");
   assert.ok(!ble.includes("rfidBleRuntime")&&!ble.includes("pairRfidBleReader"));
 });
 
@@ -89,8 +96,8 @@ test("OTA bleibt im WLAN und verwendet eine gemeinsame Firmwareversion",async()=
   assert.ok(commands.includes("LATEST_RFID_FIRMWARE")&&commands.includes("clubiq-rfid-esp32.bin"));
   for(const fragment of ["HTTPUpdate.h","clubiqHttpUpdate.update","performFirmwareUpdate","X-RFID-Firmware-Version","StatusLedMode::Updating"])
     assert.ok(firmware.includes(fragment),`WLAN-OTA fehlt: ${fragment}`);
-  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.9.5"'));
-  assert.ok(shared.includes('LATEST_RFID_FIRMWARE="1.9.5"'));
+  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.9.6"'));
+  assert.ok(shared.includes('LATEST_RFID_FIRMWARE="1.9.6"'));
   assert.ok(dockerfile.includes("clubiq-rfid-esp32.bin"));
 });
 
@@ -100,4 +107,11 @@ test("RFID-Ampel verwendet ausschließlich den serverseitigen WLAN-Zustand",asyn
     assert.ok(component.includes(fragment),`Automatischer RFID-Status fehlt: ${fragment}`);
   assert.ok(!component.includes("reconnectBleDevice")&&!component.includes("rfid-reconnect-cue"));
   assert.ok(!page.includes("RfidBleBridge"));
+});
+
+test("Raspberry prüft den vollständigen lokalen RFID-Netzweg vor der Einrichtung",async()=>{
+  const [command,health]=await Promise.all([read("deploy/docker/clubiq"),read("app/api/rfid/health/route.ts")]);
+  for(const fragment of ["rfid-netz-pruefen","802-11-wireless.band","clubiq-time","vereinskasse-ca.crt","/api/rfid/health","HTTP $http_status"])
+    assert.ok(command.includes(fragment),`RFID-Netzprüfung fehlt: ${fragment}`);
+  assert.ok(health.includes('status:401')&&health.includes("x-rfid-token")&&health.includes("x-rfid-hardware-id"));
 });
