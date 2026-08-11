@@ -48,9 +48,7 @@ export async function GET(request:Request){
         if(!claimed.meta.changes)return new Response(null,{status:204,headers});
       }
       const action=command.block===-2?"firmware":command.block===-1?"restart":"write";
-      const firmwareUrl=device.hardwareId?.startsWith("ESP32-")
-        ?"/firmware/clubiq-rfid-esp32.bin"
-        :"/firmware/clubiq-rfid-esp8266.bin";
+      const firmwareUrl="/firmware/clubiq-rfid-esp32.bin";
       return Response.json({command:{id:command.id,action,uid:command.uid,block:command.block,hex:command.payloadHex,version:action==="firmware"?command.payloadHex:undefined,firmwareUrl:action==="firmware"?firmwareUrl:undefined,expiresAt:command.expiresAt}},{headers});
     }
 

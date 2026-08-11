@@ -3,15 +3,12 @@
 // Diese Datei als include/secrets.h kopieren und dort die Werte eintragen.
 // secrets.h wird von Git ignoriert.
 
-// Vereins-WLAN, mit dem auch Tablet und Kassenserver erreichbar sind.
+// Optionale Rückfallwerte. Normalerweise werden alle Werte einmalig über die
+// ClubIQ-App per Bluetooth eingerichtet und dauerhaft im ESP32 gespeichert.
 constexpr char CLUB_WIFI_SSID[] = "";
 constexpr char CLUB_WIFI_PASSWORD[] = "";
 
-// Sichere Rückfallwerte für den ersten Start. Nach dem ersten Flashen können
-// Serveradresse, Token und Root-CA geschützt unter http://192.168.4.1 geändert
-// werden; die gespeicherten Werte haben dann Vorrang.
-// In der Vereinskasse unter Admin > Sicherheit > RFID-Leser anlegen.
-// Nur den dort einmalig angezeigten Geräte-Token hier eintragen.
+// Nicht manuell ausfüllen, wenn die App-Einrichtung verwendet wird.
 constexpr char RFID_DEVICE_TOKEN[] = "";
 
 // Ziel der Vereinskasse. Für eine andere Installation entsprechend ändern.
