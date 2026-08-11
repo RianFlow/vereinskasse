@@ -17,7 +17,10 @@ WLAN und die sichere lokale Serveradresse zu übertragen. Danach laufen Scans,
 Displayanzeige, Chip-Schreiben, Neustart und geprüfte Firmwareupdates direkt
 zwischen Leser und Raspberry. Der Kassenbetrieb bleibt auch ohne Internet lokal
 verfügbar; LAN wird nur für Fernzugriff, E-Mail, R2-Sicherung und Updates benötigt.
-Der bisherige ESP8266-Wartungsweg bleibt als Altgeräte- und Notfallweg erhalten.
+Unterstützt wird ausschließlich der ESP32 D1 mini. Fehlen die Einstellungen oder
+bleiben Kassen-WLAN beziehungsweise Kassenserver 90 Sekunden unerreichbar,
+schaltet der Leser kontrolliert in den Bluetooth-Einrichtungsmodus. Bluetooth
+und WLAN laufen dabei nie gleichzeitig.
 
 ## Datensicherheit
 

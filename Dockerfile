@@ -5,9 +5,8 @@ WORKDIR /firmware
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir platformio==6.1.18
 COPY hardware/NodeMCU-V3-RC522-Tablet ./
-RUN platformio run -e nodemcuv2 -e esp32dev \
-    && test -s .pio/build/nodemcuv2/firmware.bin \
-    && test -s .pio/build/esp32dev/firmware.bin
+RUN platformio run -e esp32_d1_mini \
+    && test -s .pio/build/esp32_d1_mini/firmware.bin
 
 FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS dependencies
 WORKDIR /app
@@ -16,11 +15,9 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 
 FROM --platform=$BUILDPLATFORM dependencies AS builder
 COPY . .
-COPY --from=firmware-builder /firmware/.pio/build/nodemcuv2/firmware.bin \
+COPY --from=firmware-builder /firmware/.pio/build/esp32_d1_mini/firmware.bin \
   ./public/firmware/clubiq-rfid.bin
-COPY --from=firmware-builder /firmware/.pio/build/nodemcuv2/firmware.bin \
-  ./public/firmware/clubiq-rfid-esp8266.bin
-COPY --from=firmware-builder /firmware/.pio/build/esp32dev/firmware.bin \
+COPY --from=firmware-builder /firmware/.pio/build/esp32_d1_mini/firmware.bin \
   ./public/firmware/clubiq-rfid-esp32.bin
 ENV NODE_ENV=production \
     VEREINSKASSE_RUNTIME=raspberry

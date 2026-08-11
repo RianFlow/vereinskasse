@@ -1,50 +1,28 @@
 #pragma once
 
-constexpr char FIRMWARE_VERSION[] = "1.9.4";
+constexpr char FIRMWARE_VERSION[] = "1.9.5";
 
-#if defined(CLUBIQ_ESP32_BLE)
-// ESP32-WROOM-32 / ESP32 DevKit: VSPI plus Pins ohne Boot-Strapping-Konflikte.
-constexpr int PIN_RC522_SS = 5;
-constexpr int PIN_RC522_RST = 27;
-// Hardware-SPI: SCK GPIO 18, MISO GPIO 19, MOSI GPIO 23.
-constexpr int PIN_STATUS_LED = 13;
+// WEMOS/LOLIN ESP32 D1 mini: VSPI plus Pins ohne Boot-Strapping-Konflikte.
+constexpr int PIN_RC522_SS = 5;   // D8
+constexpr int PIN_RC522_RST = 17; // D3
+// Hardware-SPI: D5/SCK GPIO 18, D6/MISO GPIO 19, D7/MOSI GPIO 23.
+constexpr int PIN_STATUS_LED = 16; // D4
 constexpr int PIN_I2C_SDA = 21;
 constexpr int PIN_I2C_SCL = 22;
-#else
-// NodeMCU V3 / ESP8266: Hardware-SPI plus sichere freie Pins.
-// D-Bezeichnungen stehen nur auf der Platine; hier werden GPIO-Nummern verwendet.
-constexpr int PIN_RC522_SS = 4;    // D2
-constexpr int PIN_RC522_RST = 5;   // D1
-// Hardware-SPI ist beim ESP8266 fest: SCK D5, MISO D6, MOSI D7.
-constexpr int PIN_STATUS_LED = 15; // D8
-constexpr int PIN_I2C_SDA = 0;     // D3 / GPIO 0
-constexpr int PIN_I2C_SCL = 2;     // D4 / GPIO 2
-#endif
 
-// WS2812B-Statusstreifen. GPIO 16 / D0 wird absichtlich nicht verwendet:
-// Die schnelle ESP8266-Ausgabe der NeoPixel-Bibliothek arbeitet mit GPIO 0–15.
-// D8 / GPIO 15 ist frei und besitzt auf dem NodeMCU bereits den nötigen
-// Boot-Pulldown. Am LED-Dateneingang darf deshalb kein Pull-up angeschlossen sein.
+// WS2812B-Statusstreifen am ESP32 D1 mini.
 constexpr uint16_t STATUS_LED_COUNT = 5;
 constexpr uint8_t STATUS_LED_BRIGHTNESS = 90;
 constexpr unsigned long STATUS_LED_TEST_STEP_MS = 180;
 
 // Optionales I2C-Statusdisplay: SSD1306, 128 x 64 Pixel.
-// D1/D2 werden bereits vom RC522 verwendet, daher liegt der separate I2C-Bus
-// auf D3/D4. Beide Pins muessen beim Einschalten HIGH bleiben (Boot-Pins).
+// Der separate I2C-Bus liegt auf den üblichen, boot-sicheren ESP32-Pins.
 constexpr bool ENABLE_I2C_STATUS_DISPLAY = true;
 constexpr uint8_t STATUS_DISPLAY_ADDRESS = 0x3C;
 constexpr uint16_t STATUS_DISPLAY_WIDTH = 128;
 constexpr uint16_t STATUS_DISPLAY_HEIGHT = 64;
 // Zweifarbige OLEDs haben die gelbe Zone fest in den Pixelzeilen 0 bis 15.
 constexpr uint8_t STATUS_DISPLAY_HEADER_HEIGHT = 16;
-
-// Leer lassen: geräteabhängige Werte werden aus der Chip-ID erzeugt.
-// Eigene Werte: AP mindestens 8, Web-Passwort möglichst mindestens 12 Zeichen.
-constexpr char CUSTOM_AP_SSID[] = "";
-constexpr char CUSTOM_AP_PASSWORD[] = "";
-constexpr char CUSTOM_WEB_USER[] = "admin";
-constexpr char CUSTOM_WEB_PASSWORD[] = "svbarverdarts";
 
 // secrets.h wird absichtlich nicht in Git gespeichert. Ohne eigene secrets.h
 // baut die Firmware mit leeren Beispielwerten und bleibt im Wartungsmodus.
@@ -55,20 +33,18 @@ constexpr char CUSTOM_WEB_PASSWORD[] = "svbarverdarts";
 #endif
 
 constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 15000;
-// Nach einer neuen WLAN-Verbindung braucht der ESP32-Funkstack kurz Ruhe,
-// bevor parallel zur Bluetooth-Einrichtung der erste TLS-Socket geoeffnet wird.
-constexpr unsigned long WIFI_TLS_SETTLE_MS = 2500;
-constexpr unsigned long MAINTENANCE_AP_FALLBACK_MS = 60000;
+// Ist nur das Kassen-WLAN laenger nicht erreichbar, bietet der Leser zeitweise
+// die Bluetooth-Wiederherstellung an. Danach startet er selbststaendig neu und
+// versucht wieder die gespeicherte WLAN-Verbindung. Ein bloßer Serverneustart
+// aktiviert Bluetooth nicht.
+constexpr unsigned long WIFI_BLE_RECOVERY_START_MS = 90000;
+constexpr unsigned long BLE_RECOVERY_WINDOW_MS = 5UL * 60UL * 1000UL;
 constexpr char KIOSK_TIME_URL[] = "http://10.42.0.1:8080/clubiq-time";
 constexpr unsigned long RFID_SCAN_INTERVAL_MS = 120;
 constexpr unsigned long RFID_REPEAT_GUARD_MS = 1500;
 // Karten-Schreibaufträge sind selten. Eine häufigere HTTPS-Abfrage würde den
 // wichtigeren UID-Scan unnötig blockieren.
 constexpr unsigned long RFID_COMMAND_POLL_INTERVAL_MS = 5000;
-constexpr unsigned long RFID_PAIRING_POLL_INTERVAL_MS = 1200;
-// Solange die lokale Wartungsseite benutzt wird, pausieren langsamere
-// HTTPS-Hintergrundabfragen. Dadurch reagiert die Oberfläche sofort.
-constexpr unsigned long MAINTENANCE_PRIORITY_MS = 4500;
 // Der erste lokale TLS-Handshake kann auf dem ESP32 waehrend der einmaligen
 // Bluetooth-Einrichtung mehrere Sekunden benoetigen. Ein zu kurzes Zeitfenster
 // laesst ein korrekt erreichbares Kassen-WLAN faelschlich als TLS-Fehler
