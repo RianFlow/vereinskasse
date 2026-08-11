@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr char FIRMWARE_VERSION[] = "1.9.2";
+constexpr char FIRMWARE_VERSION[] = "1.9.3";
 
 #if defined(CLUBIQ_ESP32_BLE)
 // ESP32-WROOM-32 / ESP32 DevKit: VSPI plus Pins ohne Boot-Strapping-Konflikte.
@@ -66,7 +66,11 @@ constexpr unsigned long RFID_PAIRING_POLL_INTERVAL_MS = 1200;
 // Solange die lokale Wartungsseite benutzt wird, pausieren langsamere
 // HTTPS-Hintergrundabfragen. Dadurch reagiert die Oberfläche sofort.
 constexpr unsigned long MAINTENANCE_PRIORITY_MS = 4500;
-constexpr unsigned long HTTPS_TIMEOUT_MS = 2200;
+// Der erste lokale TLS-Handshake kann auf dem ESP32 waehrend der einmaligen
+// Bluetooth-Einrichtung mehrere Sekunden benoetigen. Ein zu kurzes Zeitfenster
+// laesst ein korrekt erreichbares Kassen-WLAN faelschlich als TLS-Fehler
+// erscheinen.
+constexpr unsigned long HTTPS_TIMEOUT_MS = 8000;
 constexpr unsigned long STATUS_DISPLAY_SCREENSAVER_MS = 12000;
 constexpr unsigned long CUSTOMER_DISPLAY_TIMEOUT_MS = 2UL * 60UL * 1000UL;
 // Rückfallsicherung: Ein erkannter Scan bleibt im RAM, bis der Server ihn

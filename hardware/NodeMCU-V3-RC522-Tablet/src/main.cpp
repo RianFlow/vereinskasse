@@ -118,6 +118,7 @@ bool bleClientConnected = false;
 volatile bool bleCommandPending = false;
 bool bleSetupInProgress = false;
 bool blePairingSent = false;
+bool bleReuseExistingIdentity = false;
 bool bleProvisioningAuthorized = false;
 bool blePhysicalConfirmationPending = false;
 String bleDeferredProvisionCommand;
@@ -988,8 +989,10 @@ bool sendPairingRequest() {
   vereinskasseHttps.end();
   if (status < 200 || status >= 300) {
     pairingMessage = status < 0
-        ? "Netzwerk- oder TLS-Fehler beim Koppeln."
+        ? "Kassenserver-Verbindung: " + String(HTTPClient::errorToString(status).c_str()) +
+              " (Fehler " + String(status) + "). Neuer Versuch laeuft."
         : "Kassenserver lehnt die Kopplung ab (HTTP " + String(status) + ").";
+    Serial.println(pairingMessage);
     return false;
   }
   pairingRequestId = jsonStringField(response, "id");
@@ -1894,7 +1897,10 @@ void bleNotifyJson(const String &payload) {
     const size_t count = min(static_cast<size_t>(18), framed.length() - offset);
     bleTx->setValue(std::string(framed.c_str() + offset, count));
     bleTx->notify();
-    delay(18);
+    // Einige Android-Bluetooth-Stacks verlieren direkt aufeinanderfolgende
+    // Teilbenachrichtigungen. Der kleine Abstand macht die JSON-Rahmen stabil,
+    // ohne die einmalige Einrichtung merklich zu verlangsamen.
+    delay(35);
   }
 }
 
@@ -2021,6 +2027,7 @@ String decodeProvisionField(const String &body, const String &name) {
 void rejectBleProvisioning(const String &message) {
   bleSetupInProgress = false;
   blePairingSent = false;
+  bleReuseExistingIdentity = false;
   setStatusLed(StatusLedMode::Error, 1800);
   bleNotifyJson("{\"state\":\"error\",\"message\":\"" + jsonEscape(message) + "\"}");
 }
@@ -2292,7 +2299,13 @@ void processBleCommand() {
   }
   if (requestedName.length() < 3) requestedName = "RFID-Leser " + macSuffix();
   if (requestedName.length() > 60) requestedName.remove(60);
-  if (!saveWifiSettings(ssid, password) || !saveServerSettings(apiUrl, "", rootCa)) {
+  // Bei einer bestaetigten WLAN-Aenderung eines bereits registrierten Lesers
+  // bleibt dessen geheime Geraetekennung erhalten. Nur ein neuer oder nicht
+  // mehr freigegebener Leser durchlaeuft anschliessend die Kopplung erneut.
+  const bool reuseExistingIdentity = bleIdentityConfigured();
+  const String existingDeviceToken = reuseExistingIdentity ? rfidDeviceToken : String("");
+  if (!saveWifiSettings(ssid, password) ||
+      !saveServerSettings(apiUrl, existingDeviceToken, rootCa)) {
     rejectBleProvisioning("Einstellungen konnten nicht gespeichert werden.");
     return;
   }
@@ -2304,6 +2317,7 @@ void processBleCommand() {
   pairingActive = false;
   bleSetupInProgress = true;
   blePairingSent = false;
+  bleReuseExistingIdentity = reuseExistingIdentity;
   bleLastProgressAt = 0;
   scheduleStationReconnect();
   setStatusLed(StatusLedMode::Connecting);
@@ -2420,7 +2434,54 @@ void processBleProvisioning() {
     }
     return;
   }
-  if (blePairingSent || pairingActive) return;
+  if (bleReuseExistingIdentity) {
+    if (bleLastProgressAt && now - bleLastProgressAt < 3000) return;
+    bleLastProgressAt = now;
+    if (!beginVereinskasseRequest(commandApiUrl())) {
+      bleNotifyJson("{\"state\":\"retrying_server\",\"message\":\"Sichere Verbindung wird erneut vorbereitet.\"}");
+      return;
+    }
+    vereinskasseHttps.addHeader("X-RFID-Token", rfidDeviceToken);
+    vereinskasseHttps.addHeader("X-RFID-Firmware-Version", FIRMWARE_VERSION);
+    const int status = vereinskasseHttps.GET();
+    vereinskasseHttps.end();
+    if (status == 200 || status == 204) {
+      bleNotifyJson("{\"state\":\"approved\",\"hardwareId\":\"" + hardwareId() + "\"}");
+      bleSetupInProgress = false;
+      bleReuseExistingIdentity = false;
+      serverFailureSince = 0;
+      lastPushState = "Bestehender Leser ist im ClubIQ-Kassen-WLAN angemeldet.";
+      setStatusLed(StatusLedMode::Success, 1400);
+      showStatusDisplay("ClubIQ verbunden", "RFID bereit");
+      return;
+    }
+    if (status == 401 || status == 403) {
+      // Die lokale Kennung gehoert nicht mehr zur Datenbank. Sicher auf eine
+      // neue Kopplung zurueckfallen, statt dauerhaft offline zu bleiben.
+      if (!saveServerSettings(vereinskasseApiUrl, "", vereinskasseRootCa)) {
+        rejectBleProvisioning("Alte Geraetefreigabe konnte nicht erneuert werden.");
+        return;
+      }
+      bleReuseExistingIdentity = false;
+      bleLastProgressAt = 0;
+    } else {
+      const String detail = status < 0
+          ? String(HTTPClient::errorToString(status).c_str()) + " (Fehler " + String(status) + ")"
+          : "HTTP " + String(status);
+      bleNotifyJson("{\"state\":\"retrying_server\",\"message\":\"ClubIQ noch nicht erreichbar: " +
+                    jsonEscape(detail) + ". Neuer Versuch laeuft.\"}");
+      return;
+    }
+  }
+  if (pairingActive) {
+    if (!bleLastProgressAt || now - bleLastProgressAt > 3000) {
+      bleLastProgressAt = now;
+      bleNotifyJson("{\"state\":\"pairing\",\"hardwareId\":\"" + hardwareId() +
+                    "\",\"code\":\"" + pairingCode + "\"}");
+    }
+    return;
+  }
+  if (blePairingSent) return;
   if (bleLastProgressAt && now - bleLastProgressAt < 3000) return;
   bleLastProgressAt = now;
   if (!pairingSecret.length()) {
