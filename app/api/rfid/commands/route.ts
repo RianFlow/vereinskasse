@@ -47,7 +47,7 @@ export async function GET(request:Request){
         const claimed=await env.DB.prepare("UPDATE rfid_write_commands SET status='processing',claimed_at=? WHERE id=? AND device_id=? AND status='pending'").bind(now,command.id,device.id).run();
         if(!claimed.meta.changes)return new Response(null,{status:204,headers});
       }
-      const action=command.block===-2?"firmware":command.block===-1?"restart":"write";
+      const action=command.block===-3?"wifi_setup":command.block===-2?"firmware":command.block===-1?"restart":"write";
       const firmwareUrl="/firmware/clubiq-rfid-esp32.bin";
       return Response.json({command:{id:command.id,action,uid:command.uid,block:command.block,hex:command.payloadHex,version:action==="firmware"?command.payloadHex:undefined,firmwareUrl:action==="firmware"?firmwareUrl:undefined,expiresAt:command.expiresAt}},{headers});
     }
@@ -75,15 +75,17 @@ export async function POST(request:Request){
     if(!command)return Response.json({error:"Schreibauftrag nicht gefunden"},{status:404,headers});
     if(command.status==="succeeded"||command.status==="failed")return Response.json({ok:true,duplicate:true},{headers});
     if(scannedUid!==command.uid)return Response.json({error:"Falsche Karte aufgelegt"},{status:409,headers});
-    const returnedHex=command.block===-2?String(body.hex||"").trim():String(body.hex||"").toUpperCase().replace(/[^0-9A-F]/g,"");
+    const returnedHex=command.block<0?String(body.hex||"").trim():String(body.hex||"").toUpperCase().replace(/[^0-9A-F]/g,"");
     if(success&&returnedHex!==command.payloadHex)return Response.json({error:command.block===-2?"Installierte Firmwareversion stimmt nicht überein":"Rücklesedaten stimmen nicht überein"},{status:400,headers});
     const now=new Date().toISOString(),error=success?null:String(body.error||"Schreiben fehlgeschlagen").slice(0,240);
-    const auditAction=command.block===-2
-      ?(success?"RFID_FIRMWARE_UPDATE_SUCCEEDED":"RFID_FIRMWARE_UPDATE_FAILED")
-      :(success?"RFID_WRITE_SUCCEEDED":"RFID_WRITE_FAILED");
+    const auditAction=command.block===-3
+      ?(success?"RFID_WIFI_SETUP_STARTED":"RFID_WIFI_SETUP_FAILED")
+      :command.block===-2
+        ?(success?"RFID_FIRMWARE_UPDATE_SUCCEEDED":"RFID_FIRMWARE_UPDATE_FAILED")
+        :(success?"RFID_WRITE_SUCCEEDED":"RFID_WRITE_FAILED");
     await env.DB.batch([
       env.DB.prepare("UPDATE rfid_write_commands SET status=?,error=?,completed_at=? WHERE id=? AND device_id=?").bind(success?"succeeded":"failed",error,now,command.id,device.id),
-      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),auditAction,command.block===-2?"rfid_device":"rfid_write_command",command.block===-2?device.id:command.id,device.id,JSON.stringify({profileId:command.profileId,uid:command.uid,version:command.block===-2?command.payloadHex:null,error}),now)
+      env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),auditAction,command.block<0?"rfid_device":"rfid_write_command",command.block<0?device.id:command.id,device.id,JSON.stringify({profileId:command.profileId,uid:command.uid,version:command.block===-2?command.payloadHex:null,error}),now)
     ]);
     return Response.json({ok:true,status:success?"succeeded":"failed"},{headers});
   }catch{
@@ -95,22 +97,24 @@ export async function PUT(request:Request){
   try{
     const [admin,profile]=await Promise.all([requireRole(request,["Vorstand","Systemadmin"]),requireProfile(request)]);
     if(!admin||!profile)return Response.json({error:"Nur Vorstand oder Systemadministration dürfen den RFID-Leser steuern"},{status:403,headers});
-    const body=await request.json() as {deviceId?:unknown;action?:unknown},deviceId=String(body.deviceId||""),action=body.action==="firmware"?"firmware":"restart";
+    const body=await request.json() as {deviceId?:unknown;action?:unknown},deviceId=String(body.deviceId||""),requestedAction=String(body.action||"restart"),action=requestedAction==="firmware"?"firmware":requestedAction==="wifi_setup"?"wifi_setup":"restart";
     if(!deviceId||deviceId.length>100)return Response.json({error:"RFID-Leser fehlt"},{status:400,headers});
     const device=await env.DB.prepare("SELECT id,name FROM rfid_devices WHERE id=? AND profile_id=? AND active=1").bind(deviceId,profile.id).first<{id:string;name:string}>();
     if(!device)return Response.json({error:"Aktiver RFID-Leser nicht gefunden"},{status:404,headers});
     const active=await env.DB.prepare("SELECT id FROM rfid_write_commands WHERE device_id=? AND status IN ('pending','processing') AND expires_at>? LIMIT 1").bind(device.id,new Date().toISOString()).first();
-    if(active)return Response.json({error:`Der Leser bearbeitet gerade einen Auftrag. Bitte danach erneut ${action==="firmware"?"aktualisieren":"starten"}.`},{status:409,headers});
-    const id=crypto.randomUUID(),now=new Date(),expires=new Date(now.getTime()+(action==="firmware"?15*60_000:45000)).toISOString();
-    const command=action==="firmware"
-      ?{uid:"DEVICE-FIRMWARE",block:-2,payload:LATEST_RFID_FIRMWARE,audit:"RFID_FIRMWARE_UPDATE_QUEUED"}
-      :{uid:"DEVICE-RESTART",block:-1,payload:"",audit:"RFID_RESTART_QUEUED"};
+    if(active)return Response.json({error:`Der Leser bearbeitet gerade einen Auftrag. Bitte danach erneut versuchen.`},{status:409,headers});
+    const id=crypto.randomUUID(),now=new Date(),expires=new Date(now.getTime()+(action==="firmware"?15*60_000:2*60_000)).toISOString();
+    const command=action==="wifi_setup"
+      ?{uid:"DEVICE-WIFI-SETUP",block:-3,payload:"",audit:"RFID_WIFI_SETUP_QUEUED"}
+      :action==="firmware"
+        ?{uid:"DEVICE-FIRMWARE",block:-2,payload:LATEST_RFID_FIRMWARE,audit:"RFID_FIRMWARE_UPDATE_QUEUED"}
+        :{uid:"DEVICE-RESTART",block:-1,payload:"",audit:"RFID_RESTART_QUEUED"};
     await env.DB.batch([
       env.DB.prepare("INSERT INTO rfid_write_commands (id,profile_id,device_id,uid,block,payload_hex,status,created_by,created_at,expires_at) VALUES (?,?,?,?,?,?,'pending',?,?,?)").bind(id,profile.id,device.id,command.uid,command.block,command.payload,admin.id,now.toISOString(),expires),
       env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),command.audit,"rfid_device",device.id,admin.id,JSON.stringify({profileId:profile.id,name:device.name,version:action==="firmware"?LATEST_RFID_FIRMWARE:null}),now.toISOString())
     ]);
     return Response.json({ok:true,id,action,version:action==="firmware"?LATEST_RFID_FIRMWARE:null},{status:201,headers});
   }catch{
-    return Response.json({error:"Neustartauftrag konnte nicht erstellt werden"},{status:500,headers});
+    return Response.json({error:"RFID-Auftrag konnte nicht erstellt werden"},{status:500,headers});
   }
 }

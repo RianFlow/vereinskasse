@@ -11,16 +11,15 @@ Tabletfreundliches Kassensystem für den SV Barver Darts und weitere Sparten im 
 
 ## RFID-Betrieb
 
-Der Raspberry stellt ein festes 2,4-GHz-WLAN `ClubIQ-Kasse` für Tablet und
-RFID-Leser bereit. Bluetooth wird beim ESP32 nur einmal verwendet, um dieses
-WLAN und die sichere lokale Serveradresse zu übertragen. Danach laufen Scans,
-Displayanzeige, Chip-Schreiben, Neustart und geprüfte Firmwareupdates direkt
-zwischen Leser und Raspberry. Der Kassenbetrieb bleibt auch ohne Internet lokal
-verfügbar; LAN wird nur für Fernzugriff, E-Mail, R2-Sicherung und Updates benötigt.
-Unterstützt wird ausschließlich der ESP32 D1 mini. Fehlen die Einstellungen oder
-bleiben Kassen-WLAN beziehungsweise Kassenserver 90 Sekunden unerreichbar,
-schaltet der Leser kontrolliert in den Bluetooth-Einrichtungsmodus. Bluetooth
-und WLAN laufen dabei nie gleichzeitig.
+Der Raspberry stellt ein festes 2,4-GHz-WLAN `BarverKasse` für Tablet und
+RFID-Leser bereit. Die Ersteinrichtung folgt dem bewährten Captive-Portal-Prinzip:
+Der ESP32 öffnet kurz ein kennwortgeschütztes `ClubIQ-Setup-…`-WLAN, zeigt das
+Kennwort im eigenen Display und bietet darin eine WLAN-Auswahlliste an. Danach
+laufen Scans, Displayanzeige, Chip-Schreiben, Neustart und geprüfte
+Firmwareupdates ausschließlich über das feste Kassen-WLAN. Bluetooth und die
+alte ESP8266-Verbindung sind entfernt. Der Kassenbetrieb bleibt auch ohne
+Internet lokal verfügbar; LAN wird nur für Fernzugriff, E-Mail, R2-Sicherung und
+Updates benötigt. Unterstützt wird ausschließlich der ESP32 D1 mini.
 
 ## Datensicherheit
 

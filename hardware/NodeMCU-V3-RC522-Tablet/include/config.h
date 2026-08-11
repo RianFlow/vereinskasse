@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr char FIRMWARE_VERSION[] = "1.9.6";
+constexpr char FIRMWARE_VERSION[] = "1.9.7";
 
 // WEMOS/LOLIN ESP32 D1 mini: VSPI plus Pins ohne Boot-Strapping-Konflikte.
 constexpr int PIN_RC522_SS = 5;   // D8
@@ -33,20 +33,22 @@ constexpr uint8_t STATUS_DISPLAY_HEADER_HEIGHT = 16;
 #endif
 
 constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 15000;
-// Ist nur das Kassen-WLAN laenger nicht erreichbar, bietet der Leser zeitweise
-// die Bluetooth-Wiederherstellung an. Danach startet er selbststaendig neu und
-// versucht wieder die gespeicherte WLAN-Verbindung. Ein bloßer Serverneustart
-// aktiviert Bluetooth nicht.
-constexpr unsigned long WIFI_BLE_RECOVERY_START_MS = 90000;
-constexpr unsigned long BLE_RECOVERY_WINDOW_MS = 5UL * 60UL * 1000UL;
+// Standard-Einrichtung wie bei IoT-Geräten: Ist kein WLAN gespeichert oder das
+// Kassen-WLAN länger nicht erreichbar, öffnet der Leser ein geschütztes
+// Setup-WLAN mit Captive Portal und WLAN-Auswahlliste.
+constexpr unsigned long WIFI_SETUP_PORTAL_START_MS = 90000;
+constexpr unsigned long WIFI_SETUP_PORTAL_TIMEOUT_SECONDS = 10UL * 60UL;
+constexpr char KIOSK_API_URL[] = "https://10.42.0.1/api/rfid";
+constexpr char KIOSK_CA_URL[] = "http://10.42.0.1:8080/vereinskasse-ca.crt";
 constexpr char KIOSK_TIME_URL[] = "http://10.42.0.1:8080/clubiq-time";
+constexpr unsigned long RFID_PAIRING_POLL_INTERVAL_MS = 2000;
 constexpr unsigned long RFID_SCAN_INTERVAL_MS = 120;
 constexpr unsigned long RFID_REPEAT_GUARD_MS = 1500;
 // Karten-Schreibaufträge sind selten. Eine häufigere HTTPS-Abfrage würde den
 // wichtigeren UID-Scan unnötig blockieren.
 constexpr unsigned long RFID_COMMAND_POLL_INTERVAL_MS = 5000;
-// Der erste lokale TLS-Handshake kann auf dem ESP32 waehrend der einmaligen
-// Bluetooth-Einrichtung mehrere Sekunden benoetigen. Ein zu kurzes Zeitfenster
+// Der erste lokale TLS-Handshake kann auf dem ESP32 nach der einmaligen
+// WLAN-Einrichtung mehrere Sekunden benoetigen. Ein zu kurzes Zeitfenster
 // laesst ein korrekt erreichbares Kassen-WLAN faelschlich als TLS-Fehler
 // erscheinen.
 constexpr unsigned long HTTPS_TIMEOUT_MS = 8000;
