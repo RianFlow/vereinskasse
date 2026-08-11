@@ -93,6 +93,7 @@ if [[ ! -s "$base/secrets/initial_profile_pin" ]]; then
 fi
 
 ln -sfn "$base/clubiq" /usr/local/sbin/clubiq
+"$root/deploy/maintenance/install.sh"
 
 cd "$base"
 hostname_setting="$(sed -n 's/^CLUBIQ_HOSTNAME=//p' "$base/.env" | tail -n 1)"

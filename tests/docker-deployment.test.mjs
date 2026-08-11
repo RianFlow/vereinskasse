@@ -198,3 +198,22 @@ test("richtet ein dauerhaftes 2,4-GHz-Kassen-WLAN mit LAN als einzigem Uplink ei
   assert.ok(environment.includes("CLUBIQ_KIOSK_WIFI_SSID=ClubIQ-Kasse")&&environment.includes("CLUBIQ_KIOSK_IP=10.42.0.1"),"Stabile Kassen-WLAN-Vorgaben fehlen");
   assert.ok(caddy.includes("/clubiq-time"),"Der RFID-Leser kann offline keine lokale Startzeit laden");
 });
+
+test("stellt ein unabhaengiges PIN-geschuetztes Wartungsportal bereit", async () => {
+  const [server, service, installer, manager] = await Promise.all([
+    read("deploy/maintenance/server.py"),
+    read("deploy/maintenance/clubiq-maintenance.service"),
+    read("deploy/maintenance/install.sh"),
+    read("deploy/docker/clubiq"),
+  ]);
+  assert.match(service,/Restart=always/);
+  assert.match(service,/python3 \/usr\/local\/lib\/clubiq-maintenance\/server\.py/);
+  assert.match(installer,/maintenance_pin/);
+  assert.match(installer,/systemctl enable --now clubiq-maintenance\.service/);
+  assert.match(server,/X-ClubIQ-Maintenance-Pin/);
+  assert.match(server,/hmac\.compare_digest/);
+  for(const action of ["restart_stack","restart_wifi","backup","reboot"])
+    assert.ok(server.includes(action),`Wartungsaktion fehlt: ${action}`);
+  assert.doesNotMatch(server,/docker\.sock/);
+  assert.match(manager,/wartung-einrichten\|maintenance-setup/);
+});

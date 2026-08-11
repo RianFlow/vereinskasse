@@ -89,6 +89,12 @@ Zustand prüfen:
 sudo clubiq kassen-wlan-status
 ```
 
+Das unabhängige Wartungsportal ist unter `http://10.42.0.1:8091` erreichbar.
+Es bleibt auch verfügbar, wenn die Kassen-App oder Docker neu gestartet werden.
+Die getrennte Wartungs-PIN wird bei der Einrichtung einmal angezeigt. Später kann
+das Portal mit `sudo clubiq wartung-einrichten` repariert oder erneut aktiviert
+werden.
+
 ## 3. Tablet verbinden
 
 Das Tablet mit `ClubIQ-Kasse` verbinden. Zuerst das lokale CA-Zertifikat laden:

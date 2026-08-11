@@ -139,6 +139,8 @@ Clubiq Ledger auf dem Raspberry verwalten
   clubiq kassen-wlan-einrichten  Festes 2,4-GHz-WLAN fuer Tablet und RFID einrichten
   clubiq kassen-wlan-status      Kassen-WLAN und LAN-Uplink anzeigen
   clubiq rfid-netz-pruefen       WLAN, Uhrzeit, Zertifikat und RFID-API gemeinsam pruefen
+  clubiq wartung-einrichten      Unabhaengiges lokales Wartungsportal aktivieren
+  clubiq wartung-status          Adresse und Dienstzustand des Wartungsportals anzeigen
   clubiq netzwerk-aktualisieren  Aktuelle LAN-IP für Tablet-Zugriff übernehmen
   clubiq usb-freigeben [PFAD]    Bereits eingehängten USB-Datenträger freigeben
   clubiq r2-einrichten           Verschlüsselte Cloudflare-R2-Kopie einrichten
@@ -192,7 +194,12 @@ case "$command" in
     "${compose[@]}" logs --tail=200 -f app postgres proxy backup
     ;;
   sichern|backup)
+    backup_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     "${compose[@]}" exec -T backup /app/deploy/raspberry/backup.sh
+    backup_finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    "${compose[@]}" exec -T backup sh -c \
+      'printf '\''{"ok":true,"startedAt":"%s","finishedAt":"%s"}\n'\'' "$1" "$2" > /backups/local/.last-backup.json' \
+      _ "$backup_started" "$backup_finished"
     ;;
   sicherungen|backups)
     "${compose[@]}" exec -T backup sh -c \
@@ -360,6 +367,14 @@ case "$command" in
     trap - EXIT
     cleanup_rfid_check
     echo "RFID-Netzweg geprueft: 2,4-GHz-Kassen-WLAN, lokale Uhrzeit, TLS-Zertifikat und RFID-API sind erreichbar."
+    ;;
+  wartung-einrichten|maintenance-setup)
+    [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo "Bitte mit sudo ausfuehren." >&2; exit 1; }
+    "$base/../maintenance/install.sh"
+    ;;
+  wartung-status|maintenance-status)
+    systemctl --no-pager --full status clubiq-maintenance.service || true
+    echo "Wartungsportal: http://10.42.0.1:8091"
     ;;
   netzwerk-aktualisieren|network-refresh)
     lan_ip="$(current_lan_ip)"
