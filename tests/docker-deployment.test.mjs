@@ -46,6 +46,8 @@ test("stellt Tailscale Serve nur ueber einen lokalen Proxy-Eingang bereit", asyn
   assert.match(caddy, /header_up Host \{\$CLUBIQ_HOSTNAME:vereinskasse\.local\}/);
   assert.match(caddy, /header_up X-Forwarded-Proto https/);
   assert.match(manager, /tailscale serve --bg http:\/\/127\.0\.0\.1:8090/);
+  assert.match(manager, /tailscale serve --https=443 off/);
+  assert.match(manager, /compose_with_tailscale_paused/);
   assert.match(manager, /fernzugriff-einrichten\|remote-access-setup/);
   assert.match(readme, /Tailscale Funnel\s+nicht aktivieren/);
   assert.match(readme, /weder eine Domain noch eine Portfreigabe/);
