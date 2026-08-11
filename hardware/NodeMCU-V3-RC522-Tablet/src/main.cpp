@@ -80,6 +80,7 @@ unsigned long wifiDisconnectedSince = 0;
 unsigned long serverFailureSince = 0;
 unsigned long lastRfidHealthCheckAt = 0;
 unsigned long lastWifiAttempt = 0;
+unsigned long stationConnectedAt = 0;
 unsigned long lastScanAt = 0;
 unsigned long lastPushAt = 0;
 unsigned long lastCommandPollAt = 0;
@@ -718,8 +719,16 @@ bool syncClockFromKiosk() {
   return clockReady();
 }
 
+void resetVereinskasseConnection() {
+  // Ein fehlgeschlagener TLS-Aufbau darf nicht im globalen Client haengen
+  // bleiben. Das ist besonders wichtig direkt nach einem WLAN-Wechsel.
+  vereinskasseHttps.end();
+  vereinskasseTls.stop();
+}
+
 bool beginVereinskasseRequest(const String &url) {
   if (!trustAnchorReady()) return false;
+  resetVereinskasseConnection();
 #if defined(CLUBIQ_ESP32_BLE)
   vereinskasseTls.setCACert(vereinskasseRootCa.c_str());
 #else
@@ -727,7 +736,9 @@ bool beginVereinskasseRequest(const String &url) {
 #endif
   vereinskasseTls.setTimeout(HTTPS_TIMEOUT_MS);
   vereinskasseHttps.setTimeout(HTTPS_TIMEOUT_MS);
-  vereinskasseHttps.setReuse(true);
+  // Lokale Requests sind klein. Ein frischer Socket ist stabiler als ein
+  // wiederverwendeter Client nach Funk- oder Serverunterbrechungen.
+  vereinskasseHttps.setReuse(false);
   return vereinskasseHttps.begin(vereinskasseTls, url);
 }
 
@@ -1139,8 +1150,10 @@ void reconnectStationWifi() {
     return;
   }
 #endif
+  resetVereinskasseConnection();
   WiFi.disconnect(false);
   stationWasConnected = false;
+  stationConnectedAt = 0;
   clockWasReady = false;
   timeSyncStarted = false;
   wifiDisconnectedSince = 0;
@@ -1260,13 +1273,19 @@ void maintainStationWifi() {
     if (maintenanceApActive) stopMaintenanceAp();
     if (!stationWasConnected) {
       stationWasConnected = true;
+      stationConnectedAt = millis();
       Serial.printf("ClubIQ-Kassen-WLAN verbunden, IP: %s\n", WiFi.localIP().toString().c_str());
     }
     beginClockSync();
     if (clockReady() && !clockWasReady) {
       clockWasReady = true;
       lastPushState = "ClubIQ-Kassen-WLAN und sichere Uhrzeit bereit.";
-      setStatusLed(StatusLedMode::Ready);
+      if (!bleSetupInProgress && pushConfigured()) {
+        setStatusLed(StatusLedMode::Ready);
+      } else if (!bleSetupInProgress) {
+        setStatusLed(StatusLedMode::Connecting);
+        showStatusDisplay("Einrichtung", "In App abschliessen");
+      }
       Serial.println(lastPushState);
     }
     return;
@@ -1278,7 +1297,9 @@ void maintainStationWifi() {
     startMaintenanceAp();
   if (stationWasConnected) {
     stationWasConnected = false;
+    stationConnectedAt = 0;
     clockWasReady = false;
+    resetVereinskasseConnection();
     setStatusLed(StatusLedMode::Connecting);
     Serial.println("ClubIQ-Kassen-WLAN getrennt.");
   }
@@ -1322,8 +1343,7 @@ void automaticUidScan() {
   const bool directBlePending = false;
 #endif
   const bool transportUnavailable = directBleMode ? !directBleAvailable : !pushConfigured();
-  if (writeCommandActive || pendingUidReady || directBlePending ||
-      transportUnavailable || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
+  if (writeCommandActive || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
   lastScanAt = now;
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
 
@@ -1336,6 +1356,20 @@ void automaticUidScan() {
   if (uid == lastPushedUid && now - lastPushAt < RFID_REPEAT_GUARD_MS) return;
   lastPushedUid = uid;
   lastPushAt = now;
+  if (transportUnavailable) {
+    lastPushState = "Karte " + uid + " erkannt; ClubIQ-Einrichtung fehlt noch.";
+    setStatusLed(StatusLedMode::Error, 1400);
+    showStatusDisplay("Karte erkannt", "Einrichtung fehlt");
+    Serial.println(lastPushState);
+    return;
+  }
+  if (pendingUidReady || directBlePending) {
+    lastPushState = "Karte " + uid + " erkannt; ein vorheriger Scan wartet noch.";
+    setStatusLed(StatusLedMode::Error, 1400);
+    showStatusDisplay("Karte erkannt", "1 Scan wartet");
+    Serial.println(lastPushState);
+    return;
+  }
   if (directBleAvailable) {
 #if defined(CLUBIQ_ESP32_BLE)
     blePendingScanUid = uid;
@@ -2431,6 +2465,13 @@ void processBleProvisioning() {
     if (!bleLastProgressAt || now - bleLastProgressAt > 3000) {
       bleLastProgressAt = now;
       bleNotifyJson("{\"state\":\"securing_connection\"}");
+    }
+    return;
+  }
+  if (stationConnectedAt && now - stationConnectedAt < WIFI_TLS_SETTLE_MS) {
+    if (!bleLastProgressAt || now - bleLastProgressAt > 1200) {
+      bleLastProgressAt = now;
+      bleNotifyJson("{\"state\":\"securing_connection\",\"message\":\"WLAN steht. Sichere Verbindung wird stabilisiert.\"}");
     }
     return;
   }

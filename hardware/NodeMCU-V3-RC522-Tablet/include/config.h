@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr char FIRMWARE_VERSION[] = "1.9.3";
+constexpr char FIRMWARE_VERSION[] = "1.9.4";
 
 #if defined(CLUBIQ_ESP32_BLE)
 // ESP32-WROOM-32 / ESP32 DevKit: VSPI plus Pins ohne Boot-Strapping-Konflikte.
@@ -55,6 +55,9 @@ constexpr char CUSTOM_WEB_PASSWORD[] = "svbarverdarts";
 #endif
 
 constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 15000;
+// Nach einer neuen WLAN-Verbindung braucht der ESP32-Funkstack kurz Ruhe,
+// bevor parallel zur Bluetooth-Einrichtung der erste TLS-Socket geoeffnet wird.
+constexpr unsigned long WIFI_TLS_SETTLE_MS = 2500;
 constexpr unsigned long MAINTENANCE_AP_FALLBACK_MS = 60000;
 constexpr char KIOSK_TIME_URL[] = "http://10.42.0.1:8080/clubiq-time";
 constexpr unsigned long RFID_SCAN_INTERVAL_MS = 120;
