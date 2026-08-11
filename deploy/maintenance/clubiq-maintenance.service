@@ -1,0 +1,22 @@
+[Unit]
+Description=ClubIQ Ledger Wartungsportal
+After=network.target NetworkManager.service docker.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/clubiq-maintenance.env
+ExecStart=/usr/bin/python3 /usr/local/lib/clubiq-maintenance/server.py
+Restart=always
+RestartSec=3
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
