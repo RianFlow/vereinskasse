@@ -80,6 +80,7 @@ unsigned long wifiDisconnectedSince = 0;
 unsigned long serverFailureSince = 0;
 unsigned long lastRfidHealthCheckAt = 0;
 unsigned long lastWifiAttempt = 0;
+unsigned long stationConnectedAt = 0;
 unsigned long lastScanAt = 0;
 unsigned long lastPushAt = 0;
 unsigned long lastCommandPollAt = 0;
@@ -96,6 +97,7 @@ int writeCommandBlock = 0;
 bool statusDisplayReady = false;
 String statusDisplayTitle;
 String statusDisplayDetail;
+uint8_t statusDisplayConnectionState = 255;
 String lastDisplayRevision;
 String displayOrderCustomer;
 String displayOrderItems;
@@ -173,6 +175,7 @@ bool statusLedTestActive = false;
 unsigned long statusLedTestStartedAt = 0;
 
 bool clockReady();
+bool pushConfigured();
 String jsonStringField(const String &body, const String &name);
 String commandApiUrl();
 String pairingApiUrl();
@@ -398,13 +401,35 @@ String displaySafeText(String text) {
   return text;
 }
 
+uint8_t displayConnectionState() {
+#if defined(CLUBIQ_ESP32_BLE)
+  if (directBleRuntimeMode()) return bleClientConnected ? 2 : 0;
+#endif
+  if (WiFi.status() != WL_CONNECTED) return 0;
+  return pushConfigured() && clockReady() && !serverFailureSince ? 2 : 1;
+}
+
+void drawDisplayConnectionIndicator(int16_t x, int16_t y, uint8_t state) {
+  if (state == 2) {
+    statusDisplay.fillCircle(x, y, 2, SSD1306_WHITE);
+    return;
+  }
+  statusDisplay.drawCircle(x, y, 2, SSD1306_WHITE);
+  if (state == 0) {
+    statusDisplay.drawLine(x - 2, y + 2, x + 2, y - 2, SSD1306_WHITE);
+  }
+}
+
 void showStatusDisplay(const String &title, const String &detail) {
   if (!statusDisplayReady) return;
   const String safeTitle = displaySafeText(title);
   const String safeDetail = displaySafeText(detail);
-  if (safeTitle == statusDisplayTitle && safeDetail == statusDisplayDetail) return;
+  const uint8_t connectionState = displayConnectionState();
+  if (safeTitle == statusDisplayTitle && safeDetail == statusDisplayDetail &&
+      connectionState == statusDisplayConnectionState) return;
   statusDisplayTitle = safeTitle;
   statusDisplayDetail = safeDetail;
+  statusDisplayConnectionState = connectionState;
 
   statusDisplay.clearDisplay();
   statusDisplay.setTextColor(SSD1306_WHITE);
@@ -412,6 +437,10 @@ void showStatusDisplay(const String &title, const String &detail) {
   statusDisplay.setTextSize(1);
   statusDisplay.setCursor(0, 0);
   statusDisplay.println("VEREINSKASSE");
+  drawDisplayConnectionIndicator(84, 4, connectionState);
+  statusDisplay.setCursor(92, 0);
+  statusDisplay.print("v");
+  statusDisplay.print(FIRMWARE_VERSION);
   statusDisplay.drawLine(0, STATUS_DISPLAY_HEADER_HEIGHT - 3,
                          STATUS_DISPLAY_WIDTH - 1, STATUS_DISPLAY_HEADER_HEIGHT - 3,
                          SSD1306_WHITE);
@@ -437,8 +466,9 @@ void showOrderDisplay() {
   const String items = displaySafeText(displayOrderItems.length()
       ? displayOrderItems
       : (displayOrderItemCount ? String(displayOrderItemCount) + " Artikel" : "Noch keine Artikel"));
+  const uint8_t connectionState = displayConnectionState();
   const String cacheKey = customer + ":" + items + ":" + String(displayOrderItemCount) + ":" +
-                          String(displayOrderTotalCents);
+                          String(displayOrderTotalCents) + ":" + String(connectionState);
   if (statusDisplayTitle == "__order__" && statusDisplayDetail == cacheKey) return;
   statusDisplayTitle = "__order__";
   statusDisplayDetail = cacheKey;
@@ -447,7 +477,8 @@ void showOrderDisplay() {
   statusDisplay.setTextWrap(false);
   statusDisplay.setTextSize(1);
   statusDisplay.setCursor(0, 0);
-  statusDisplay.println(customer.substring(0, 20));
+  statusDisplay.println(customer.substring(0, 19));
+  drawDisplayConnectionIndicator(124, 4, connectionState);
   statusDisplay.drawLine(0, STATUS_DISPLAY_HEADER_HEIGHT - 3,
                          STATUS_DISPLAY_WIDTH - 1, STATUS_DISPLAY_HEADER_HEIGHT - 3,
                          SSD1306_WHITE);
@@ -465,9 +496,12 @@ void showOrderDisplay() {
 }
 
 void showClubLogo() {
-  if (!statusDisplayReady || displayOrderActive || statusDisplayTitle == "__logo__") return;
+  const uint8_t connectionState = displayConnectionState();
+  if (!statusDisplayReady || displayOrderActive ||
+      (statusDisplayTitle == "__logo__" && connectionState == statusDisplayConnectionState)) return;
   statusDisplayTitle = "__logo__";
   statusDisplayDetail = "";
+  statusDisplayConnectionState = connectionState;
   statusDisplay.clearDisplay();
   statusDisplay.setTextColor(SSD1306_WHITE);
 
@@ -490,6 +524,10 @@ void showClubLogo() {
   statusDisplay.print("BARVER");
   statusDisplay.setCursor(52, 42);
   statusDisplay.print("DARTS");
+  statusDisplay.setCursor(92, 56);
+  statusDisplay.print("v");
+  statusDisplay.print(FIRMWARE_VERSION);
+  drawDisplayConnectionIndicator(124, 4, connectionState);
   statusDisplay.display();
 }
 
@@ -718,8 +756,16 @@ bool syncClockFromKiosk() {
   return clockReady();
 }
 
+void resetVereinskasseConnection() {
+  // Ein fehlgeschlagener TLS-Aufbau darf nicht im globalen Client haengen
+  // bleiben. Das ist besonders wichtig direkt nach einem WLAN-Wechsel.
+  vereinskasseHttps.end();
+  vereinskasseTls.stop();
+}
+
 bool beginVereinskasseRequest(const String &url) {
   if (!trustAnchorReady()) return false;
+  resetVereinskasseConnection();
 #if defined(CLUBIQ_ESP32_BLE)
   vereinskasseTls.setCACert(vereinskasseRootCa.c_str());
 #else
@@ -727,7 +773,9 @@ bool beginVereinskasseRequest(const String &url) {
 #endif
   vereinskasseTls.setTimeout(HTTPS_TIMEOUT_MS);
   vereinskasseHttps.setTimeout(HTTPS_TIMEOUT_MS);
-  vereinskasseHttps.setReuse(true);
+  // Lokale Requests sind klein. Ein frischer Socket ist stabiler als ein
+  // wiederverwendeter Client nach Funk- oder Serverunterbrechungen.
+  vereinskasseHttps.setReuse(false);
   return vereinskasseHttps.begin(vereinskasseTls, url);
 }
 
@@ -1139,8 +1187,10 @@ void reconnectStationWifi() {
     return;
   }
 #endif
+  resetVereinskasseConnection();
   WiFi.disconnect(false);
   stationWasConnected = false;
+  stationConnectedAt = 0;
   clockWasReady = false;
   timeSyncStarted = false;
   wifiDisconnectedSince = 0;
@@ -1260,13 +1310,23 @@ void maintainStationWifi() {
     if (maintenanceApActive) stopMaintenanceAp();
     if (!stationWasConnected) {
       stationWasConnected = true;
+      stationConnectedAt = millis();
       Serial.printf("ClubIQ-Kassen-WLAN verbunden, IP: %s\n", WiFi.localIP().toString().c_str());
     }
     beginClockSync();
     if (clockReady() && !clockWasReady) {
       clockWasReady = true;
       lastPushState = "ClubIQ-Kassen-WLAN und sichere Uhrzeit bereit.";
-      setStatusLed(StatusLedMode::Ready);
+      bool setupInProgress = false;
+#if defined(CLUBIQ_ESP32_BLE)
+      setupInProgress = bleSetupInProgress;
+#endif
+      if (!setupInProgress && pushConfigured()) {
+        setStatusLed(StatusLedMode::Ready);
+      } else if (!setupInProgress) {
+        setStatusLed(StatusLedMode::Connecting);
+        showStatusDisplay("Einrichtung", "In App abschliessen");
+      }
       Serial.println(lastPushState);
     }
     return;
@@ -1278,7 +1338,9 @@ void maintainStationWifi() {
     startMaintenanceAp();
   if (stationWasConnected) {
     stationWasConnected = false;
+    stationConnectedAt = 0;
     clockWasReady = false;
+    resetVereinskasseConnection();
     setStatusLed(StatusLedMode::Connecting);
     Serial.println("ClubIQ-Kassen-WLAN getrennt.");
   }
@@ -1322,8 +1384,7 @@ void automaticUidScan() {
   const bool directBlePending = false;
 #endif
   const bool transportUnavailable = directBleMode ? !directBleAvailable : !pushConfigured();
-  if (writeCommandActive || pendingUidReady || directBlePending ||
-      transportUnavailable || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
+  if (writeCommandActive || now - lastScanAt < RFID_SCAN_INTERVAL_MS) return;
   lastScanAt = now;
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
 
@@ -1336,6 +1397,20 @@ void automaticUidScan() {
   if (uid == lastPushedUid && now - lastPushAt < RFID_REPEAT_GUARD_MS) return;
   lastPushedUid = uid;
   lastPushAt = now;
+  if (transportUnavailable) {
+    lastPushState = "Karte " + uid + " erkannt; ClubIQ-Einrichtung fehlt noch.";
+    setStatusLed(StatusLedMode::Error, 1400);
+    showStatusDisplay("Karte erkannt", "Einrichtung fehlt");
+    Serial.println(lastPushState);
+    return;
+  }
+  if (pendingUidReady || directBlePending) {
+    lastPushState = "Karte " + uid + " erkannt; ein vorheriger Scan wartet noch.";
+    setStatusLed(StatusLedMode::Error, 1400);
+    showStatusDisplay("Karte erkannt", "1 Scan wartet");
+    Serial.println(lastPushState);
+    return;
+  }
   if (directBleAvailable) {
 #if defined(CLUBIQ_ESP32_BLE)
     blePendingScanUid = uid;
@@ -2431,6 +2506,13 @@ void processBleProvisioning() {
     if (!bleLastProgressAt || now - bleLastProgressAt > 3000) {
       bleLastProgressAt = now;
       bleNotifyJson("{\"state\":\"securing_connection\"}");
+    }
+    return;
+  }
+  if (stationConnectedAt && now - stationConnectedAt < WIFI_TLS_SETTLE_MS) {
+    if (!bleLastProgressAt || now - bleLastProgressAt > 1200) {
+      bleLastProgressAt = now;
+      bleNotifyJson("{\"state\":\"securing_connection\",\"message\":\"WLAN steht. Sichere Verbindung wird stabilisiert.\"}");
     }
     return;
   }

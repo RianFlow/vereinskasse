@@ -148,8 +148,8 @@ test("RFID-Leser wird einfach eingerichtet und danach sicher per OTA aktualisier
   for(const fragment of ["LATEST_RFID_FIRMWARE","x-rfid-firmware-version",'command.block===-2?"firmware"',"RFID_FIRMWARE_UPDATE_QUEUED","firmwareUrl"])assert.ok(commands.includes(fragment),`OTA-Befehl fehlt: ${fragment}`);
   assert.ok(devices.includes("firmware_version firmwareVersion"),"Firmwarestand wird nicht angezeigt");
   for(const fragment of ["ESP8266httpUpdate.h","HTTPUpdate.h","ESPhttpUpdate.update","clubiqHttpUpdate.update","performFirmwareUpdate","reportDeviceCommandResult",'action == "firmware"',"StatusLedMode::Updating"])assert.ok(firmware.includes(fragment),`Firmware-OTA fehlt: ${fragment}`);
-  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.9.3"'),"Firmwareversion ist nicht eingebettet");
-  assert.ok(sharedVersion.includes('LATEST_RFID_FIRMWARE="1.9.3"'),"Zentrale OTA-Version fehlt");
+  assert.ok(config.includes('FIRMWARE_VERSION[] = "1.9.4"'),"Firmwareversion ist nicht eingebettet");
+  assert.ok(sharedVersion.includes('LATEST_RFID_FIRMWARE="1.9.4"'),"Zentrale OTA-Version fehlt");
   assert.ok(component.includes('from "./rfid-firmware"')&&commands.includes('from "../../../rfid-firmware"'),"Oberfläche und OTA-Route verwenden nicht dieselbe Firmwareversion");
   assert.ok(!component.includes('const latestRfidFirmware='),"Die Oberfläche enthält weiterhin eine abweichende Firmwareversion");
   const setupSource=firmware.slice(firmware.indexOf("void setup()"));
@@ -182,9 +182,12 @@ test("ESP32 arbeitet nach einmaliger Bluetooth-Einrichtung selbstständig im Kas
   assert.ok(timeRoute.includes("Date.now()")&&caddy.includes("/clubiq-time"),"Der Offline-TLS-Start erhält keine lokale Uhrzeit vom Raspberry");
   assert.ok(caddy.includes("https://{$CLUBIQ_KIOSK_IP:10.42.0.1}"),"Caddy stellt kein Zertifikat für die feste Kassenadresse bereit");
   assert.ok(config.includes("HTTPS_TIMEOUT_MS = 8000"),"Der erste lokale TLS-Handshake hat weiterhin ein zu kurzes Zeitfenster");
+  assert.ok(config.includes("WIFI_TLS_SETTLE_MS = 2500"),"Der TLS-Aufbau startet weiterhin direkt beim WLAN-Wechsel");
   for(const fragment of ["bleReuseExistingIdentity","existingDeviceToken","pairingActive","Neuer Versuch laeuft"])
     assert.ok(firmware.includes(fragment),`Robuste WLAN-Neukopplung fehlt: ${fragment}`);
   assert.ok(ble.includes("invalidFrames>=8")&&ble.includes("wartet automatisch auf die Wiederholung"),"Unvollständige BLE-Antworten brechen die Einrichtung weiterhin sofort ab");
+  for(const fragment of ["resetVereinskasseConnection","setReuse(false)","ClubIQ-Einrichtung fehlt noch","1 Scan wartet"])
+    assert.ok(firmware.includes(fragment),`WLAN-/RFID-Rückfallsicherung fehlt: ${fragment}`);
 });
 
 test("RFID-Ampel zeigt den serverseitigen Zustand ohne manuellen Bluetooth-Neuaufbau",async()=>{

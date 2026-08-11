@@ -24,6 +24,8 @@ test("bereitet das I2C-Kundendisplay mit Bon und Vereinslogo vor",async()=>{
   assert.ok(commands.includes('action:"display"')&&commands.includes("x-display-revision")&&commands.includes("Date.now()-120_000"));
   for(const feature of ["Adafruit_SSD1306","showOrderDisplay","showClubLogo","STATUS_DISPLAY_SCREENSAVER_MS","CUSTOMER_DISPLAY_TIMEOUT_MS","displayOrderUpdatedAt"])
     assert.ok(firmware.includes(feature),`${feature} fehlt`);
+  for(const feature of ["displayConnectionState","drawDisplayConnectionIndicator","statusDisplay.print(FIRMWARE_VERSION)"])
+    assert.ok(firmware.includes(feature),`${feature} fehlt in der kleinen Display-Statusanzeige`);
   assert.ok(config.includes("PIN_I2C_SDA = 0")&&config.includes("PIN_I2C_SCL = 2"));
   assert.ok(config.includes("STATUS_DISPLAY_HEADER_HEIGHT = 16"),"Die feste gelbe OLED-Zone ist nicht berücksichtigt");
   assert.ok(firmware.includes("STATUS_DISPLAY_HEADER_HEIGHT + 2")&&!firmware.includes("statusDisplay.setCursor(0, 15)"),"Die Artikelzeile liegt weiterhin auf der Gelb-Blau-Grenze");
