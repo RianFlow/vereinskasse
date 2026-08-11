@@ -91,6 +91,37 @@ kiosk_wifi_status() {
   fi
 }
 
+tailscale_serve_was_active=false
+
+pause_tailscale_serve() {
+  local serve_status
+  tailscale_serve_was_active=false
+  command -v tailscale >/dev/null 2>&1 || return 0
+  serve_status="$(tailscale serve status 2>/dev/null || true)"
+  [[ "$serve_status" == *"http://127.0.0.1:8090"* ]] || return 0
+  tailscale_serve_was_active=true
+  echo "Tailscale-Fernzugriff wird fuer den Proxy-Neustart kurz pausiert."
+  tailscale serve --https=443 off >/dev/null
+}
+
+resume_tailscale_serve() {
+  [[ "$tailscale_serve_was_active" == true ]] || return 0
+  tailscale serve --bg http://127.0.0.1:8090 >/dev/null || {
+    echo "Hinweis: Tailscale-Fernzugriff konnte nicht automatisch reaktiviert werden." >&2
+    echo "Erneut aktivieren mit: sudo clubiq fernzugriff-einrichten" >&2
+    return 0
+  }
+  echo "Tailscale-Fernzugriff ist wieder aktiv."
+}
+
+compose_with_tailscale_paused() {
+  local command_status=0
+  pause_tailscale_serve
+  "$@" || command_status=$?
+  resume_tailscale_serve
+  return "$command_status"
+}
+
 show_help() {
   cat <<'HELP'
 Clubiq Ledger auf dem Raspberry verwalten
@@ -129,7 +160,7 @@ case "$command" in
     show_help
     ;;
   starten|start)
-    "${compose[@]}" up -d --remove-orphans
+    compose_with_tailscale_paused "${compose[@]}" up -d --remove-orphans
     wait_for_app || { echo "Die Kasse wurde gestartet, ist aber noch nicht erreichbar." >&2; exit 1; }
     echo "Clubiq Ledger ist erreichbar."
     ;;
@@ -187,7 +218,7 @@ case "$command" in
     rollback_ref="${image_ref}-rollback"
     docker tag "$old_image" "$rollback_ref"
     "${compose[@]}" pull app backup tools proxy postgres
-    "${compose[@]}" up -d --remove-orphans
+    compose_with_tailscale_paused "${compose[@]}" up -d --remove-orphans
     if wait_for_app; then
       echo "Update erfolgreich; Datenbank und Sicherungen sind erhalten."
     else
@@ -290,7 +321,7 @@ case "$command" in
       echo "Das Kassen-WLAN wurde angelegt, aber die feste Adresse 10.42.0.1 fehlt." >&2
       exit 1
     }
-    "${compose[@]}" up -d --force-recreate app proxy
+    compose_with_tailscale_paused "${compose[@]}" up -d --force-recreate app proxy
     wait_for_app || { echo "Das WLAN steht, aber die Kasse ist noch nicht erreichbar." >&2; exit 1; }
     echo "Kassen-WLAN ist bereit: $kiosk_ssid"
     echo "Tablet und RFID-Leser einmal damit verbinden."
@@ -305,7 +336,7 @@ case "$command" in
     lan_ip="$(current_lan_ip)"
     [[ -n "$lan_ip" ]] || { echo "Keine lokale IPv4-Adresse gefunden." >&2; exit 1; }
     set_setting CLUBIQ_LAN_IP "$lan_ip"
-    "${compose[@]}" up -d --force-recreate app proxy
+    compose_with_tailscale_paused "${compose[@]}" up -d --force-recreate app proxy
     wait_for_app || { echo "Die Kasse wurde aktualisiert, ist aber noch nicht erreichbar." >&2; exit 1; }
     echo "Aktuelle LAN-IP übernommen: $lan_ip"
     echo "Kasse per IP: https://$lan_ip"
@@ -393,7 +424,7 @@ case "$command" in
       echo "Der Raspberry ist noch nicht bei Tailscale angemeldet. Zuerst 'sudo tailscale up' ausfuehren." >&2
       exit 1
     }
-    "${compose[@]}" up -d --force-recreate proxy
+    compose_with_tailscale_paused "${compose[@]}" up -d --force-recreate proxy
     for attempt in $(seq 1 30); do
       if curl --fail --silent --max-time 3 http://127.0.0.1:8090/api/profiles >/dev/null; then
         break
