@@ -174,7 +174,7 @@ Die App verwendet Bluetooth nur für die einmalige, geschützte Übertragung der
 WLAN- und Serverdaten. Im laufenden Betrieb kommuniziert der ESP32 direkt mit
 dem Raspberry; Chrome muss keine dauerhafte Bluetooth-Sitzung halten.
 
-1. Firmware 1.9.2 einmal per USB mit der Umgebung `esp32dev` aufspielen.
+1. Firmware 1.9.3 einmal per USB mit der Umgebung `esp32dev` aufspielen.
 2. Am Raspberry `sudo clubiq kassen-wlan-einrichten` ausführen.
 3. Tablet mit `ClubIQ-Kasse` verbinden und `https://10.42.0.1` öffnen.
 4. **Admin → RFID-Leser → ESP32 ins Kassen-WLAN** öffnen.
@@ -277,7 +277,7 @@ geprüfte HTTPS-Verbindung zum Raspberry, installieren sie in den OTA-Bereich un
 starten anschließend neu. Der sichtbare App-Status zeigt Auftrag, Installation
 und anschließende Wiederanmeldung.
 
-Für diesen stabilen WLAN-Betrieb muss Version 1.9.2 auf dem ESP32 einmal per USB
+Für diesen stabilen WLAN-Betrieb muss Version 1.9.3 auf dem ESP32 einmal per USB
 installiert werden. Danach sind weitere Versionen ohne USB über WLAN möglich.
 Während eines Kartenauftrags oder eines noch nicht übertragenen Scans wird kein
 Update gestartet. Während der Installation die Stromversorgung nicht trennen.

@@ -130,7 +130,7 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
   const [rx,tx]=await Promise.all([service.getCharacteristic(RX_UUID),service.getCharacteristic(TX_UUID)]);
   await tx.startNotifications();
 
-  let receiveBuffer="",finished=false,approvalStarted=false;
+  let receiveBuffer="",finished=false,approvalStarted=false,invalidFrames=0;
   let resolveFinished:()=>void=()=>undefined;
   let rejectFinished:(reason:Error)=>void=()=>undefined;
   const completion=new Promise<void>((resolve,reject)=>{resolveFinished=resolve;rejectFinished=reject});
@@ -146,6 +146,7 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
       if(!frame)continue;
       try{
         const state=JSON.parse(frame) as {state?:string;message?:string;hardwareId?:string;code?:string};
+        invalidFrames=0;
         const stateName=state.state||"working";
         onProgress({state:stateName,message:state.message||progressMessages[stateName]||"Leser wird eingerichtet …",hardwareId:state.hardwareId});
         if(stateName==="error"){finished=true;rejectFinished(new Error(state.message||"Einrichtung am Leser fehlgeschlagen."));return}
@@ -156,7 +157,11 @@ export async function provisionRfidReader(reader:RfidBleReader,input:RfidBleProv
           }).catch(reason=>{finished=true;rejectFinished(reason instanceof Error?reason:new Error("Freigabe fehlgeschlagen."))});
         }
         if(stateName==="approved"){finished=true;resolveFinished();return}
-      }catch{finished=true;rejectFinished(new Error("Der Leser hat eine ungültige Bluetooth-Antwort gesendet."));return}
+      }catch{
+        invalidFrames++;
+        if(invalidFrames>=8){finished=true;rejectFinished(new Error("Die Bluetooth-Antwort blieb auch nach mehreren Wiederholungen unvollständig."));return}
+        onProgress({state:"resyncing",message:"Bluetooth-Antwort war unvollständig. ClubIQ wartet automatisch auf die Wiederholung …"});
+      }
     }
   };
   tx.addEventListener("characteristicvaluechanged",listener);
