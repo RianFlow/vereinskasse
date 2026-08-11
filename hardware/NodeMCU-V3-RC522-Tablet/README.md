@@ -8,13 +8,15 @@ unterstützt.
 
 1. Ohne gültige Einstellungen startet der Leser nur Bluetooth.
 2. In ClubIQ unter **Admin > RFID-Leser** wird der ESP32 D1 mini ausgewählt.
-3. Die App überträgt Name, 2,4-GHz-Kassen-WLAN, Serveradresse und Root-Zertifikat.
-4. Der Leser bestätigt das Speichern und startet neu.
-5. Danach läuft nur WLAN. Scans, Display, Chip-Schreiben, Neustart und OTA gehen
+3. Die App überträgt Name, 2,4-GHz-Kassen-WLAN, Serveradresse und Root-Zertifikat zunächst nur in den Arbeitsspeicher.
+4. Der Leser verbindet das WLAN, erhält eine IP, lädt die lokale Uhrzeit und prüft Zertifikat, Hardwarekennung und Gerätetoken direkt am Raspberry.
+5. Erst nach dieser Bestätigung speichert er die Werte und startet neu.
+6. Danach läuft nur WLAN. Scans, Display, Chip-Schreiben, Neustart und OTA gehen
    direkt zwischen Leser und Raspberry.
-6. Erst eine neue Meldung des Lesers am Raspberry gilt in der App als Erfolg.
+7. Erst eine neue Meldung desselben Lesers am Raspberry gilt in der App als Erfolg.
 
-Bluetooth und WLAN werden bewusst nicht parallel betrieben. Bleibt das
+Bluetooth und WLAN laufen nur für den begrenzten Verbindungstest gleichzeitig.
+Im normalen Kassenbetrieb ist Bluetooth abgeschaltet. Bleibt das
 Kassen-WLAN 90 Sekunden unerreichbar, beendet der ESP32 WLAN und bietet für fünf
 Minuten die Bluetooth-Wiederherstellung an. Ohne Änderung startet er danach neu
 und versucht wieder das gespeicherte WLAN. Ein reiner Serverausfall aktiviert
@@ -64,7 +66,9 @@ Leser die signalisierte ClubIQ-Firmware direkt über das Kassen-WLAN.
 
 ## Stabilitätsregeln
 
-- Keine parallele BLE-/WLAN-Funknutzung
+- BLE und WLAN nur während der einmaligen, zeitlich begrenzten Prüfung
+- neue Zugangsdaten erst nach IP-, Zeit-, TLS- und Serverprüfung speichern
+- bei Fehlern die zuletzt funktionierende Konfiguration behalten
 - WLAN-Autoreconnect und gepufferte RFID-Scans
 - lokaler Zeitabgleich vor TLS
 - verifiziertes Root-Zertifikat, niemals `setInsecure()`
@@ -72,5 +76,7 @@ Leser die signalisierte ClubIQ-Firmware direkt über das Kassen-WLAN.
 - automatische Rückkehr zum gespeicherten WLAN ohne Benutzereingriff
 - App-Erfolg erst nach serverseitig frischem `last_seen_at`
 
-Referenzen: PlatformIO-Board `wemos_d1_mini32`, Arduino-ESP32 WiFi-Events und
-Espressif Wi-Fi Provisioning.
+Vor der Einrichtung kann der Raspberry mit `sudo clubiq rfid-netz-pruefen`
+getestet werden. Referenzen: PlatformIO-Board `wemos_d1_mini32`,
+[Arduino-ESP32 WiFi-Events](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html)
+und [Espressif Wi-Fi Provisioning](https://docs.espressif.com/projects/esp-idf/en/v5.1/esp32/api-reference/provisioning/wifi_provisioning.html).

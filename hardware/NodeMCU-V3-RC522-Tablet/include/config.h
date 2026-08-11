@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr char FIRMWARE_VERSION[] = "1.9.5";
+constexpr char FIRMWARE_VERSION[] = "1.9.6";
 
 // WEMOS/LOLIN ESP32 D1 mini: VSPI plus Pins ohne Boot-Strapping-Konflikte.
 constexpr int PIN_RC522_SS = 5;   // D8
