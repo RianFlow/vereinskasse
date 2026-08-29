@@ -27,6 +27,7 @@ import "./openlist.css";
 import "./undo.css";
 import "./recovery.css";
 import "./admin-sections.css";
+import "./statistics.css";
 import "./tablet-number.css";
 import "./direct-checkout.css";
 import "./checkout-future.css";
