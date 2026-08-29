@@ -19,8 +19,10 @@ const deltaLabel=(value:number|null)=>value===null?"neu":`${value>0?"+":""}${val
 
 export function StatisticsPanel(){
   const [days,setDays]=useState(90),[productId,setProductId]=useState(""),[rankingMode,setRankingMode]=useState<"period"|"all">("period");
-  const [data,setData]=useState<StatisticsData|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState("");
-  useEffect(()=>{let active=true;setLoading(true);setError("");const params=new URLSearchParams({days:String(days),ranking:rankingMode});if(productId)params.set("productId",productId);fetch(`/api/statistics?${params}`).then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.error||"Statistiken konnten nicht geladen werden.");if(active)setData(body)}).catch(reason=>{if(active)setError(reason instanceof Error?reason.message:"Statistiken konnten nicht geladen werden.")}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[days,productId,rankingMode]);
+  const requestKey=`${days}:${productId}:${rankingMode}`;
+  const [result,setResult]=useState<{key:string;data:StatisticsData|null;error:string}>({key:"",data:null,error:""});
+  const data=result.data,loading=result.key!==requestKey,error=result.key===requestKey?result.error:"";
+  useEffect(()=>{let active=true;const params=new URLSearchParams({days:String(days),ranking:rankingMode});if(productId)params.set("productId",productId);fetch(`/api/statistics?${params}`).then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.error||"Statistiken konnten nicht geladen werden.");if(active)setResult({key:requestKey,data:body,error:""})}).catch(reason=>{if(active)setResult({key:requestKey,data:null,error:reason instanceof Error?reason.message:"Statistiken konnten nicht geladen werden."})});return()=>{active=false}},[days,productId,rankingMode,requestKey]);
   const maxTrend=useMemo(()=>Math.max(1,...(data?.trend.map(row=>row.revenue)||[])),[data]);
   const maxProduct=useMemo(()=>Math.max(1,...(data?.topProducts.map(row=>row.quantity)||[])),[data]);
   const maxMember=useMemo(()=>Math.max(1,...(data?.memberRanking.map(row=>row.quantity)||[])),[data]);
