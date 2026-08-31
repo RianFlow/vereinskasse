@@ -222,6 +222,8 @@ test("stellt ein unabhaengiges PIN-geschuetztes Wartungsportal bereit", async ()
   assert.match(server,/clubiq-internet-wlan/);
   assert.match(server,/ipv4\.route-metric/);
   assert.match(server,/BSSID,SSID,SIGNAL,SECURITY,FREQ/);
+  assert.match(server,/def nmcli_integer\(value\):/);
+  assert.match(server,/nmcli_integer\(frequency_text\)/);
   assert.match(server,/"managed", "yes"/);
   assert.match(server,/device == "wlan0"/);
   assert.match(server,/connection == KIOSK_CONNECTION/);

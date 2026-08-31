@@ -96,6 +96,14 @@ def split_nmcli(line):
     return values
 
 
+def nmcli_integer(value):
+    """Liest nmcli-Zahlen sowohl pur als auch mit lokalisierter Einheit."""
+    match = re.search(r"-?\d+", value or "")
+    if not match:
+        raise ValueError(f"Keine Zahl in nmcli-Wert: {value!r}")
+    return int(match.group(0))
+
+
 def connection_exists(name):
     result = run(["nmcli", "--terse", "--fields", "NAME", "connection", "show"], 5)
     return result.returncode == 0 and name in result.stdout.splitlines()
@@ -178,7 +186,10 @@ def scan_wifi_networks():
             continue
         bssid, ssid, signal_text, security, frequency_text = parts[:5]
         try:
-            signal, frequency = int(signal_text), int(frequency_text)
+            # Je nach NetworkManager-Version lautet FREQ entweder "2412"
+            # oder "2412 MHz". Beide Formen muessen denselben Scan ergeben.
+            signal = nmcli_integer(signal_text)
+            frequency = nmcli_integer(frequency_text)
         except ValueError:
             continue
         band = "5 GHz" if frequency >= 4900 else "2,4 GHz"
