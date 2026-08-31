@@ -113,12 +113,14 @@ services:
       CLUBIQ_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
       CLUBIQ_SMTP_FROM: ${CLUBIQ_SMTP_FROM:-}
       CLUBIQ_SMTP_REPLY_TO: ${CLUBIQ_SMTP_REPLY_TO:-}
+      CLUBIQ_MONTHLY_MAIL_TOKEN_FILE: /run/secrets/monthly_mail_token
       VINEXT_TRUST_PROXY: "1"
       VINEXT_TRUSTED_HOSTS: ${CLUBIQ_HOSTNAME:-vereinskasse.local},${CLUBIQ_LAN_IP:-127.0.0.1},${CLUBIQ_KIOSK_IP:-10.42.0.1}
     secrets:
       - postgres_app_password
       - initial_profile_pin
       - smtp_password
+      - monthly_mail_token
     volumes:
       - app_data:/data
     expose:
@@ -295,3 +297,5 @@ secrets:
     file: ./secrets/r2_secret_access_key
   smtp_password:
     file: ./secrets/smtp_password
+  monthly_mail_token:
+    file: ./secrets/monthly_mail_token

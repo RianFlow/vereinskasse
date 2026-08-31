@@ -1,0 +1,11 @@
+[Unit]
+Description=ClubIQ Ledger Monatsversand am ersten Tag des Monats
+
+[Timer]
+OnCalendar=*-*-01 08:00:00 Europe/Berlin
+Persistent=true
+RandomizedDelaySec=5m
+Unit=clubiq-monthly-mail.service
+
+[Install]
+WantedBy=timers.target
