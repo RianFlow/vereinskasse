@@ -22,6 +22,8 @@ test("smtp credentials stay server-side and TLS is enforced",async()=>{
   assert.match(smtp,/minVersion:"TLSv1\.2"/);
   assert.match(smtp,/disableFileAccess:true/);
   assert.match(smtp,/disableUrlAccess:true/);
+  assert.match(smtp,/validMailboxList/);
+  assert.match(smtp,/replyTo&&!validMailboxList\(replyTo\)/);
   assert.match(compose,/CLUBIQ_SMTP_PASSWORD_FILE: \/run\/secrets\/smtp_password/);
   assert.match(compose,/smtp_password:/);
   assert.doesNotMatch(example,/CLUBIQ_SMTP_PASSWORD=/);

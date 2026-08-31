@@ -6,6 +6,7 @@ type SmtpConfig={host:string;port:number;security:SmtpSecurity;user:string;passw
 
 const clean=(value:unknown)=>String(value||"").trim();
 const validMailbox=(value:string)=>value.length<=320&&!/[\r\n]/.test(value)&&/^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/.test(value.replace(/^.*<([^>]+)>.*$/,"$1"));
+const validMailboxList=(value:string)=>value.length<=1600&&!/[\r\n]/.test(value)&&value.split(",").map(item=>item.trim()).filter(Boolean).length>0&&value.split(",").every(item=>validMailbox(item.trim()));
 const runtimeImport=(specifier:string)=>import(/* @vite-ignore */ specifier);
 
 async function readPassword(path:string){
@@ -22,7 +23,7 @@ async function smtpConfig():Promise<SmtpConfig>{
   const passwordFile=clean(runtime.CLUBIQ_SMTP_PASSWORD_FILE);
   const replyTo=clean(runtime.CLUBIQ_SMTP_REPLY_TO)||null;
   if(!host||!user||!passwordFile||!validMailbox(from)||!Number.isInteger(port)||port<1||port>65535)throw new Error("SMTP_NOT_CONFIGURED");
-  if(replyTo&&!validMailbox(replyTo))throw new Error("SMTP_INVALID_REPLY_TO");
+  if(replyTo&&!validMailboxList(replyTo))throw new Error("SMTP_INVALID_REPLY_TO");
   const password=await readPassword(passwordFile);
   if(!password)throw new Error("SMTP_NOT_CONFIGURED");
   return {host,port,security,user,password,from,replyTo};
@@ -32,7 +33,7 @@ export function smtpPublicStatus():SmtpPublicStatus{
   const runtime=env as unknown as Record<string,unknown>;
   const available=clean(runtime.VEREINSKASSE_RUNTIME)==="raspberry";
   const sender=clean(runtime.CLUBIQ_SMTP_FROM)||null,replyTo=clean(runtime.CLUBIQ_SMTP_REPLY_TO)||null;
-  const configured=available&&Boolean(clean(runtime.CLUBIQ_SMTP_HOST)&&clean(runtime.CLUBIQ_SMTP_USER)&&clean(runtime.CLUBIQ_SMTP_PASSWORD_FILE)&&sender&&validMailbox(sender));
+  const configured=available&&Boolean(clean(runtime.CLUBIQ_SMTP_HOST)&&clean(runtime.CLUBIQ_SMTP_USER)&&clean(runtime.CLUBIQ_SMTP_PASSWORD_FILE)&&sender&&validMailbox(sender)&&(!replyTo||validMailboxList(replyTo)));
   return {configured,available,sender,replyTo,reason:available?(configured?undefined:"SMTP ist auf dem Raspberry noch nicht eingerichtet."):"E-Mail-Versand steht nur auf dem Raspberry zur Verfügung."};
 }
 

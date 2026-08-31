@@ -200,11 +200,14 @@ test("richtet ein dauerhaftes 2,4-GHz-Kassen-WLAN getrennt vom Internet-Uplink e
 });
 
 test("stellt ein unabhaengiges PIN-geschuetztes Wartungsportal bereit", async () => {
-  const [server, service, installer, manager] = await Promise.all([
+  const [server, service, installer, manager, caddy, compose, documentation] = await Promise.all([
     read("deploy/maintenance/server.py"),
     read("deploy/maintenance/clubiq-maintenance.service"),
     read("deploy/maintenance/install.sh"),
     read("deploy/docker/clubiq"),
+    read("deploy/docker/Caddyfile"),
+    read("deploy/docker/compose.yaml"),
+    read("deploy/docker/README.md"),
   ]);
   assert.match(service,/Restart=always/);
   assert.match(service,/python3 \/usr\/local\/lib\/clubiq-maintenance\/server\.py/);
@@ -216,6 +219,23 @@ test("stellt ein unabhaengiges PIN-geschuetztes Wartungsportal bereit", async ()
   assert.match(server,/hmac\.compare_digest/);
   assert.match(server,/\/api\/internet-wifi\/scan/);
   assert.match(server,/\/api\/internet-wifi\/connect/);
+  assert.match(server,/\/api\/email-settings/);
+  assert.match(server,/\/api\/email-test/);
+  assert.match(server,/CLUBIQ_SMTP_REPLY_TO/);
+  assert.match(server,/SMTP_PASSWORD_FILE/);
+  assert.match(server,/cashManagers/);
+  assert.match(server,/passwordSet/);
+  assert.doesNotMatch(server,/"password"\s*:\s*password/);
+  assert.match(server,/Mindestens ein und höchstens zehn Kassenwarte/);
+  assert.match(server,/force-recreate", "app/);
+  assert.match(server,/smtp-check\.mjs/);
+  assert.match(server,/Es wurde keine E-Mail versendet/);
+  assert.match(server,/X-Forwarded-Proto/);
+  assert.match(server,/E-Mail-Einstellungen sind ausschließlich über die HTTPS-Wartungsseite erlaubt/);
+  assert.match(caddy,/handle_path \/wartung\/\*/);
+  assert.match(caddy,/host\.docker\.internal:8091/);
+  assert.match(compose,/host\.docker\.internal:host-gateway/);
+  assert.match(documentation,/https:\/\/10\.42\.0\.1\/wartung\//);
   assert.match(server,/rfkill.*unblock.*wifi/s);
   assert.match(server,/ip.*link.*set.*interface.*up/s);
   assert.match(server,/iw.*reg.*set.*WIFI_COUNTRY/s);
@@ -232,4 +252,6 @@ test("stellt ein unabhaengiges PIN-geschuetztes Wartungsportal bereit", async ()
     assert.ok(server.includes(action),`Wartungsaktion fehlt: ${action}`);
   assert.doesNotMatch(server,/docker\.sock/);
   assert.match(manager,/wartung-einrichten\|maintenance-setup/);
+  assert.match(manager,/https:\/\/10\.42\.0\.1\/wartung\//);
+  assert.match(installer,/https:\/\/10\.42\.0\.1\/wartung\//);
 });

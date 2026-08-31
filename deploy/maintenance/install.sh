@@ -44,7 +44,8 @@ systemctl daemon-reload
 systemctl enable --now clubiq-maintenance.service
 systemctl restart clubiq-maintenance.service
 
-echo "Wartungsportal: http://10.42.0.1:8091"
+echo "Wartungsportal: https://10.42.0.1/wartung/"
+echo "Notfallzugang ohne E-Mail-Konfiguration: http://10.42.0.1:8091"
 echo "Wartungs-PIN: $(cat "$pin_file")"
 echo "Die PIN bitte getrennt und sicher notieren."
 echo "Internet-WLAN: Im Wartungsportal den USB-Stick suchen, WLAN auswaehlen und Kennwort speichern."

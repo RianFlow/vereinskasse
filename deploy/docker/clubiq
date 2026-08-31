@@ -374,7 +374,8 @@ case "$command" in
     ;;
   wartung-status|maintenance-status)
     systemctl --no-pager --full status clubiq-maintenance.service || true
-    echo "Wartungsportal: http://10.42.0.1:8091"
+    echo "Wartungsportal: https://10.42.0.1/wartung/"
+    echo "Notfallzugang ohne E-Mail-Konfiguration: http://10.42.0.1:8091"
     ;;
   netzwerk-aktualisieren|network-refresh)
     lan_ip="$(current_lan_ip)"
