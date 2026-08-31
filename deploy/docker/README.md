@@ -88,7 +88,7 @@ FRITZ!WLAN AC 860 (`057c:8503`) installiert das Wartungsportal automatisch die
 MediaTek-Firmware und lädt den Kernel-Treiber `mt76x2u`. Die Einrichtung erfolgt
 ohne Terminal direkt auf dem Tablet:
 
-1. Wartungsportal `http://10.42.0.1:8091` öffnen und mit der Wartungs-PIN anmelden.
+1. Wartungsportal `https://10.42.0.1/wartung/` öffnen und mit der Wartungs-PIN anmelden. Die direkte Adresse `http://10.42.0.1:8091` bleibt als Notfallzugang erhalten, nimmt aber bewusst keine E-Mail-Zugangsdaten an.
 2. Unter **Internet-WLAN** auf **WLAN-Netze suchen** tippen.
 3. Möglichst das 5-GHz-Netz auswählen, Kennwort eingeben und verbinden.
 
@@ -104,7 +104,7 @@ Zustand prüfen:
 sudo clubiq kassen-wlan-status
 ```
 
-Das unabhängige Wartungsportal ist unter `http://10.42.0.1:8091` erreichbar.
+Das Wartungsportal ist sicher unter `https://10.42.0.1/wartung/` erreichbar. Der unabhängige Notfallzugang unter `http://10.42.0.1:8091` bleibt auch bei Problemen mit der Kassen-App erreichbar; E-Mail-Zugangsdaten lassen sich dort aus Sicherheitsgründen nicht bearbeiten.
 Es bleibt auch verfügbar, wenn die Kassen-App oder Docker neu gestartet werden.
 Die getrennte Wartungs-PIN wird bei der Einrichtung einmal angezeigt. Später kann
 das Portal mit `sudo clubiq wartung-einrichten` repariert oder erneut aktiviert

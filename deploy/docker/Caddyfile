@@ -67,6 +67,12 @@ https://{$CLUBIQ_HOSTNAME:vereinskasse.local}, https://{$CLUBIQ_LAN_IP:127.0.0.1
       X-Content-Type-Options "nosniff"
     }
   }
+  redir /wartung /wartung/ permanent
+  handle_path /wartung/* {
+    reverse_proxy host.docker.internal:8091 {
+      header_up X-Forwarded-Proto https
+    }
+  }
   handle {
     reverse_proxy app:3000
   }

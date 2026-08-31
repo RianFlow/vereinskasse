@@ -162,6 +162,8 @@ services:
       - "8080:8080"
       # Nur der lokale Tailscale-Dienst darf diesen HTTP-Eingang erreichen.
       - "127.0.0.1:8090:8090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
