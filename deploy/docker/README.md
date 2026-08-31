@@ -80,8 +80,23 @@ Raspberry/Kasse: 10.42.0.1
 
 Tablet und RFID-Leser bleiben anschließend in diesem Netz. Ohne LAN funktionieren
 Kasse, PostgreSQL, Mitglieder, Buchungen und RFID lokal weiter. Fernzugriff,
-E-Mail, R2-Sicherung und Updates warten, bis LAN wieder vorhanden ist. Ein zweites
-WLAN für den Internetzugang wird in dieser Ausbaustufe ausdrücklich nicht benutzt.
+E-Mail, R2-Sicherung und Updates warten, bis wieder ein Internetweg vorhanden ist.
+`wlan0` bleibt ausschließlich für dieses Kassen-WLAN reserviert.
+
+Optional kann ein zweiter USB-WLAN-Stick den Internetzugang übernehmen. Beim
+FRITZ!WLAN AC 860 (`057c:8503`) installiert das Wartungsportal automatisch die
+MediaTek-Firmware und lädt den Kernel-Treiber `mt76x2u`. Die Einrichtung erfolgt
+ohne Terminal direkt auf dem Tablet:
+
+1. Wartungsportal `http://10.42.0.1:8091` öffnen und mit der Wartungs-PIN anmelden.
+2. Unter **Internet-WLAN** auf **WLAN-Netze suchen** tippen.
+3. Möglichst das 5-GHz-Netz auswählen, Kennwort eingeben und verbinden.
+
+Die Seite steuert nur ein zusätzliches, tatsächlich über USB angeschlossenes
+WLAN-Gerät. Das interne `wlan0` und `clubiq-kassen-wlan` werden ausdrücklich
+ausgeschlossen. LAN hat Vorrang; der USB-Stick dient automatisch als Rückfallweg.
+Ein falsches neues Kennwort ersetzt eine bereits funktionierende WLAN-Verbindung
+erst dann, wenn der neue Verbindungsaufbau erfolgreich war.
 
 Zustand prüfen:
 
@@ -93,7 +108,7 @@ Das unabhängige Wartungsportal ist unter `http://10.42.0.1:8091` erreichbar.
 Es bleibt auch verfügbar, wenn die Kassen-App oder Docker neu gestartet werden.
 Die getrennte Wartungs-PIN wird bei der Einrichtung einmal angezeigt. Später kann
 das Portal mit `sudo clubiq wartung-einrichten` repariert oder erneut aktiviert
-werden.
+werden. Dieser Befehl installiert zugleich die Unterstützung für den USB-WLAN-Stick.
 
 ## 3. Tablet verbinden
 

@@ -187,13 +187,13 @@ test("baut dasselbe Image für Raspberry ARM64 und PC", async () => {
   assert.match(readme, /clubiq kassen-wlan-einrichten/);
 });
 
-test("richtet ein dauerhaftes 2,4-GHz-Kassen-WLAN mit LAN als einzigem Uplink ein", async () => {
+test("richtet ein dauerhaftes 2,4-GHz-Kassen-WLAN getrennt vom Internet-Uplink ein", async () => {
   const [manager, install, environment, caddy] = await Promise.all([
     read("deploy/docker/clubiq"),read("deploy/docker/install.sh"),read("deploy/docker/.env.example"),read("deploy/docker/Caddyfile")
   ]);
   for(const fragment of ["kassen-wlan-einrichten|kiosk-wifi-setup","802-11-wireless.mode ap","802-11-wireless.band bg","802-11-wireless.channel 6","ipv4.method shared","10.42.0.1/24","--ohne-lan"])
     assert.ok(manager.includes(fragment),`Kassen-WLAN-Einrichtung fehlt: ${fragment}`);
-  assert.ok(manager.includes("ip -4 -o address show dev eth0"),"Internet darf nicht versehentlich über ein zweites WLAN erwartet werden");
+  assert.ok(manager.includes("ip -4 -o address show dev eth0"),"Der LAN-Zustand wird weiterhin getrennt ermittelt");
   assert.ok(install.includes("network-manager"),"NetworkManager wird nicht installiert");
   assert.ok(environment.includes("CLUBIQ_KIOSK_WIFI_SSID=ClubIQ-Kasse")&&environment.includes("CLUBIQ_KIOSK_IP=10.42.0.1"),"Stabile Kassen-WLAN-Vorgaben fehlen");
   assert.ok(caddy.includes("/clubiq-time"),"Der RFID-Leser kann offline keine lokale Startzeit laden");
@@ -210,8 +210,19 @@ test("stellt ein unabhaengiges PIN-geschuetztes Wartungsportal bereit", async ()
   assert.match(service,/python3 \/usr\/local\/lib\/clubiq-maintenance\/server\.py/);
   assert.match(installer,/maintenance_pin/);
   assert.match(installer,/systemctl enable --now clubiq-maintenance\.service/);
+  assert.match(installer,/firmware-mediatek/);
+  assert.match(installer,/modprobe mt76x2u/);
   assert.match(server,/X-ClubIQ-Maintenance-Pin/);
   assert.match(server,/hmac\.compare_digest/);
+  assert.match(server,/\/api\/internet-wifi\/scan/);
+  assert.match(server,/\/api\/internet-wifi\/connect/);
+  assert.match(server,/clubiq-internet-wlan/);
+  assert.match(server,/ipv4\.route-metric/);
+  assert.match(server,/BSSID,SSID,SIGNAL,SECURITY,FREQ/);
+  assert.match(server,/"managed", "yes"/);
+  assert.match(server,/device == "wlan0"/);
+  assert.match(server,/connection == KIOSK_CONNECTION/);
+  assert.match(server,/\/sys\/class\/net\//);
   for(const action of ["restart_stack","restart_wifi","backup","reboot"])
     assert.ok(server.includes(action),`Wartungsaktion fehlt: ${action}`);
   assert.doesNotMatch(server,/docker\.sock/);
