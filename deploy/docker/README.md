@@ -251,6 +251,42 @@ Zwei-Faktor-Anmeldung ist in der Regel ein eigenes App-Passwort erforderlich.
 Rechnungen lassen sich nur durch Kassenwart oder Vorstand und erst nach dem
 Festschreiben des Monats einzeln versenden. Jeder Versand wird protokolliert.
 
+Die in der Wartungsseite eingetragenen **Kassenwart-Adressen** erhalten
+zusätzlich einen gemeinsamen Monatsabschluss. Mehrere Adressen werden getrennt
+versendet, sodass keine Empfängeradresse für andere sichtbar wird. Die Mail
+enthält:
+
+- eine Kontenübersicht mit allen Namen und Monatsendbeträgen als CSV,
+- alle Buchungspositionen inklusive geteilter Beträge als CSV,
+- eine druckbare HTML-Zusammenfassung.
+
+Die CSV-Dateien sind UTF-8-kodiert, für deutsches Excel und LibreOffice
+geeignet und können unmittelbar sortiert, gefiltert und weiterbearbeitet
+werden. Die Kassenwart-Adressen können später jederzeit in der Wartungsseite
+geändert oder erweitert werden.
+
+Der automatische Versand wird bei einer Neuinstallation mit eingerichtet und
+läuft am **1. jedes Monats ab 08:00 Uhr** für den festgeschriebenen Vormonat.
+Ein noch nicht festgeschriebener Monat wird aus Sicherheitsgründen nicht
+versendet. Nach dem Festschreiben lässt sich der Versand im Adminbereich unter
+`Abrechnung` jederzeit manuell auslösen. Auf bestehenden Installationen wird
+die Zeitsteuerung einmalig so aktiviert:
+
+```bash
+sudo clubiq monatsmail-einrichten
+```
+
+Für einen kontrollierten manuellen Lauf direkt auf dem Raspberry:
+
+```bash
+sudo clubiq monatsmail-senden
+```
+
+Automatische und manuelle Sendungen werden im unveränderlichen
+Aktionsprotokoll festgehalten. Der automatische Lauf versendet denselben Monat
+nicht doppelt; beim manuellen erneuten Versand ist eine ausdrückliche
+Bestätigung nötig.
+
 ## 10. Nach dem Probebetrieb leer beginnen
 
 ```bash

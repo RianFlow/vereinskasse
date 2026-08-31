@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 
 type SmtpSecurity="starttls"|"tls";
 export type SmtpPublicStatus={configured:boolean;available:boolean;sender:string|null;replyTo:string|null;reason?:string};
+export type SmtpAttachment={filename:string;content:string;contentType:string};
 type SmtpConfig={host:string;port:number;security:SmtpSecurity;user:string;password:string;from:string;replyTo:string|null};
 
 const clean=(value:unknown)=>String(value||"").trim();
@@ -37,6 +38,11 @@ export function smtpPublicStatus():SmtpPublicStatus{
   return {configured,available,sender,replyTo,reason:available?(configured?undefined:"SMTP ist auf dem Raspberry noch nicht eingerichtet."):"E-Mail-Versand steht nur auf dem Raspberry zur Verfügung."};
 }
 
+export function smtpCashManagerRecipients(){
+  const value=clean((env as unknown as Record<string,unknown>).CLUBIQ_SMTP_REPLY_TO);
+  return value&&validMailboxList(value)?value.split(",").map(item=>item.trim()).filter(Boolean):[];
+}
+
 async function transporter(){
   const config=await smtpConfig();
   const imported=await runtimeImport("nodemailer") as {default?:{createTransport:(options:Record<string,unknown>)=>unknown};createTransport?:(options:Record<string,unknown>)=>unknown};
@@ -59,9 +65,10 @@ async function transporter(){
 }
 
 export async function verifySmtp(){const {transport}=await transporter();await transport.verify();return true}
-export async function sendSmtpMessage(message:{to:string;subject:string;text:string;html:string}){
+export async function sendSmtpMessage(message:{to:string;subject:string;text:string;html:string;attachments?:SmtpAttachment[];replyTo?:string|null}){
   if(!validMailbox(message.to))throw new Error("INVALID_RECIPIENT");
+  if(message.replyTo&&!validMailbox(message.replyTo))throw new Error("INVALID_REPLY_TO");
   const {config,transport}=await transporter();
-  const result=await transport.sendMail({from:config.from,to:message.to,replyTo:config.replyTo||undefined,subject:message.subject,text:message.text,html:message.html,disableFileAccess:true,disableUrlAccess:true});
+  const result=await transport.sendMail({from:config.from,to:message.to,replyTo:message.replyTo===null?undefined:message.replyTo||config.replyTo||undefined,subject:message.subject,text:message.text,html:message.html,attachments:message.attachments,disableFileAccess:true,disableUrlAccess:true});
   return {messageId:result.messageId||null,accepted:Array.isArray(result.accepted)?result.accepted.length:0};
 }

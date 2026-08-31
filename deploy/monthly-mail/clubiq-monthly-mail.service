@@ -1,0 +1,12 @@
+[Unit]
+Description=ClubIQ Ledger Monatsabschluss an Kassenwarte senden
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/clubiq-monthly-mail/run.sh
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true

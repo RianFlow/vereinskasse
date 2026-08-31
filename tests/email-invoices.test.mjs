@@ -52,3 +52,60 @@ test("raspberry CLI configures and verifies SMTP without sending",async()=>{
   assert.match(ci,/touch deploy\/docker\/secrets\/smtp_password/);
   assert.match(container,/: > secrets\/smtp_password/);
 });
+
+test("Kassenwarte erhalten einen abgeschlossenen, bearbeitbaren Monatsbericht",async()=>{
+  const [route,sender,report,smtp]=await Promise.all([
+    read("app/api/email/route.ts"),
+    read("app/monthly-cash-manager-email.ts"),
+    read("app/monthly-cash-manager-report.ts"),
+    read("app/email-smtp.ts")
+  ]);
+  assert.match(route,/send_cash_manager_summary/);
+  assert.match(route,/MONATSABSCHLUSS SENDEN/);
+  assert.match(sender,/FROM monthly_closures WHERE profile_id=\? AND month=\?/);
+  assert.match(sender,/MONTHLY_CASH_MANAGER_EMAIL_SENT/);
+  assert.match(sender,/MONTHLY_CASH_MANAGER_EMAIL_FAILED/);
+  assert.match(sender,/input\.mode==="automatic"&&lastSentAt/);
+  assert.match(sender,/for\(const recipient of recipients\)/,"Kassenwarte müssen aus Datenschutzgründen getrennte Nachrichten erhalten");
+  assert.match(report,/Uebersicht\.csv/);
+  assert.match(report,/Einzelposten\.csv/);
+  assert.match(report,/Druckansicht\.html/);
+  assert.match(report,/\\uFEFF/);
+  assert.match(report,/join\(";"\)/);
+  assert.match(report,/\^\[=\+@\]/,"CSV-Formeleinschleusung muss neutralisiert werden");
+  assert.match(report,/allocatedSales/,"Der persönliche Buchungsanteil darf bei mehreren Artikeln nicht mehrfach summierbar sein");
+  assert.match(report,/Person im Besucherverein/);
+  assert.match(report,/im Vereinsgesamtbetrag enthalten/);
+  assert.match(smtp,/smtpCashManagerRecipients/);
+  assert.match(smtp,/attachments:message\.attachments/);
+  assert.match(sender,/replyTo:recipient/,"Getrennte Kassenwart-Mails dürfen nicht die Adressen aller anderen Empfänger offenlegen");
+  assert.match(smtp,/disableFileAccess:true/);
+  assert.match(smtp,/disableUrlAccess:true/);
+});
+
+test("Monatsmail läuft intern am Ersten und bleibt manuell auslösbar",async()=>{
+  const [scheduled,compose,manager,installer,runner,timer,ci,container]=await Promise.all([
+    read("app/api/email/monthly-close/route.ts"),
+    read("deploy/docker/compose.yaml"),
+    read("deploy/docker/clubiq"),
+    read("deploy/monthly-mail/install.sh"),
+    read("deploy/monthly-mail/run.sh"),
+    read("deploy/monthly-mail/clubiq-monthly-mail.timer"),
+    read(".github/workflows/ci.yml"),
+    read(".github/workflows/container.yml")
+  ]);
+  assert.match(scheduled,/x-clubiq-monthly-token/);
+  assert.match(scheduled,/previousBerlinMonth/);
+  assert.match(scheduled,/mode:"automatic"/);
+  assert.match(scheduled,/MONTH_NOT_CLOSED/);
+  assert.match(compose,/CLUBIQ_MONTHLY_MAIL_TOKEN_FILE: \/run\/secrets\/monthly_mail_token/);
+  assert.match(compose,/monthly_mail_token:/);
+  assert.match(manager,/monatsmail-einrichten\|monthly-mail-setup/);
+  assert.match(manager,/monatsmail-senden\|monthly-mail-send/);
+  assert.match(installer,/enable --now clubiq-monthly-mail\.timer/);
+  assert.match(runner,/api\/email\/monthly-close/);
+  assert.match(timer,/OnCalendar=\*-\*-01 08:00:00 Europe\/Berlin/);
+  assert.match(timer,/Persistent=true/);
+  assert.match(ci,/touch deploy\/docker\/secrets\/monthly_mail_token/);
+  assert.match(container,/: > secrets\/monthly_mail_token/);
+});

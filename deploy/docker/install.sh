@@ -75,6 +75,10 @@ create_random_secret "$base/secrets/restic_password"
 [[ -f "$base/secrets/r2_access_key_id" ]] || : > "$base/secrets/r2_access_key_id"
 [[ -f "$base/secrets/r2_secret_access_key" ]] || : > "$base/secrets/r2_secret_access_key"
 [[ -f "$base/secrets/smtp_password" ]] || : > "$base/secrets/smtp_password"
+if [[ ! -s "$base/secrets/monthly_mail_token" ]]; then
+  umask 077
+  od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$base/secrets/monthly_mail_token"
+fi
 chmod 600 "$base/secrets/"*
 
 if [[ ! -s "$base/secrets/initial_profile_pin" ]]; then
@@ -117,6 +121,7 @@ for attempt in $(seq 1 90); do
     echo "Tablet-Zertifikat: http://${ip:-RASPBERRY-IP}:8080/vereinskasse-ca.crt"
     echo "Status: sudo clubiq status"
     echo "USB später freigeben: sudo clubiq usb-freigeben /mnt/vereinskasse-sicherung"
+    "$root/deploy/monthly-mail/install.sh"
     exit 0
   fi
   sleep 2

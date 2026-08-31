@@ -22,7 +22,7 @@ jobs:
       - run: npm ci
       - name: Docker-Konfiguration prüfen
         run: |
-          bash -n deploy/docker/*.sh deploy/docker/clubiq deploy/raspberry/backup.sh
+          bash -n deploy/docker/*.sh deploy/docker/clubiq deploy/raspberry/backup.sh deploy/monthly-mail/*.sh
           cp deploy/docker/.env.example deploy/docker/.env
           mkdir -p deploy/docker/secrets /tmp/clubiq-usb
           touch deploy/docker/secrets/postgres_admin_password
@@ -32,6 +32,7 @@ jobs:
           touch deploy/docker/secrets/r2_access_key_id
           touch deploy/docker/secrets/r2_secret_access_key
           touch deploy/docker/secrets/smtp_password
+          touch deploy/docker/secrets/monthly_mail_token
           docker compose --project-directory deploy/docker --env-file deploy/docker/.env \
             -f deploy/docker/compose.yaml config --quiet
       - run: npm run lint

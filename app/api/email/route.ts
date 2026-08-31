@@ -2,7 +2,8 @@ import { env } from "cloudflare:workers";
 import { requireProfile } from "../profile-session";
 import { requireRole } from "../session";
 import { GET as monthlyReport } from "../monthly/route";
-import { sendSmtpMessage, smtpPublicStatus, verifySmtp } from "../../email-smtp";
+import { sendSmtpMessage, smtpCashManagerRecipients, smtpPublicStatus, verifySmtp } from "../../email-smtp";
+import { monthlyCashManagerLastSent, sendMonthlyCashManagerReport } from "../../monthly-cash-manager-email";
 
 type EmailMember={id:string;name:string;invoiceEmail:string|null;invoiceEmailConsentAt:string|null};
 type Closure={statementNumber:string;snapshotJson:string;closedAt:string};
@@ -17,6 +18,9 @@ const safeError=(error:unknown)=>{
   const message=error instanceof Error?error.message:"";
   if(message==="SMTP_NOT_CONFIGURED")return "Der E-Mail-Versand ist auf dem Raspberry noch nicht eingerichtet.";
   if(message==="SMTP_RUNTIME_UNAVAILABLE")return "E-Mail-Versand steht nur auf dem Raspberry zur Verfügung.";
+  if(message==="NO_CASH_MANAGER_RECIPIENTS")return "In der Wartungsseite ist noch keine Kassenwart-Adresse eingetragen.";
+  if(message==="MONTH_NOT_CLOSED")return "Der Monat muss vor dem Versand festgeschrieben werden.";
+  if(message==="MONTHLY_REPORT_RECENTLY_SENT")return "Dieser Monatsabschluss wurde gerade bereits versendet. Bitte eine Minute warten.";
   if(/auth|credential|login|535/i.test(message))return "Der Mailserver hat die Anmeldung abgelehnt. Bitte SMTP-Zugang prüfen.";
   if(/timeout|timed out|connect|socket|dns|enotfound|econn/i.test(message))return "Der Mailserver ist derzeit nicht erreichbar.";
   return "Die Rechnung konnte nicht per E-Mail versendet werden.";
@@ -34,7 +38,8 @@ export async function GET(request:Request){
   ]);
   const lastSent=new Map<string,string>();
   for(const audit of audits.results){try{const details=JSON.parse(audit.detailsJson) as {profileId?:string;month?:string;memberId?:string};if(details.profileId===profile.id&&details.month===month&&details.memberId&&!lastSent.has(details.memberId))lastSent.set(details.memberId,audit.createdAt)}catch{}}
-  return Response.json({...smtpPublicStatus(),members:memberRows.results.map(member=>({memberId:member.id,emailAddress:member.invoiceEmail,optIn:Boolean(member.invoiceEmailConsentAt),lastSentAt:lastSent.get(member.id)||null}))},{headers:{"cache-control":"no-store"}});
+  const cashManagerRecipients=smtpCashManagerRecipients(),cashManagerLastSentAt=month?await monthlyCashManagerLastSent(profile.id,month):null;
+  return Response.json({...smtpPublicStatus(),cashManagerRecipients,cashManagerLastSentAt,members:memberRows.results.map(member=>({memberId:member.id,emailAddress:member.invoiceEmail,optIn:Boolean(member.invoiceEmailConsentAt),lastSentAt:lastSent.get(member.id)||null}))},{headers:{"cache-control":"no-store"}});
 }
 
 export async function POST(request:Request){
@@ -44,6 +49,12 @@ export async function POST(request:Request){
   try{body=await request.json() as typeof body}catch{return Response.json({error:"Ungültige Anfrage"},{status:400})}
   if(body.action==="verify"){
     try{await verifySmtp();return Response.json({ok:true,message:"Verbindung zum Mailserver ist bereit."})}catch(error){return Response.json({error:safeError(error)},{status:503})}
+  }
+  if(body.action==="send_cash_manager_summary"){
+    if(!body.month||!monthValid(body.month))return Response.json({error:"Ein gültiger Abrechnungsmonat fehlt."},{status:400});
+    if(body.confirmation!=="MONATSABSCHLUSS SENDEN")return Response.json({error:"Der Versand muss ausdrücklich bestätigt werden."},{status:400});
+    try{return Response.json(await sendMonthlyCashManagerReport({profileId:profile.id,profileName:profile.name,month:body.month,operatorId:user.id,mode:"manual"}))}
+    catch(error){console.error("Kassenwart-Monatsversand fehlgeschlagen",error);return Response.json({error:safeError(error)},{status:502})}
   }
   if(body.action!=="send_invoice"||!body.month||!monthValid(body.month)||!body.memberId)return Response.json({error:"Monat und Mitglied fehlen."},{status:400});
   if(body.confirmation!=="RECHNUNG SENDEN")return Response.json({error:"Der Versand muss ausdrücklich bestätigt werden."},{status:400});

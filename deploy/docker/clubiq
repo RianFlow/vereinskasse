@@ -18,6 +18,10 @@ ensure_optional_secrets() {
   for secret in r2_access_key_id r2_secret_access_key smtp_password; do
     [[ -f "$base/secrets/$secret" ]] || install -m 600 /dev/null "$base/secrets/$secret"
   done
+  if [[ ! -s "$base/secrets/monthly_mail_token" ]]; then
+    umask 077
+    od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$base/secrets/monthly_mail_token"
+  fi
 }
 
 wait_for_app() {
@@ -148,6 +152,8 @@ Clubiq Ledger auf dem Raspberry verwalten
   clubiq r2-laden [SNAPSHOT]     Letztes R2-Archiv lokal bereitstellen
   clubiq email-einrichten        SMTP-Zugang fuer Rechnungs-E-Mails einrichten
   clubiq email-pruefen           Verbindung zum Mailserver testen (ohne Versand)
+  clubiq monatsmail-einrichten   Automatischen Monatsversand am 1. aktivieren
+  clubiq monatsmail-senden       Automatischen Monatsversand sofort pruefen/ausloesen
   clubiq fernzugriff-einrichten  Privaten HTTPS-Zugang ueber Tailscale aktivieren
   clubiq fernzugriff-status      Adresse und Zustand des Fernzugriffs anzeigen
   clubiq zertifikat              Adresse des Tablet-Zertifikats anzeigen
@@ -458,6 +464,13 @@ case "$command" in
     ;;
   email-pruefen|email-check)
     "${compose[@]}" exec -T app node /app/raspberry/smtp-check.mjs
+    ;;
+  monatsmail-einrichten|monthly-mail-setup)
+    [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo "Bitte mit sudo ausfuehren." >&2; exit 1; }
+    "$base/../monthly-mail/install.sh"
+    ;;
+  monatsmail-senden|monthly-mail-send)
+    "$base/../monthly-mail/run.sh"
     ;;
   fernzugriff-einrichten|remote-access-setup)
     command -v tailscale >/dev/null || {
