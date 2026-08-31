@@ -21,6 +21,9 @@ COMPOSE = ["docker", "compose", "--env-file", ".env", "-f", "compose.yaml"]
 KIOSK_CONNECTION = "clubiq-kassen-wlan"
 UPLINK_CONNECTION = "clubiq-internet-wlan"
 UPLINK_NEXT_CONNECTION = "clubiq-internet-wlan-next"
+WIFI_COUNTRY = os.environ.get("CLUBIQ_WIFI_COUNTRY", "DE").strip().upper()
+if not re.fullmatch(r"[A-Z]{2}", WIFI_COUNTRY):
+    WIFI_COUNTRY = "DE"
 failures = {}
 
 HTML = r'''<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -143,13 +146,28 @@ def internet_wifi_status():
     return {"detected": True, "connected": connected, "interface": interface, "driver": device["driver"], "connection": "" if connection == "--" else connection, "ssid": ssid, "ip": ip_address}
 
 
+def prepare_usb_wifi(interface):
+    """Bereitet den separaten USB-Stick vor, ohne das Kassen-WLAN anzutasten."""
+    if shutil.which("rfkill"):
+        run(["rfkill", "unblock", "wifi"], 8)
+    managed = run(["nmcli", "device", "set", interface, "managed", "yes"], 8)
+    if managed.returncode != 0:
+        raise RuntimeError("USB-WLAN-Stick konnte nicht von NetworkManager übernommen werden.")
+    run(["nmcli", "radio", "wifi", "on"], 8)
+    if shutil.which("iw"):
+        run(["iw", "reg", "set", WIFI_COUNTRY], 8)
+    link = run(["ip", "link", "set", interface, "up"], 8)
+    if link.returncode != 0:
+        raise RuntimeError("USB-WLAN-Schnittstelle konnte nicht aktiviert werden.")
+    time.sleep(1)
+
+
 def scan_wifi_networks():
     device = usb_wifi_interface()
     if not device:
         raise RuntimeError("USB-WLAN-Stick nicht erkannt. Stick einstecken und erneut versuchen.")
     interface = device["interface"]
-    run(["nmcli", "device", "set", interface, "managed", "yes"], 8)
-    run(["nmcli", "radio", "wifi", "on"], 8)
+    prepare_usb_wifi(interface)
     result = run(["nmcli", "--terse", "--escape", "yes", "--fields", "BSSID,SSID,SIGNAL,SECURITY,FREQ", "device", "wifi", "list", "ifname", interface, "--rescan", "yes"], 35)
     if result.returncode != 0:
         raise RuntimeError("WLAN-Suche fehlgeschlagen. USB-Stick und Treiber prüfen.")
@@ -182,7 +200,7 @@ def connect_internet_wifi(ssid, password, bssid=None):
     if bssid is not None and (not isinstance(bssid, str) or not re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", bssid)):
         raise ValueError("Ungültige WLAN-Basisstation.")
     interface = device["interface"]
-    run(["nmcli", "device", "set", interface, "managed", "yes"], 8)
+    prepare_usb_wifi(interface)
     had_previous = connection_exists(UPLINK_CONNECTION)
     if connection_exists(UPLINK_NEXT_CONNECTION):
         run(["nmcli", "connection", "delete", UPLINK_NEXT_CONNECTION], 15)

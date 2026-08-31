@@ -216,6 +216,9 @@ test("stellt ein unabhaengiges PIN-geschuetztes Wartungsportal bereit", async ()
   assert.match(server,/hmac\.compare_digest/);
   assert.match(server,/\/api\/internet-wifi\/scan/);
   assert.match(server,/\/api\/internet-wifi\/connect/);
+  assert.match(server,/rfkill.*unblock.*wifi/s);
+  assert.match(server,/ip.*link.*set.*interface.*up/s);
+  assert.match(server,/iw.*reg.*set.*WIFI_COUNTRY/s);
   assert.match(server,/clubiq-internet-wlan/);
   assert.match(server,/ipv4\.route-metric/);
   assert.match(server,/BSSID,SSID,SIGNAL,SECURITY,FREQ/);
