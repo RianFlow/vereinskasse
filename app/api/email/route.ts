@@ -28,18 +28,23 @@ const safeError=(error:unknown)=>{
 const personFrom=(snapshot:MonthlySnapshot,memberId:string)=>snapshot.people.find(person=>person.memberId===memberId)||snapshot.people.flatMap(person=>person.children||[]).find(person=>person.memberId===memberId);
 
 export async function GET(request:Request){
-  const [user,profile]=await Promise.all([requireRole(request,["Kassenwart","Vorstand"]),requireProfile(request)]);
-  if(!user||!profile)return Response.json({error:"Nur Kassenwart oder Vorstand dürfen E-Mail-Rechnungen verwalten."},{status:403});
-  const month=new URL(request.url).searchParams.get("month")||"";
-  if(month&&!monthValid(month))return Response.json({error:"Ungültiger Monat"},{status:400});
-  const [memberRows,audits]=await Promise.all([
-    env.DB.prepare("SELECT id,name,invoice_email invoiceEmail,invoice_email_consent_at invoiceEmailConsentAt FROM members ORDER BY name").all<EmailMember>(),
-    month?env.DB.prepare("SELECT details_json detailsJson,created_at createdAt FROM audit_logs WHERE action='MONTHLY_INVOICE_EMAIL_SENT' ORDER BY created_at DESC LIMIT 1000").all<SentAudit>():Promise.resolve({results:[]} as {results:SentAudit[]})
-  ]);
-  const lastSent=new Map<string,string>();
-  for(const audit of audits.results){try{const details=JSON.parse(audit.detailsJson) as {profileId?:string;month?:string;memberId?:string};if(details.profileId===profile.id&&details.month===month&&details.memberId&&!lastSent.has(details.memberId))lastSent.set(details.memberId,audit.createdAt)}catch{}}
-  const cashManagerRecipients=smtpCashManagerRecipients(),cashManagerLastSentAt=month?await monthlyCashManagerLastSent(profile.id,month):null;
-  return Response.json({...smtpPublicStatus(),cashManagerRecipients,cashManagerLastSentAt,members:memberRows.results.map(member=>({memberId:member.id,emailAddress:member.invoiceEmail,optIn:Boolean(member.invoiceEmailConsentAt),lastSentAt:lastSent.get(member.id)||null}))},{headers:{"cache-control":"no-store"}});
+  try{
+    const [user,profile]=await Promise.all([requireRole(request,["Kassenwart","Vorstand"]),requireProfile(request)]);
+    if(!user||!profile)return Response.json({error:"Nur Kassenwart oder Vorstand dürfen E-Mail-Rechnungen verwalten."},{status:403});
+    const month=new URL(request.url).searchParams.get("month")||"";
+    if(month&&!monthValid(month))return Response.json({error:"Ungültiger Monat"},{status:400});
+    const [memberRows,audits]=await Promise.all([
+      env.DB.prepare("SELECT id,name,invoice_email invoiceEmail,invoice_email_consent_at invoiceEmailConsentAt FROM members ORDER BY name").all<EmailMember>(),
+      month?env.DB.prepare("SELECT details_json detailsJson,created_at createdAt FROM audit_logs WHERE action='MONTHLY_INVOICE_EMAIL_SENT' ORDER BY created_at DESC LIMIT 1000").all<SentAudit>():Promise.resolve({results:[]} as {results:SentAudit[]})
+    ]);
+    const lastSent=new Map<string,string>();
+    for(const audit of audits.results){try{const details=JSON.parse(audit.detailsJson) as {profileId?:string;month?:string;memberId?:string};if(details.profileId===profile.id&&details.month===month&&details.memberId&&!lastSent.has(details.memberId))lastSent.set(details.memberId,audit.createdAt)}catch{}}
+    const cashManagerRecipients=smtpCashManagerRecipients(),cashManagerLastSentAt=month?await monthlyCashManagerLastSent(profile.id,month):null;
+    return Response.json({...smtpPublicStatus(),cashManagerRecipients,cashManagerLastSentAt,members:memberRows.results.map(member=>({memberId:member.id,emailAddress:member.invoiceEmail,optIn:Boolean(member.invoiceEmailConsentAt),lastSentAt:lastSent.get(member.id)||null}))},{headers:{"cache-control":"no-store"}});
+  }catch(error){
+    console.error("E-Mail-Status konnte nicht geladen werden",error);
+    return Response.json({error:"Der E-Mail-Status konnte nicht geladen werden. Die Monatsabrechnung bleibt weiterhin nutzbar."},{status:500,headers:{"cache-control":"no-store"}});
+  }
 }
 
 export async function POST(request:Request){

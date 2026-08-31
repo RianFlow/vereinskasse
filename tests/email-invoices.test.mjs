@@ -83,6 +83,21 @@ test("Kassenwarte erhalten einen abgeschlossenen, bearbeitbaren Monatsbericht",a
   assert.match(smtp,/disableUrlAccess:true/);
 });
 
+test("Abrechnung bleibt bei Fehlern im optionalen Mailstatus bedienbar",async()=>{
+  const [page,email,monthly]=await Promise.all([
+    read("app/page.tsx"),
+    read("app/api/email/route.ts"),
+    read("app/api/monthly/route.ts")
+  ]);
+  assert.match(page,/const apiJson=/,"Leere oder ungültige Serverantworten müssen verständlich behandelt werden");
+  assert.match(page,/emailError/);
+  assert.match(page,/void loadEmail\(value\)/,"Der Mailstatus darf das Laden der Monatsabrechnung nicht blockieren");
+  assert.match(email,/E-Mail-Status konnte nicht geladen werden/);
+  assert.match(email,/console\.error\("E-Mail-Status konnte nicht geladen werden"/);
+  assert.match(monthly,/AS "month"/,"PostgreSQL benötigt für den Monatsalias eine eindeutige Schreibweise");
+  assert.doesNotMatch(monthly,/\) month,/,"Der fehlerhafte ungequotete Monatsalias darf nicht zurückkehren");
+});
+
 test("Monatsmail läuft intern am Ersten und bleibt manuell auslösbar",async()=>{
   const [scheduled,compose,manager,installer,runner,timer,ci,container]=await Promise.all([
     read("app/api/email/monthly-close/route.ts"),

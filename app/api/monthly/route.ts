@@ -85,20 +85,20 @@ export async function GET(request:Request){
   if(url.searchParams.get("archive")==="1"){
     const currentMonth=currentBillingMonth();
     const archive=await env.DB.prepare(`WITH activity AS (
-      SELECT substr(created_at,1,7) month,ROUND(SUM(CASE WHEN amount>0 THEN amount ELSE 0 END),2) charges,COUNT(DISTINCT member_id) people
+      SELECT substr(created_at,1,7) AS "month",ROUND(SUM(CASE WHEN amount>0 THEN amount ELSE 0 END),2) charges,COUNT(DISTINCT member_id) people
       FROM account_transactions WHERE profile_id=? GROUP BY substr(created_at,1,7)
     ), sale_months AS (
-      SELECT substr(time,1,7) month,COUNT(*) salesCount FROM sales WHERE profile_id=? GROUP BY substr(time,1,7)
+      SELECT substr(time,1,7) AS "month",COUNT(*) salesCount FROM sales WHERE profile_id=? GROUP BY substr(time,1,7)
     ), used_months AS (
-      SELECT month FROM activity UNION SELECT month FROM sale_months UNION SELECT month FROM monthly_closures WHERE profile_id=?
+      SELECT "month" FROM activity UNION SELECT "month" FROM sale_months UNION SELECT "month" FROM monthly_closures WHERE profile_id=?
     )
-    SELECT u.month,c.statement_number statementNumber,c.checksum,c.closed_by_name closedByName,c.closed_at closedAt,
+    SELECT u."month" AS "month",c.statement_number statementNumber,c.checksum,c.closed_by_name closedByName,c.closed_at closedAt,
       COALESCE(a.charges,0) charges,COALESCE(a.people,0) people,COALESCE(s.salesCount,0) salesCount
     FROM used_months u
-    LEFT JOIN activity a ON a.month=u.month
-    LEFT JOIN sale_months s ON s.month=u.month
-    LEFT JOIN monthly_closures c ON c.profile_id=? AND c.month=u.month
-    WHERE u.month<? ORDER BY u.month DESC`).bind(profile.id,profile.id,profile.id,profile.id,currentMonth).all<ArchiveMonthRow>();
+    LEFT JOIN activity a ON a."month"=u."month"
+    LEFT JOIN sale_months s ON s."month"=u."month"
+    LEFT JOIN monthly_closures c ON c.profile_id=? AND c."month"=u."month"
+    WHERE u."month"<? ORDER BY u."month" DESC`).bind(profile.id,profile.id,profile.id,profile.id,currentMonth).all<ArchiveMonthRow>();
     return Response.json({currentMonth,archive:archive.results.map(entry=>({
       ...entry,
       label:monthLabel(entry.month),
