@@ -28,10 +28,12 @@ stage_runtime_secret() {
   local target="$runtime_directory/$filename"
   install -d -o root -g node -m 0710 "$runtime_directory"
   # Das tmpfs bleibt bei einem Container-Neustart erhalten. Eine bereits
-  # gestufte, node-eigene 0400-Datei muss daher zuerst über das root-eigene
-  # Verzeichnis ersetzt werden, statt sie ohne CAP_FOWNER zu überschreiben.
+  # gestufte Datei wird daher über das root-eigene Verzeichnis ersetzt.
   rm -f "$target"
-  install -o node -g node -m 0400 "$source" "$target"
+  # Erst den endgültigen Modus setzen und danach den Eigentümer wechseln:
+  # Der gehärtete Container besitzt CHOWN, absichtlich aber kein FOWNER.
+  install -m 0400 "$source" "$target"
+  chown node:node "$target"
   printf -v "$file_variable" '%s' "$target"
   export "$file_variable"
 }
