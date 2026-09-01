@@ -26,8 +26,14 @@ stage_runtime_secret() {
   }
   local runtime_directory="/tmp/clubiq-runtime-secrets"
   local target="$runtime_directory/$filename"
-  install -d -o node -g node -m 0700 "$runtime_directory"
-  install -o node -g node -m 0400 "$source" "$target"
+  install -d -o root -g node -m 0710 "$runtime_directory"
+  # Das tmpfs bleibt bei einem Container-Neustart erhalten. Eine bereits
+  # gestufte Datei wird daher über das root-eigene Verzeichnis ersetzt.
+  rm -f "$target"
+  # Erst den endgültigen Modus setzen und danach den Eigentümer wechseln:
+  # Der gehärtete Container besitzt CHOWN, absichtlich aber kein FOWNER.
+  install -m 0400 "$source" "$target"
+  chown node:node "$target"
   printf -v "$file_variable" '%s' "$target"
   export "$file_variable"
 }
