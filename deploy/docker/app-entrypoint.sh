@@ -15,8 +15,27 @@ read_secret() {
   fi
 }
 
+stage_runtime_secret() {
+  local file_variable="$1"
+  local filename="$2"
+  local source="${!file_variable:-}"
+  [[ -n "$source" ]] || return 0
+  [[ -r "$source" ]] || {
+    echo "Geheimnisdatei für $file_variable ist nicht lesbar." >&2
+    exit 1
+  }
+  local runtime_directory="/tmp/clubiq-runtime-secrets"
+  local target="$runtime_directory/$filename"
+  install -d -o node -g node -m 0700 "$runtime_directory"
+  install -o node -g node -m 0400 "$source" "$target"
+  printf -v "$file_variable" '%s' "$target"
+  export "$file_variable"
+}
+
 read_secret PGPASSWORD
 read_secret VEREINSKASSE_INITIAL_PROFILE_PIN
+stage_runtime_secret CLUBIQ_SMTP_PASSWORD_FILE smtp_password
+stage_runtime_secret CLUBIQ_MONTHLY_MAIL_TOKEN_FILE monthly_mail_token
 
 mkdir -p "${VEREINSKASSE_DATA_DIR:-/data}" "${VEREINSKASSE_BACKUP_DIR:-/data/objects}"
 chown -R node:node "${VEREINSKASSE_DATA_DIR:-/data}"
