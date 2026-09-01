@@ -31,6 +31,21 @@ test("smtp credentials stay server-side and TLS is enforced",async()=>{
   assert.doesNotMatch(check,/sendMail/);
 });
 
+test("Test-E-Mail wird auch ohne Buchungen wirklich versendet",async()=>{
+  const [route,page,maintenance,sender]=await Promise.all([read("app/api/email/route.ts"),read("app/page.tsx"),read("deploy/maintenance/server.py"),read("raspberry/smtp-test-send.mjs")]);
+  assert.match(route,/action==="send_test"/);
+  assert.match(route,/SMTP_TEST_EMAIL_SENT/);
+  assert.match(route,/keine Abrechnungs- oder Mitgliederdaten/);
+  assert.match(page,/Test-E-Mail senden/);
+  assert.match(page,/action:"send_test"/);
+  assert.match(maintenance,/smtp-test-send\.mjs/);
+  assert.match(maintenance,/Test-E-Mail senden/);
+  assert.match(sender,/sendMail/);
+  assert.match(sender,/NO_CASH_MANAGER_RECIPIENTS/);
+  assert.match(sender,/keine Abrechnungs- oder Mitgliederdaten/);
+  assert.match(sender,/for\(const recipient of recipients\)/);
+});
+
 test("member consent and invoice UI are explicit",async()=>{
   const [members,page,d1,postgres]=await Promise.all([read("app/api/members/route.ts"),read("app/page.tsx"),read("drizzle/0028_member_invoice_email.sql"),read("postgres/migrations/0006_member_invoice_email.sql")]);
   assert.match(members,/invoice_email_consent_at/);

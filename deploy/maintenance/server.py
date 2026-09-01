@@ -46,7 +46,7 @@ HTML = r'''<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name
 <div id="emailInsecure" class="hint hidden"><b>E-Mail-Einstellungen nur über HTTPS.</b><br><span class="muted">Öffne <a href="https://10.42.0.1/wartung/">https://10.42.0.1/wartung/</a>. Die HTTP-Notfallseite über Port 8091 überträgt bewusst keine Zugangsdaten.</span></div>
 <div class="formgrid"><div class="field"><label for="smtpHost">SMTP-Server</label><input id="smtpHost" autocomplete="off" placeholder="smtp.gmail.com"></div><div class="field"><label for="smtpPort">Port und Sicherheit</label><div class="formgrid"><input id="smtpPort" inputmode="numeric" value="587"><select id="smtpSecurity"><option value="starttls">STARTTLS</option><option value="tls">TLS</option></select></div></div><div class="field"><label for="smtpUser">SMTP-Benutzername</label><input id="smtpUser" autocomplete="username" placeholder="kasse@example.de"></div><div class="field"><label for="smtpPassword">SMTP- oder App-Passwort</label><input id="smtpPassword" type="password" autocomplete="new-password" placeholder="Nur zum Ändern eingeben"><small class="password-note" id="smtpPasswordNote">Noch kein Passwort gespeichert</small></div><div class="field"><label for="smtpSender">Absender-E-Mail</label><input id="smtpSender" inputmode="email" autocomplete="email" placeholder="kasse@example.de"></div></div>
 <div class="hint"><b>Kassenwarte / Antwortadressen</b><br><span class="muted">Antworten von Mitgliedern gehen an alle hier eingetragenen Adressen. Mehrere Personen mit der Rolle Kassenwart können weiterhin im Mitgliederbereich angelegt werden.</span><div id="cashManagers"></div><button type="button" class="secondary" style="margin-top:9px" onclick="addCashManager()">+ Kassenwart hinzufügen</button></div>
-<div class="section-actions"><button id="saveEmailButton" onclick="saveEmail()">Speichern und Verbindung prüfen</button><button class="secondary" id="testEmailButton" onclick="testEmail()">Nur Verbindung prüfen</button></div><div id="emailMsg" class="msg"></div></section>
+<div class="section-actions"><button id="saveEmailButton" onclick="saveEmail()">Speichern und Verbindung prüfen</button><button class="secondary" id="testEmailButton" onclick="testEmail()">Test-E-Mail senden</button></div><div id="emailMsg" class="msg"></div></section>
 <section class="card"><h2>Sichere Schnellaktionen</h2><div class="actions"><button onclick="act('restart_stack')">Kasse neu starten</button><button class="secondary" onclick="act('restart_wifi')">Reader & Tablet neu verbinden</button><button class="secondary" onclick="act('backup')">Sicherung jetzt erstellen</button><button class="danger" onclick="act('reboot')">Raspberry neu starten</button></div><div id="msg" class="msg"></div></section>
 <section class="card"><h2>Adressen</h2><p><b>Kasse:</b> <a href="https://10.42.0.1">https://10.42.0.1</a><br><b>Zertifikat:</b> <a href="http://10.42.0.1:8080/vereinskasse-ca.crt">herunterladen</a></p><p class="muted">„Kassen-WLAN neu verbinden“ trennt Tablet und Reader kurz. Danach verbinden sich beide selbstständig wieder.</p></section></div></main>
 <script>let pin=sessionStorage.getItem('clubiq-maintenance-pin')||'',networks=[],emailLoaded=false;const secureMaintenance=location.protocol==='https:',maintenancePrefix=location.pathname.startsWith('/wartung')?'/wartung':'';const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -61,7 +61,7 @@ function renderCashManagers(values){let root=document.getElementById('cashManage
 function addCashManager(){renderCashManagers([...cashManagerValues(),''])}
 function removeCashManager(index){let values=[...document.querySelectorAll('.cash-manager-email')].map(input=>input.value.trim());values.splice(index,1);renderCashManagers(values.length?values:[''])}
 async function saveEmail(){let b=document.getElementById('saveEmailButton'),m=document.getElementById('emailMsg');b.disabled=true;m.textContent='Einstellungen werden sicher gespeichert und geprüft …';try{let payload={host:document.getElementById('smtpHost').value.trim(),port:Number(document.getElementById('smtpPort').value),security:document.getElementById('smtpSecurity').value,user:document.getElementById('smtpUser').value.trim(),password:document.getElementById('smtpPassword').value,sender:document.getElementById('smtpSender').value.trim(),cashManagers:cashManagerValues()};let r=await api('/api/email-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});m.textContent=r.message;document.getElementById('smtpPassword').value='';emailLoaded=false;await load()}catch(e){m.textContent=e.message}finally{b.disabled=false}}
-async function testEmail(){let b=document.getElementById('testEmailButton'),m=document.getElementById('emailMsg');b.disabled=true;m.textContent='Mailserver wird geprüft; es wird keine E-Mail versendet …';try{let r=await api('/api/email-test',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});m.textContent=r.message}catch(e){m.textContent=e.message}finally{b.disabled=false}}
+async function testEmail(){let b=document.getElementById('testEmailButton'),m=document.getElementById('emailMsg');if(!confirm('Jetzt eine Test-E-Mail ohne Abrechnungsdaten an alle eingetragenen Kassenwarte senden?'))return;b.disabled=true;m.textContent='Test-E-Mail wird gesendet …';try{let r=await api('/api/email-test',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});m.textContent=r.message}catch(e){m.textContent=e.message}finally{b.disabled=false}}
 async function scanWifi(){let b=document.getElementById('scanButton'),m=document.getElementById('wifiMsg'),sel=document.getElementById('wifiNetwork');b.disabled=true;m.textContent='WLAN-Netze werden gesucht …';try{let r=await api('/api/internet-wifi/scan');networks=r.networks||[];sel.innerHTML=networks.length?networks.map((n,i)=>`<option value="${i}">${esc(n.ssid)} · ${n.band} · ${n.signal}% · ${esc(n.security||'offen')}</option>`).join(''):'<option>Keine WLAN-Netze gefunden</option>';sel.disabled=!networks.length;document.getElementById('connectButton').disabled=!networks.length;m.textContent=networks.length?`${networks.length} Netze gefunden. Gewünschtes Netz auswählen.`:'Keine Netze gefunden. Stickposition prüfen und erneut suchen.'}catch(e){m.textContent=e.message}finally{b.disabled=false}}
 async function connectWifi(){let index=Number(document.getElementById('wifiNetwork').value),network=networks[index],password=document.getElementById('wifiPassword').value,b=document.getElementById('connectButton'),m=document.getElementById('wifiMsg');if(!network){m.textContent='Bitte zuerst ein WLAN auswählen.';return}b.disabled=true;m.textContent=`${network.ssid} wird verbunden …`;try{let r=await api('/api/internet-wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:network.ssid,bssid:network.bssid,password})});m.textContent=r.message;document.getElementById('wifiPassword').value='';await load()}catch(e){m.textContent=e.message}finally{b.disabled=false}}
 async function act(action){if((action==='reboot'||action==='restart_wifi')&&!confirm('Aktion wirklich ausführen?'))return;let m=document.getElementById('msg');m.textContent='Wird ausgeführt …';try{let r=await api('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});m.textContent=r.message;setTimeout(load,action==='restart_wifi'?12000:5000)}catch(e){m.textContent=e.message}}
@@ -352,6 +352,20 @@ def verify_email_settings():
         raise RuntimeError("Der Mailserver konnte die Einstellungen nicht bestätigen.")
 
 
+def send_test_email():
+    result = run(COMPOSE + ["exec", "-T", "app", "node", "/app/raspberry/smtp-test-send.mjs"], 45)
+    if result.returncode != 0:
+        combined = f"{result.stdout}\n{result.stderr}"
+        if re.search(r"NO_CASH_MANAGER_RECIPIENTS", combined):
+            raise ValueError("Bitte mindestens eine Kassenwart-Adresse eintragen.")
+        if re.search(r"auth|credential|login|535", combined, re.I):
+            raise RuntimeError("Mailserver-Anmeldung abgelehnt. Benutzername und App-Passwort prüfen.")
+        if re.search(r"timeout|timed out|connect|socket|dns|enotfound|econn", combined, re.I):
+            raise RuntimeError("Mailserver nicht erreichbar. Internet-WLAN, Server und Port prüfen.")
+        raise RuntimeError("Die Test-E-Mail konnte nicht gesendet werden.")
+    return result.stdout.strip()
+
+
 def save_email_settings(data):
     host = str(data.get("host", "")).strip()
     user = str(data.get("user", "")).strip()
@@ -540,8 +554,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if not email_settings_status()["configured"]:
                     raise ValueError("Bitte zuerst vollständige E-Mail-Einstellungen speichern.")
-                verify_email_settings()
-                self.json(200, {"ok": True, "message": "Mailserver-Verbindung und Anmeldung sind gültig. Es wurde keine E-Mail versendet."})
+                result = send_test_email()
+                self.json(200, {"ok": True, "message": result or "Test-E-Mail wurde an die eingetragenen Kassenwarte gesendet."})
             except ValueError as error:
                 self.json(400, {"error": str(error)})
             except (RuntimeError, subprocess.TimeoutExpired) as error:
