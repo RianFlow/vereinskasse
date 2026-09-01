@@ -13,6 +13,7 @@ type MonthlySnapshot={label:string;dueLabel:string;people:MonthlyPerson[]};
 const monthValid=(value:string)=>/^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 const emailValid=(value:string)=>value.length<=254&&!/[\r\n]/.test(value)&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
 const safeHeader=(value:string)=>value.replace(/[\r\n]+/g," ").trim().slice(0,180);
+const safeHtml=(value:string)=>value.replace(/[&<>"']/g,character=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]||character));
 const money=(value:number)=>Number(value||0).toLocaleString("de-DE",{style:"currency",currency:"EUR"});
 const safeError=(error:unknown)=>{
   const message=error instanceof Error?error.message:"";
@@ -54,6 +55,23 @@ export async function POST(request:Request){
   try{body=await request.json() as typeof body}catch{return Response.json({error:"Ungültige Anfrage"},{status:400})}
   if(body.action==="verify"){
     try{await verifySmtp();return Response.json({ok:true,message:"Verbindung zum Mailserver ist bereit."})}catch(error){return Response.json({error:safeError(error)},{status:503})}
+  }
+  if(body.action==="send_test"){
+    const recipients=smtpCashManagerRecipients();
+    if(!recipients.length)return Response.json({error:safeError(new Error("NO_CASH_MANAGER_RECIPIENTS"))},{status:409});
+    const now=new Date(),sentAt=now.toISOString(),subject=safeHeader(`Clubiq Ledger · Test-E-Mail · ${profile.name}`);
+    const text=["Clubiq Ledger – Test-E-Mail","",`Profil: ${profile.name}`,`Versendet: ${now.toLocaleString("de-DE",{timeZone:"Europe/Berlin"})}`,"","Der E-Mail-Versand ist richtig eingerichtet.","Diese technische Testnachricht enthält keine Abrechnungs- oder Mitgliederdaten.","Auch wenn noch keine Buchungen vorhanden sind, kann Clubiq Ledger E-Mails versenden."].join("\n");
+    const html=`<!doctype html><html lang="de"><body style="margin:0;background:#f4f2ec;color:#17201d;font-family:Arial,sans-serif"><main style="max-width:620px;margin:24px auto;padding:28px;background:#fff;border-top:6px solid #b79550"><p style="margin:0 0 8px;color:#80662f;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Clubiq Ledger</p><h1 style="margin:0 0 20px;font-size:26px">Test-E-Mail erfolgreich</h1><p>Der E-Mail-Versand für <strong>${safeHtml(profile.name)}</strong> ist richtig eingerichtet.</p><div style="margin:22px 0;padding:16px;background:#edf6f1;border-left:4px solid #1d5b4c"><strong>Keine Abrechnungsdaten enthalten</strong><br><span style="color:#53615b">Diese Nachricht prüft ausschließlich den technischen Versand. Sie enthält keine Buchungen oder Mitgliederdaten.</span></div><p style="font-size:13px;color:#68766f">Versendet am ${safeHtml(now.toLocaleString("de-DE",{timeZone:"Europe/Berlin"}))}</p></main></body></html>`;
+    const messageIds:string[]=[];
+    try{
+      for(const recipient of recipients){const sent=await sendSmtpMessage({to:recipient,replyTo:recipient,subject,text,html});if(sent.messageId)messageIds.push(sent.messageId)}
+      await env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"SMTP_TEST_EMAIL_SENT","email_settings",profile.id,user.id,JSON.stringify({profileId:profile.id,recipientCount:recipients.length,recipientDomains:recipients.map(address=>address.split("@")[1]),messageIds}),sentAt).run();
+      return Response.json({ok:true,recipients:recipients.length,sentAt,message:`Test-E-Mail wurde an ${recipients.length} Kassenwart${recipients.length===1?"":"e"} gesendet.`});
+    }catch(error){
+      console.error("Test-E-Mail fehlgeschlagen",error);
+      await env.DB.prepare("INSERT INTO audit_logs (id,action,entity_type,entity_id,operator_id,details_json,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),"SMTP_TEST_EMAIL_FAILED","email_settings",profile.id,user.id,JSON.stringify({profileId:profile.id,recipientCount:recipients.length}),sentAt).run();
+      return Response.json({error:safeError(error)},{status:502});
+    }
   }
   if(body.action==="send_cash_manager_summary"){
     if(!body.month||!monthValid(body.month))return Response.json({error:"Ein gültiger Abrechnungsmonat fehlt."},{status:400});

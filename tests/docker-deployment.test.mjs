@@ -229,7 +229,8 @@ test("stellt ein unabhaengiges PIN-geschuetztes Wartungsportal bereit", async ()
   assert.match(server,/Mindestens ein und höchstens zehn Kassenwarte/);
   assert.match(server,/force-recreate", "app/);
   assert.match(server,/smtp-check\.mjs/);
-  assert.match(server,/Es wurde keine E-Mail versendet/);
+  assert.match(server,/smtp-test-send\.mjs/);
+  assert.match(server,/Test-E-Mail senden/);
   assert.match(server,/X-Forwarded-Proto/);
   assert.match(server,/E-Mail-Einstellungen sind ausschließlich über die HTTPS-Wartungsseite erlaubt/);
   assert.match(caddy,/handle_path \/wartung\/\*/);
