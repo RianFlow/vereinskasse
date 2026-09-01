@@ -17,7 +17,7 @@ test("invoice email is restricted, finalized and audited",async()=>{
 });
 
 test("smtp credentials stay server-side and TLS is enforced",async()=>{
-  const [smtp,compose,example,check]=await Promise.all([read("app/email-smtp.ts"),read("deploy/docker/compose.yaml"),read("deploy/docker/.env.example"),read("raspberry/smtp-check.mjs")]);
+  const [smtp,compose,example,check,entrypoint]=await Promise.all([read("app/email-smtp.ts"),read("deploy/docker/compose.yaml"),read("deploy/docker/.env.example"),read("raspberry/smtp-check.mjs"),read("deploy/docker/app-entrypoint.sh")]);
   assert.match(smtp,/requireTLS:config\.security==="starttls"/);
   assert.match(smtp,/minVersion:"TLSv1\.2"/);
   assert.match(smtp,/disableFileAccess:true/);
@@ -29,6 +29,9 @@ test("smtp credentials stay server-side and TLS is enforced",async()=>{
   assert.doesNotMatch(example,/CLUBIQ_SMTP_PASSWORD=/);
   assert.match(check,/transport\.verify\(\)/);
   assert.doesNotMatch(check,/sendMail/);
+  assert.match(entrypoint,/stage_runtime_secret CLUBIQ_SMTP_PASSWORD_FILE smtp_password/);
+  assert.match(entrypoint,/stage_runtime_secret CLUBIQ_MONTHLY_MAIL_TOKEN_FILE monthly_mail_token/);
+  assert.match(entrypoint,/install -o node -g node -m 0400/);
 });
 
 test("Test-E-Mail wird auch ohne Buchungen wirklich versendet",async()=>{
