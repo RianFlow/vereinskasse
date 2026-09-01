@@ -31,6 +31,7 @@ test("smtp credentials stay server-side and TLS is enforced",async()=>{
   assert.doesNotMatch(check,/sendMail/);
   assert.match(entrypoint,/stage_runtime_secret CLUBIQ_SMTP_PASSWORD_FILE smtp_password/);
   assert.match(entrypoint,/stage_runtime_secret CLUBIQ_MONTHLY_MAIL_TOKEN_FILE monthly_mail_token/);
+  assert.match(entrypoint,/install -d -o root -g node -m 0710/);
   assert.match(entrypoint,/install -o node -g node -m 0400/);
 });
 

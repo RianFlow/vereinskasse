@@ -26,7 +26,7 @@ stage_runtime_secret() {
   }
   local runtime_directory="/tmp/clubiq-runtime-secrets"
   local target="$runtime_directory/$filename"
-  install -d -o node -g node -m 0700 "$runtime_directory"
+  install -d -o root -g node -m 0710 "$runtime_directory"
   install -o node -g node -m 0400 "$source" "$target"
   printf -v "$file_variable" '%s' "$target"
   export "$file_variable"
