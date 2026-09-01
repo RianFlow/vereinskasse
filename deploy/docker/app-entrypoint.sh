@@ -27,6 +27,10 @@ stage_runtime_secret() {
   local runtime_directory="/tmp/clubiq-runtime-secrets"
   local target="$runtime_directory/$filename"
   install -d -o root -g node -m 0710 "$runtime_directory"
+  # Das tmpfs bleibt bei einem Container-Neustart erhalten. Eine bereits
+  # gestufte, node-eigene 0400-Datei muss daher zuerst über das root-eigene
+  # Verzeichnis ersetzt werden, statt sie ohne CAP_FOWNER zu überschreiben.
+  rm -f "$target"
   install -o node -g node -m 0400 "$source" "$target"
   printf -v "$file_variable" '%s' "$target"
   export "$file_variable"
