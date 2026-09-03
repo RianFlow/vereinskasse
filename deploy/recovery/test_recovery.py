@@ -109,6 +109,9 @@ class RecoveryTests(unittest.TestCase):
         with patch.object(recovery, 'run', side_effect=fake):
             self.assertTrue(recovery.upload_r2(self.project, Path('/tmp/cipher.age'), 'test.age', b'CIPHERTEXT'))
         self.assertIn(':s3:test-private-bucket/clubiq-notfall/test.age', calls[0][0])
+        self.assertIn('--no-check-dest', calls[0][0])
+        self.assertIn('--s3-no-head', calls[0][0])
+        self.assertNotIn('--s3-no-head-object', calls[1][0])
         with patch.object(recovery, 'run', return_value=b'CORRUPT'):
             with self.assertRaises(ValueError):
                 recovery.upload_r2(self.project, Path('/tmp/cipher.age'), 'test.age', b'CIPHERTEXT')

@@ -143,13 +143,16 @@ def upload_r2(project, latest, filename, encrypted):
     if not re.fullmatch(r'https://[a-f0-9]{32}(?:\.(?:eu|fedramp))?\.r2\.cloudflarestorage\.com/?', endpoint) or not re.fullmatch(r'[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]', bucket):
         raise ValueError('Private R2-Konfiguration prüfen.')
     env = {key: value for key, value in os.environ.items() if not key.startswith(('RCLONE_', 'AWS_'))}
-    env.update(RCLONE_S3_PROVIDER='Cloudflare', RCLONE_S3_ENDPOINT=endpoint.rstrip('/'),
+    env.update(RCLONE_S3_PROVIDER='Cloudflare', RCLONE_S3_ENDPOINT=endpoint.rstrip('/'), RCLONE_S3_REGION='auto',
                RCLONE_S3_ACCESS_KEY_ID=regular_bytes(project / 'secrets/r2_access_key_id').decode().strip(),
                RCLONE_S3_SECRET_ACCESS_KEY=regular_bytes(project / 'secrets/r2_secret_access_key').decode().strip(),
                RCLONE_S3_NO_CHECK_BUCKET='true')
     target = ':s3:' + bucket + '/clubiq-notfall/' + filename
     options = ['--config', '/dev/null', '--log-level', 'ERROR', '--retries', '1', '--low-level-retries', '1']
-    run(['rclone', 'copyto', str(latest), target] + options, env=env)
+    # Older distro rclone/R2 combinations can fail upload HEAD checks with 501.
+    # Upload directly; integrity is verified by a full subsequent download.
+    # Keep the download metadata lookup: old rclone cat otherwise reads 0 bytes.
+    run(['rclone', 'copyto', str(latest), target, '--no-check-dest', '--s3-no-head'] + options, env=env)
     restored = run(['rclone', 'cat', target] + options, env=env)
     if hashlib.sha256(restored).digest() != hashlib.sha256(encrypted).digest():
         raise ValueError('Die R2-Rückleseprüfung ist fehlgeschlagen.')
