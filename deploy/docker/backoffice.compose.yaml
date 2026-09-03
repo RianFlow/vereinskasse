@@ -1,0 +1,57 @@
+# Explicit opt-in extension. The normal cash update does not start or publish this service.
+services:
+  backoffice:
+    build:
+      context: ../..
+      dockerfile: backoffice/Dockerfile
+    image: clubiq-backoffice:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BACKOFFICE_ORIGIN: ${BACKOFFICE_ORIGIN:?BACKOFFICE_ORIGIN in .env auf die Verwaltungsadresse setzen}
+      BACKOFFICE_SECRET_FILE: /run/clubiq-backoffice/backoffice_secret
+      BACKOFFICE_DB_PASSWORD_FILE: /run/clubiq-backoffice/backoffice_db_password
+      CLUBIQ_SMTP_PASSWORD_FILE: /run/clubiq-backoffice/smtp_password
+      PGHOST: postgres
+      PGDATABASE: vereinskasse
+      BACKOFFICE_DB_USER: clubiq_backoffice
+      CLUBIQ_SMTP_HOST: ${CLUBIQ_SMTP_HOST:-}
+      CLUBIQ_SMTP_PORT: ${CLUBIQ_SMTP_PORT:-587}
+      CLUBIQ_SMTP_SECURITY: ${CLUBIQ_SMTP_SECURITY:-starttls}
+      CLUBIQ_SMTP_USER: ${CLUBIQ_SMTP_USER:-}
+      CLUBIQ_SMTP_FROM: ${CLUBIQ_SMTP_FROM:-}
+      CLUBIQ_SMTP_REPLY_TO: ${CLUBIQ_SMTP_REPLY_TO:-}
+    ports:
+      - "127.0.0.1:8092:8092"
+    secrets:
+      - backoffice_secret
+      - backoffice_db_password
+      - smtp_password
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+      - /run/clubiq-backoffice:rw,noexec,nosuid,size=1m
+    cap_drop: [ALL]
+    cap_add: [CHOWN,SETUID,SETGID]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 100
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD","node","-e","fetch('http://127.0.0.1:8092/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks: [database,backoffice-egress]
+    logging:
+      driver: json-file
+      options: {max-size: "5m",max-file: "3"}
+networks:
+  backoffice-egress:
+secrets:
+  backoffice_secret:
+    file: ./secrets/backoffice_secret
+  backoffice_db_password:
+    file: ./secrets/backoffice_db_password

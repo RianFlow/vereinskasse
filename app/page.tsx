@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {startLivePolling,editingForm} from "./live-poll.mjs";
 import Image from "next/image";
 import { TabletNumberField } from "./TabletNumberField";
 import { RandomRewardsPanel } from "./RandomRewardsPanel";
@@ -111,6 +112,10 @@ export default function Home() {
   const [pendingCount,setPendingCount]=useState(0);
   const [kioskHelp,setKioskHelp]=useState(false),[fullscreen,setFullscreen]=useState(false),[installPrompt,setInstallPrompt]=useState<InstallPromptEvent|null>(null);
   const configurationQueue=useRef<Promise<void>>(Promise.resolve()),productSaveTimer=useRef<ReturnType<typeof setTimeout>|null>(null),discountSaveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const configurationRevision=useRef<number|null>(null),configurationBusy=useRef(0),configurationConflict=useRef(false);
+  const[liveState,setLiveState]=useState<"checking"|"online"|"offline">("checking"),[configurationWarning,setConfigurationWarning]=useState(false);
+  const liveValues=useRef({cart,adminUser,view,pendingCount});
+  useEffect(()=>{liveValues.current={cart,adminUser,view,pendingCount};},[cart,adminUser,view,pendingCount]);
   const loadControl=()=>fetch("/api/control").then(async response=>{if(!response.ok)throw new Error();const data=await response.json() as ControlData;setControl({shift:data.shift??null,accounts:Array.isArray(data.accounts)?data.accounts:[],recent:Array.isArray(data.recent)?data.recent:[],accountEntries:Array.isArray(data.accountEntries)?data.accountEntries:[],accountItems:Array.isArray(data.accountItems)?data.accountItems:[],splitAllocations:Array.isArray(data.splitAllocations)?data.splitAllocations:[]})}).catch(()=>setStorageState("offline"));
   const loadMembers=()=>fetch("/api/members").then(async r=>{if(!r.ok)throw new Error();return r.json()}).then(d=>setClubMembers(d.members||[])).catch(()=>{});
   const loadEvents=()=>fetch("/api/events").then(async r=>{if(!r.ok)throw new Error();return r.json()}).then(d=>setEvents(d.events||[])).catch(()=>{});
@@ -124,10 +129,31 @@ export default function Home() {
     setOperationMode(localStorage.getItem("vereinskasse-operation-mode")==="event"?"event":"club");
     Promise.all([fetch("/api/profiles").then(r=>r.json()),fetch("/api/profile-session").then(async r=>r.ok?r.json():{profile:null})]).then(async([profileData,sessionData])=>{
       setProfiles(profileData.profiles||[]);if(!sessionData.profile){setProfileLoading(false);return}const profile=sessionData.profile as Profile;setActiveProfile(profile);const saved=localStorage.getItem(`vereinskasse-data-${profile.id}`);if(saved){try{const cached=JSON.parse(saved);setProducts(Array.isArray(cached.products)?cached.products:[]);setSales(Array.isArray(cached.sales)?cached.sales:[])}catch{localStorage.removeItem(`vereinskasse-data-${profile.id}`)}}
-      const response=await fetch("/api/data");if(!response.ok)throw new Error();const data=await response.json();setProducts(data.products||[]);setDiscounts(data.discounts||[]);setClubMembers(data.members||[]);setNeedsAdministrator(Boolean(data.needsAdministrator));setGuestAccounts(data.guests||[]);setEvents(data.events||[]);const rememberedMember=sessionStorage.getItem("vereinskasse-active-member");if(rememberedMember)setActiveMember((data.members||[]).find((member:Member)=>member.id===rememberedMember)||null);setSales(data.sales||[]);setRounds(data.rounds||[]);setStorageState("online");loadControl();
+      const response=await fetch("/api/data");if(!response.ok)throw new Error();const data=await response.json();configurationRevision.current=Number.isSafeInteger(data.configurationRevision)?data.configurationRevision:null;setProducts(data.products||[]);setDiscounts(data.discounts||[]);setClubMembers(data.members||[]);setNeedsAdministrator(Boolean(data.needsAdministrator));setGuestAccounts(data.guests||[]);setEvents(data.events||[]);const rememberedMember=sessionStorage.getItem("vereinskasse-active-member");if(rememberedMember)setActiveMember((data.members||[]).find((member:Member)=>member.id===rememberedMember)||null);setSales(data.sales||[]);setRounds(data.rounds||[]);setStorageState("online");loadControl();
       const pending=safeArray<Record<string,unknown>>(localStorage.getItem(`vereinskasse-pending-${profile.id}`));const remaining=await Promise.all(pending.map(async sale=>{try{const result=await fetch("/api/data",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...sale,rewardEligible:false,offlineQueuedAt:sale.offlineQueuedAt||new Date().toISOString()})});return result.ok?null:sale}catch{return sale}}));const open=remaining.filter(Boolean);setPendingCount(open.length);if(open.length)localStorage.setItem(`vereinskasse-pending-${profile.id}`,JSON.stringify(open));else localStorage.removeItem(`vereinskasse-pending-${profile.id}`);if(pending.length!==open.length){loadControl();loadEvents()}
     }).catch(()=>setStorageState("offline")).finally(()=>setProfileLoading(false));
   }, []);
+  useEffect(()=>{
+    if(!activeProfile||profileLoading)return;
+    const allowed=()=>!submittingRef.current&&!configurationBusy.current&&!productSaveTimer.current&&!discountSaveTimer.current&&!configurationConflict.current&&!editingForm()&&!document.querySelector('[role="dialog"],dialog[open],.modal-backdrop');
+    return startLivePolling({allowed,
+      load:async(signal:AbortSignal)=>{
+        const get=async(path:string)=>{const response=await fetch(path,{signal,cache:"no-store"});if(!response.ok)throw new Error("Datenabgleich unterbrochen");return response.json();};
+        const [data,nextControl,memberData]=await Promise.all([get("/api/data"),get("/api/control"),liveValues.current.adminUser?get("/api/members"):null]);
+        if(signal.aborted||!allowed()||data.profile?.id!==activeProfile.id)return false;
+        // Never reprice an open cart or erase unsaved/offline records.
+        if(!Object.values(liveValues.current.cart).some(quantity=>quantity>0)){
+          configurationRevision.current=Number.isSafeInteger(data.configurationRevision)?data.configurationRevision:null;
+          setProducts(data.products||[]);setDiscounts(data.discounts||[]);
+        }
+        setClubMembers(memberData?.members||data.members||[]);setGuestAccounts(data.guests||[]);setEvents(data.events||[]);setRounds(data.rounds||[]);
+        setNeedsAdministrator(Boolean(data.needsAdministrator));
+        if(!liveValues.current.pendingCount&&!safeArray(localStorage.getItem(`vereinskasse-pending-${activeProfile.id}`)).length)setSales(data.sales||[]);
+        setControl({shift:nextControl.shift??null,accounts:nextControl.accounts||[],recent:nextControl.recent||[],accountEntries:nextControl.accountEntries||[],accountItems:nextControl.accountItems||[],splitAllocations:nextControl.splitAllocations||[]});
+      },
+      onSuccess:()=>setLiveState("online"),onError:()=>setLiveState("offline")
+    });
+  },[activeProfile,profileLoading]);
   useEffect(()=>{const timer=setTimeout(()=>setSplashMinimumMet(true),900);return()=>clearTimeout(timer)},[]);
   useEffect(()=>{if(profileLoading||!splashMinimumMet||!splashVisible)return;const leavingTimer=setTimeout(()=>setSplashLeaving(true),0),hideTimer=setTimeout(()=>setSplashVisible(false),240);return()=>{clearTimeout(leavingTimer);clearTimeout(hideTimer)}},[profileLoading,splashMinimumMet,splashVisible]);
   useEffect(() => { if(activeProfile)localStorage.setItem(`vereinskasse-data-${activeProfile.id}`, JSON.stringify({ products, sales })); }, [products, sales,activeProfile]);
@@ -162,17 +188,32 @@ export default function Home() {
     setIdentify(method);
     setOperator(activeMember||billingMember||{id:`PROFILE-${activeProfile?.id||"kasse"}`,name:`${activeProfile?.shortName||"Profil"} Kasse`,role:"Kasse",initials:"K"});
   };
-  const persistConfiguration=(payload:Record<string,unknown>)=>{configurationQueue.current=configurationQueue.current.catch(()=>{}).then(async()=>{const response=await fetch("/api/data",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,operatorId:adminUser?.id})});if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Änderungen konnten nicht gespeichert werden")}setStorageState("online")}).catch(error=>{setStorageState("offline");alert(error instanceof Error?error.message:"Änderungen konnten nicht gespeichert werden")})};
-  const saveProducts = (next: Product[]) => {setProducts(next);if(productSaveTimer.current)clearTimeout(productSaveTimer.current);productSaveTimer.current=setTimeout(()=>persistConfiguration({products:next}),500)};
-  const createProductForEvent=async(draft:Omit<Product,"id">)=>{
-    if(productSaveTimer.current)clearTimeout(productSaveTimer.current);
-    await configurationQueue.current.catch(()=>{});
-    const id=Math.max(Date.now(),...products.map(product=>product.id+1)),product={...draft,id},next=[...products,product];
-    const response=await fetch("/api/data",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({products:next,operatorId:adminUser?.id})}),body=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(body.error||"Der neue Artikel konnte nicht gespeichert werden.");
-    setProducts(next);setStorageState("online");return product;
+  const writeConfiguration=async(payload:Record<string,unknown>)=>{
+    if(configurationConflict.current||configurationRevision.current===null)throw new Error("Bitte Kasse neu laden, bevor weitere Artikel- oder Rabattänderungen gespeichert werden.");
+    const response=await fetch("/api/data",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,operatorId:adminUser?.id,configurationRevision:configurationRevision.current})});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok||!Number.isSafeInteger(body.configurationRevision))throw new Error(body.error||"Änderungen konnten nicht gespeichert werden. Bitte neu laden.");
+    configurationRevision.current=body.configurationRevision;setStorageState("online");
   };
-  const saveDiscounts = (next:Discount[])=>{setDiscounts(next);if(discountSaveTimer.current)clearTimeout(discountSaveTimer.current);discountSaveTimer.current=setTimeout(()=>persistConfiguration({discounts:next}),500)};
+  const persistConfiguration=(payload:Record<string,unknown>)=>{
+    configurationBusy.current++;
+    configurationQueue.current=configurationQueue.current.catch(()=>{}).then(()=>writeConfiguration(payload)).catch(error=>{
+      const alreadyBlocked=configurationConflict.current;configurationConflict.current=true;setConfigurationWarning(true);
+      if(!alreadyBlocked)alert(error instanceof Error?error.message:"Änderungen konnten nicht gespeichert werden");
+    }).finally(()=>{configurationBusy.current--;});
+  };
+  const saveProducts=(next:Product[])=>{setProducts(next);if(productSaveTimer.current)clearTimeout(productSaveTimer.current);productSaveTimer.current=setTimeout(()=>{productSaveTimer.current=null;persistConfiguration({products:next});},500);};
+  const createProductForEvent=async(draft:Omit<Product,"id">)=>{
+    if(productSaveTimer.current){clearTimeout(productSaveTimer.current);productSaveTimer.current=null;}
+    configurationBusy.current++;
+    try{
+      await configurationQueue.current.catch(()=>{});
+      const id=Math.max(Date.now(),...products.map(product=>product.id+1)),product={...draft,id},next=[...products,product];
+      await writeConfiguration({products:next});setProducts(next);return product;
+    }catch(error){configurationConflict.current=true;setConfigurationWarning(true);throw error;}
+    finally{configurationBusy.current--;}
+  };
+  const saveDiscounts=(next:Discount[])=>{setDiscounts(next);if(discountSaveTimer.current)clearTimeout(discountSaveTimer.current);discountSaveTimer.current=setTimeout(()=>{discountSaveTimer.current=null;persistConfiguration({discounts:next});},500);};
   const selectMember=(member:Member|null)=>{setActiveMember(member);setMemberPrompt(false);if(member){if(operationMode==="club"){setSelectedGuest(null);setMemberPricing(true)}sessionStorage.setItem("vereinskasse-active-member",member.id)}else sessionStorage.removeItem("vereinskasse-active-member")};
   const billingMember=listMember||activeMember;
   const displayCustomerName=billingMember?.name||selectedGuest?.name||"";
@@ -234,7 +275,7 @@ export default function Home() {
     <header>
       <div className="brand clubiq-app-brand"><span className="clubiq-header-symbol"><Image src="/brand/clubiq-ledger-symbol-gold.svg" alt="" width={46} height={46} priority unoptimized/></span><div><strong>{APP_NAME}</strong><small className="clubiq-header-slogan">{APP_SLOGAN}</small><button className="profile-switch" onClick={async()=>{await fetch("/api/profile-session",{method:"DELETE"});location.reload()}}>{activeProfile.name} <span>wechseln</span></button></div></div>
       <span className="screen-title">{view==="admin"?"Hauptmenü":operationMode==="club"?"Vereinsabend":"Veranstaltung"}</span>
-      <div className="header-actions">{view==="kasse"&&<label className="header-operation-mode"><span>Betriebsart</span><select value={operationMode} onChange={event=>switchOperation(event.target.value as "club"|"event")}><option value="club">Vereinsabend</option><option value="event">Veranstaltung</option></select></label>}{view==="kasse"&&!control.shift&&<button className="header-shift-status" onClick={()=>{setShiftOpener(null);setShiftPrompt(true)}} title="Kasse eröffnen"><IconCashBanknote size={19}/><span><small>KASSE</small><strong>Geschlossen</strong></span></button>}{view==="kasse"&&operationMode==="club"&&!adminPrompt&&!shiftPrompt&&!balanceCheckOpen&&<RfidScanner members={clubMembers} onSelect={chooseListMember}/>}<span className={`status ${storageState}`}><i /> {storageState === "online" ? "Zentral gespeichert" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span>{view==="kasse"&&(activeMember?<button className="member-session" onClick={()=>setMemberPrompt(true)}><span>{activeMember.initials}</span><div><small>Angemeldet</small><strong>{activeMember.name}</strong></div></button>:<button className="member-login" onClick={()=>setMemberPrompt(true)}><IconUserCircle size={20}/> Mitglied anmelden</button>)}<button className={`kiosk-toggle ${fullscreen?"active":""}`} onClick={()=>fullscreen&&!document.fullscreenElement?setKioskHelp(true):toggleKiosk()} title="Kioskmodus / Vollbild">{fullscreen?<IconMinimize size={20}/>:<IconMaximize size={20}/>}<span>{fullscreen?"Kiosk aktiv":"Vollbild"}</span></button><button className="theme-toggle" onClick={()=>setDarkMode(v=>!v)} aria-label={darkMode ? "Hellen Modus einschalten" : "Dunklen Modus einschalten"} title={darkMode ? "Heller Modus" : "Darkmode"}>{darkMode ? <IconSun size={20}/>:<IconMoon size={20}/>}</button><button className="mode" onClick={() => {if(view==="admin")setView("kasse");else setAdminPrompt(true)}}>{view === "kasse" ? <><IconSettings size={19}/> Admin</> : <><IconArrowLeft size={19}/> Zur Kasse</>}</button></div>
+      <div className="header-actions">{view==="kasse"&&<label className="header-operation-mode"><span>Betriebsart</span><select value={operationMode} onChange={event=>switchOperation(event.target.value as "club"|"event")}><option value="club">Vereinsabend</option><option value="event">Veranstaltung</option></select></label>}{view==="kasse"&&!control.shift&&<button className="header-shift-status" onClick={()=>{setShiftOpener(null);setShiftPrompt(true)}} title="Kasse eröffnen"><IconCashBanknote size={19}/><span><small>KASSE</small><strong>Geschlossen</strong></span></button>}{view==="kasse"&&operationMode==="club"&&!adminPrompt&&!shiftPrompt&&!balanceCheckOpen&&<RfidScanner members={clubMembers} onSelect={chooseListMember}/>}<span className={`status ${liveState==="offline"||configurationWarning?"offline":storageState}`} title="Automatischer Datenabgleich etwa alle 3 Sekunden. Offene Warenkörbe behalten ihre Anzeige bis zum Abschluss."><i /> {configurationWarning?"Änderung nicht gespeichert · bitte neu laden":liveState==="offline"?"Verbindung unterbrochen · Daten eventuell veraltet":storageState === "online" ? "Zentral gespeichert · Live-Abgleich" : storageState === "offline" ? "Offline · wird nachgereicht" : "Speicher wird verbunden"}</span>{view==="kasse"&&(activeMember?<button className="member-session" onClick={()=>setMemberPrompt(true)}><span>{activeMember.initials}</span><div><small>Angemeldet</small><strong>{activeMember.name}</strong></div></button>:<button className="member-login" onClick={()=>setMemberPrompt(true)}><IconUserCircle size={20}/> Mitglied anmelden</button>)}<button className={`kiosk-toggle ${fullscreen?"active":""}`} onClick={()=>fullscreen&&!document.fullscreenElement?setKioskHelp(true):toggleKiosk()} title="Kioskmodus / Vollbild">{fullscreen?<IconMinimize size={20}/>:<IconMaximize size={20}/>}<span>{fullscreen?"Kiosk aktiv":"Vollbild"}</span></button><button className="theme-toggle" onClick={()=>setDarkMode(v=>!v)} aria-label={darkMode ? "Hellen Modus einschalten" : "Dunklen Modus einschalten"} title={darkMode ? "Heller Modus" : "Darkmode"}>{darkMode ? <IconSun size={20}/>:<IconMoon size={20}/>}</button><button className="mode" onClick={() => {if(view==="admin")setView("kasse");else setAdminPrompt(true)}}>{view === "kasse" ? <><IconSettings size={19}/> Admin</> : <><IconArrowLeft size={19}/> Zur Kasse</>}</button></div>
     </header>
 
     {view === "kasse" ? <section className={`pos ${operationMode==="event"?"event-pos":""}`}>
@@ -897,20 +938,37 @@ function MonthlyBilling(){
   const loadEmail=async(value=month)=>{try{const response=await fetch(`/api/email?month=${encodeURIComponent(value)}`),body=await apiJson<InvoiceEmailData>(response,"E-Mail-Status konnte nicht geladen werden");setEmailData(body);setEmailError(null)}catch(error){setEmailData(null);setEmailError(error instanceof Error?error.message:"E-Mail-Status konnte nicht geladen werden")}};
   const load=async(value=month)=>{setLoading(true);try{const response=await fetch(`/api/monthly?month=${encodeURIComponent(value)}`),body=await apiJson<MonthlyData>(response,"Monatsabrechnung konnte nicht geladen werden");setData(body);void loadEmail(value)}catch(e){alert(e instanceof Error?e.message:"Monatsabrechnung konnte nicht geladen werden")}finally{setLoading(false)}};
   const loadArchive=async()=>{const response=await fetch("/api/monthly?archive=1"),body=await apiJson<{archive?:MonthlyArchiveItem[]}>(response,"Monatsarchiv konnte nicht geladen werden");setArchive(body.archive||[])};
-  useEffect(()=>{let active=true;Promise.all([fetch(`/api/monthly?month=${encodeURIComponent(month)}`).then(response=>apiJson<MonthlyData>(response,"Monatsabrechnung konnte nicht geladen werden")),fetch("/api/monthly?archive=1").then(response=>apiJson<{archive?:MonthlyArchiveItem[]}>(response,"Monatsarchiv konnte nicht geladen werden"))]).then(([monthly,history])=>{if(active){setData(monthly);setArchive(history.archive||[])}}).catch(e=>{if(active)alert(e instanceof Error?e.message:"Monatsabrechnungen konnten nicht geladen werden")});fetch(`/api/email?month=${encodeURIComponent(month)}`).then(response=>apiJson<InvoiceEmailData>(response,"E-Mail-Status konnte nicht geladen werden")).then(email=>{if(active){setEmailData(email);setEmailError(null)}}).catch(error=>{if(active){setEmailData(null);setEmailError(error instanceof Error?error.message:"E-Mail-Status konnte nicht geladen werden")}});return()=>{active=false}} ,[]);// eslint-disable-line react-hooks/exhaustive-deps
+  const[billingError,setBillingError]=useState(""),billingBusy=useRef(false);
+  useEffect(()=>{billingBusy.current=closing||sendingCashManager||Boolean(emailPerson)||loading;},[closing,sendingCashManager,emailPerson,loading]);
+  useEffect(()=>{const allowed=()=>!billingBusy.current&&!editingForm()&&!document.querySelector('[role="dialog"],dialog[open],.modal-backdrop');
+    return startLivePolling({interval:5000,allowed,
+      load:async(signal:AbortSignal)=>{
+        const [monthly,history,email]=await Promise.all([
+          fetch(`/api/monthly?month=${encodeURIComponent(month)}`,{signal,cache:"no-store"}).then(response=>apiJson<MonthlyData>(response,"Monatsabrechnung konnte nicht geladen werden")),
+          fetch("/api/monthly?archive=1",{signal,cache:"no-store"}).then(response=>apiJson<{archive?:MonthlyArchiveItem[]}>(response,"Monatsarchiv konnte nicht geladen werden")),
+          fetch(`/api/email?month=${encodeURIComponent(month)}`,{signal,cache:"no-store"}).then(response=>apiJson<InvoiceEmailData>(response,"E-Mail-Status konnte nicht geladen werden")).catch(error=>({error:error instanceof Error?error.message:"E-Mail-Status nicht erreichbar"}))
+        ]);
+        if(signal.aborted||!allowed())return false;
+        setData(monthly);setArchive(history.archive||[]);
+        if("error" in email){setEmailError(email.error);setEmailData(null);}else{setEmailData(email);setEmailError(null);}
+      },
+      onSuccess:()=>setBillingError(""),onError:()=>setBillingError("Verbindung unterbrochen. Abrechnungsdaten können veraltet sein; der Abgleich wird automatisch wiederholt.")
+    });
+  },[month]);
   const normalizedQuery=query.trim().toLocaleLowerCase("de-DE");
   const people=(data?.people||[]).filter(person=>person.memberName.toLocaleLowerCase("de-DE").includes(normalizedQuery)||(person.children||[]).some(child=>child.memberName.toLocaleLowerCase("de-DE").includes(normalizedQuery)));
   const openPeople=(data?.people||[]).filter(person=>person.closingBalance>.005).sort((a,b)=>a.memberName.localeCompare(b.memberName,"de")),openTotal=openPeople.reduce((sum,person)=>sum+person.closingBalance,0);
   const copyOpenList=async()=>{if(!data)return;const text=[`Offene Rechnungen · ${data.label}`,`Mitglieder zahlbar bis ${data.dueLabel}`,...openPeople.map(person=>`${person.memberName}: ${money(person.closingBalance)}`),`Gesamt: ${money(openTotal)}`].join("\n");try{await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),2500)}catch{alert("Die Liste konnte nicht kopiert werden.")}};
   const closeMonth=async()=>{if(!data||data.closure.closed||!confirm(`${data.label} jetzt endgültig festschreiben? Spätere Korrekturen erscheinen im Folgemonat.`))return;setClosing(true);try{const response=await fetch("/api/monthly",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({month})}),body=await response.json();if(!response.ok)throw new Error(body.error);await Promise.all([load(),loadArchive()])}catch(reason){alert(reason instanceof Error?reason.message:"Monat konnte nicht festgeschrieben werden")}finally{setClosing(false)}};
   const sendCashManagerSummary=async()=>{if(!data?.closure.closed||!emailData?.cashManagerRecipients.length||sendingCashManager)return;if(!confirm(`Monatsabschluss ${data.label} jetzt an ${emailData.cashManagerRecipients.length} Kassenwart-Adresse${emailData.cashManagerRecipients.length===1?"":"n"} senden?\n\nEnthalten sind Übersicht, Einzelposten und bearbeitbare CSV-Dateien.`))return;setSendingCashManager(true);try{const response=await fetch("/api/email",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"send_cash_manager_summary",month,confirmation:"MONATSABSCHLUSS SENDEN"})}),body=await apiJson<{recipients:number}>(response,"Der Monatsabschluss konnte nicht versendet werden");alert(`Monatsabschluss wurde an ${body.recipients} Kassenwart-Adresse${body.recipients===1?"":"n"} gesendet.`);await loadEmail(month)}catch(reason){alert(reason instanceof Error?reason.message:"Der Monatsabschluss konnte nicht versendet werden.")}finally{setSendingCashManager(false)}};
-  const selectMonth=(value:string)=>{setMonth(value);setQuery("");load(value)};
+  const selectMonth=(value:string)=>{setMonth(value);setQuery("");setData(null)};
   const openArchiveMonths=archive.filter(entry=>!entry.closed).length;
   const monthlyPersonRow=(person:MonthlyPerson,child=false)=>{const email=emailData?.members.find(entry=>entry.memberId===person.memberId);return <div className={`monthly-row ${child?"club-child":person.isClubGroup?"club-total":""}`} key={person.memberId}><span><strong>{person.memberName}</strong><small>{child?`Teil der Vereinsrechnung ${person.parentName||""}`:person.isClubGroup?`Besucherverein · Gesamtrechnung mit ${(person.children||[]).length} Personen`:person.memberId.startsWith("GAST-")?"Gast / Besucherverein":`Mitglied · zahlbar bis ${data?.dueLabel}`}</small></span><span>{money(person.openingBalance)}</span><span>{money(person.charges)}</span><span className="credit">− {money(person.payments)}</span><span className="closing">{money(person.closingBalance)}</span><span className="monthly-row-actions"><a href={`/api/monthly?month=${encodeURIComponent(month)}&memberId=${encodeURIComponent(person.memberId)}`} target="_blank">Drucken</a>{email&&<button className={email.lastSentAt?"sent":""} disabled={!email.optIn||!email.emailAddress} onClick={()=>setEmailPerson(person)}>{email.lastSentAt?"Erneut":email.optIn&&email.emailAddress?"E-Mail":"E-Mail fehlt"}</button>}</span></div>};
   return <section className="panel monthly-panel">
+    {billingError&&<p role="status">{billingError}</p>}
     <div className="monthly-head">
       <div><p className="eyebrow">MONATSABRECHNUNG</p><h2>{month===currentMonth?"Laufender Monat":`Archiv · ${data?.label||month}`}</h2><small>{month===currentMonth?"Aktuelle Rechnungen, Zahlungen und Getränkemengen":"Dauerhaft einsehbare Monatsabrechnung mit Einzelrechnungen und Verbrauch"}</small></div>
-      <div className="month-controls"><input aria-label="Abrechnungsmonat" type="month" max={currentMonth} value={month} onChange={e=>selectMonth(e.target.value)}/><button onClick={()=>load()} disabled={loading}>{loading?"Lädt …":"Aktualisieren"}</button></div>
+      <div className="month-controls"><input data-live-filter aria-label="Abrechnungsmonat" type="month" max={currentMonth} value={month} onChange={e=>selectMonth(e.target.value)}/><button onClick={()=>load()} disabled={loading}>{loading?"Lädt …":"Aktualisieren"}</button></div>
     </div>
     <details className="monthly-section monthly-archive">
       <summary><div><strong>Monatsarchiv</strong><small>Aktuellen oder vergangenen Monat auswählen</small></div>{openArchiveMonths>0&&<b>{openArchiveMonths} {openArchiveMonths===1?"Abschluss offen":"Abschlüsse offen"}</b>}<span className="monthly-section-chevron">⌄</span></summary>

@@ -1,6 +1,6 @@
 {
   "name": "vereinskasse-sv-barver",
-  "version": "1.8.10",
+  "version": "1.8.11",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -15,7 +15,7 @@
     "db:postgres:migrate": "node raspberry/postgres-admin.mjs migrate",
     "db:postgres:bootstrap": "node raspberry/postgres-admin.mjs bootstrap",
     "db:postgres:check": "node raspberry/postgres-admin.mjs check",
-    "test": "npm run check:migrations && npm run typecheck && npm run build && node --test tests/rendered-html.test.mjs tests/event-dialog.test.mjs tests/bundles.test.mjs tests/futureproof.test.mjs tests/allocation.test.mjs tests/i2c-display.test.mjs tests/safety-workflows.test.mjs tests/rfid-resilience.test.mjs tests/retail-pos-design.test.mjs tests/raspberry-hosting.test.mjs tests/postgres-runtime.test.mjs tests/docker-deployment.test.mjs tests/email-invoices.test.mjs tests/statistics-dashboard.test.mjs",
+    "test": "npm run check:migrations && npm run typecheck && npm run build && node --test tests/live-poll.test.mjs tests/rendered-html.test.mjs tests/event-dialog.test.mjs tests/bundles.test.mjs tests/futureproof.test.mjs tests/allocation.test.mjs tests/i2c-display.test.mjs tests/safety-workflows.test.mjs tests/rfid-resilience.test.mjs tests/retail-pos-design.test.mjs tests/raspberry-hosting.test.mjs tests/postgres-runtime.test.mjs tests/docker-deployment.test.mjs tests/email-invoices.test.mjs tests/statistics-dashboard.test.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work",
     "check:migrations": "node scripts/check-migrations.mjs",
@@ -26,10 +26,10 @@
     "drizzle-orm": "0.45.2",
     "ipaddr.js": "2.4.0",
     "next": "16.2.11",
-    "nodemailer": "^7.0.11",
+    "nodemailer": "9.1.1",
     "pg": "^8.16.3",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.46.0",
@@ -44,7 +44,7 @@
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "pg-mem": "^3.0.5",
-    "react-server-dom-webpack": "19.2.6",
+    "react-server-dom-webpack": "19.2.8",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vinext": "0.0.50",
@@ -52,7 +52,7 @@
     "wrangler": "4.113.0"
   },
   "overrides": {
-    "postcss": "8.5.22",
+    "postcss": "8.5.27",
     "sharp": "0.35.3"
   },
   "type": "module"

@@ -1,5 +1,9 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
+export const configurationState=sqliteTable("configuration_state",{
+  profileId:text("profile_id").primaryKey(),revision:integer("revision").notNull().default(0),lastMutation:text("last_mutation").notNull().default("")
+});
+
 export const products = sqliteTable("products", {
   id: integer("id").primaryKey(), name: text("name").notNull(), price: real("price").notNull(),
   profileId: text("profile_id").notNull().default("darts"),
