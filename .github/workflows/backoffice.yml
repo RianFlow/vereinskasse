@@ -44,3 +44,5 @@ jobs:
       - name: Eigenständigen Container bauen
         run: docker build -f backoffice/Dockerfile -t clubiq-backoffice:test .
         working-directory: .
+      - name: Containerstart mit eingeschränkten Rechten prüfen
+        run: sh scripts/container-start-check.sh clubiq-backoffice:test
