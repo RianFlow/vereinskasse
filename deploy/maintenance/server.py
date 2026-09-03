@@ -47,12 +47,14 @@ HTML = r'''<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name
 <div class="formgrid"><div class="field"><label for="smtpHost">SMTP-Server</label><input id="smtpHost" autocomplete="off" placeholder="smtp.gmail.com"></div><div class="field"><label for="smtpPort">Port und Sicherheit</label><div class="formgrid"><input id="smtpPort" inputmode="numeric" value="587"><select id="smtpSecurity"><option value="starttls">STARTTLS</option><option value="tls">TLS</option></select></div></div><div class="field"><label for="smtpUser">SMTP-Benutzername</label><input id="smtpUser" autocomplete="username" placeholder="kasse@example.de"></div><div class="field"><label for="smtpPassword">SMTP- oder App-Passwort</label><input id="smtpPassword" type="password" autocomplete="new-password" placeholder="Nur zum Ändern eingeben"><small class="password-note" id="smtpPasswordNote">Noch kein Passwort gespeichert</small></div><div class="field"><label for="smtpSender">Absender-E-Mail</label><input id="smtpSender" inputmode="email" autocomplete="email" placeholder="kasse@example.de"></div></div>
 <div class="hint"><b>Kassenwarte / Antwortadressen</b><br><span class="muted">Antworten von Mitgliedern gehen an alle hier eingetragenen Adressen. Mehrere Personen mit der Rolle Kassenwart können weiterhin im Mitgliederbereich angelegt werden.</span><div id="cashManagers"></div><button type="button" class="secondary" style="margin-top:9px" onclick="addCashManager()">+ Kassenwart hinzufügen</button></div>
 <div class="section-actions"><button id="saveEmailButton" onclick="saveEmail()">Speichern und Verbindung prüfen</button><button class="secondary" id="testEmailButton" onclick="testEmail()">Test-E-Mail senden</button></div><div id="emailMsg" class="msg"></div></section>
+<section class="card"><h2>Verschlüsseltes Notfallpaket</h2><p class="muted">Sichert die Einstellungen, Zugangsschlüssel und das lokale Kassenzertifikat zusätzlich zur Datenbank. Wird stündlich und nach einem Neustart aktualisiert. Der private Entschlüsselungsschlüssel bleibt bei dir, nicht auf dem Raspberry oder bei Cloudflare.</p><div id="recoveryStates" class="grid"></div><p id="recoveryUpdated" class="muted"></p><button id="recoveryButton" class="secondary" onclick="act('recovery_backup')" disabled>Notfallpaket jetzt aktualisieren</button><p class="muted">Ohne Internet bleibt die USB-Kopie möglich; Cloudflare wird beim nächsten Lauf erneut versucht. Ein grüner R2-Status bedeutet: hochgeladen und identisch zurückgelesen. Der vollständige Rücksicherungstest ist davon getrennt.</p></section>
 <section class="card"><h2>Sichere Schnellaktionen</h2><div class="actions"><button onclick="act('restart_stack')">Kasse neu starten</button><button class="secondary" onclick="act('restart_wifi')">Reader & Tablet neu verbinden</button><button class="secondary" onclick="act('backup')">Sicherung jetzt erstellen</button><button class="danger" onclick="act('reboot')">Raspberry neu starten</button></div><div id="msg" class="msg"></div></section>
 <section class="card"><h2>Adressen</h2><p><b>Kasse:</b> <a href="https://10.42.0.1">https://10.42.0.1</a><br><b>Zertifikat:</b> <a href="http://10.42.0.1:8080/vereinskasse-ca.crt">herunterladen</a></p><p class="muted">„Kassen-WLAN neu verbinden“ trennt Tablet und Reader kurz. Danach verbinden sich beide selbstständig wieder.</p></section></div></main>
 <script>let pin=sessionStorage.getItem('clubiq-maintenance-pin')||'',networks=[],emailLoaded=false;const secureMaintenance=location.protocol==='https:',maintenancePrefix=location.pathname.startsWith('/wartung')?'/wartung':'';const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function api(path,opt={}){opt.headers={...(opt.headers||{}),'X-ClubIQ-Maintenance-Pin':pin};let r=await fetch(maintenancePrefix+path,opt);let j=await r.json().catch(()=>({error:'Ungültige Antwort'}));if(!r.ok)throw Error(j.error||'Fehler');return j}
+async function api(path,opt={}){opt.headers={...(opt.headers||{}),'X-ClubIQ-Maintenance-Pin':pin};let r=await fetch(maintenancePrefix+path,opt);let j=await r.json().catch(()=>({error:'Ungültige Antwort'}));if(!r.ok)throw Error(j.error||'Fehler');if(path==='/api/status')setRecoveryState(j.recovery);return j}
 async function login(){pin=document.getElementById('pin').value.trim();try{await load();sessionStorage.setItem('clubiq-maintenance-pin',pin);document.getElementById('login').classList.add('hidden');document.getElementById('portal').classList.remove('hidden')}catch(e){document.getElementById('loginMsg').textContent=e.message}}
 function box(name,value,state){return `<div class="state ${state}"><span class="dot"></span>${esc(name)}<div class="value">${esc(value)}</div></div>`}
+function setRecoveryState(r={}){document.getElementById('recoveryStates').innerHTML=box('Automatik',r.enabled?'aktiv':r.configured?'angehalten':'nicht eingerichtet',r.enabled?'ok':'warn')+box('USB-Notfallpaket',r.usb?'gesichert':'prüfen',r.usb?'ok':'warn')+box('Cloudflare R2',r.r2===true?'geprüft':r.r2===false?'erneuter Versuch nötig':'nicht geprüft',r.r2===true?'ok':'warn');document.getElementById('recoveryUpdated').textContent=r.createdAt?'Letzter Versuch (UTC): '+r.createdAt+(r.stale?' · veraltet, Automatik prüfen':''):'Noch kein Notfallpaket erstellt.';document.getElementById('recoveryButton').disabled=!r.configured}
 function setWifiState(w){let detected=!!w?.detected,connected=!!w?.connected,badge=document.getElementById('wifiBadge');badge.textContent=!detected?'Stick fehlt':connected?'verbunden':'Stick bereit';document.getElementById('wifiUnavailable').classList.toggle('hidden',detected);document.getElementById('scanButton').disabled=!detected;let text=!detected?'nicht erkannt':connected?`${w.ssid||w.connection} · ${w.ip||'Adresse wird bezogen'}`:`${w.interface} · bereit`;return {text,state:connected?'ok':detected?'warn':'bad'}}
 async function load(){let s=await api('/api/status'),w=setWifiState(s.internetWifi);document.getElementById('states').innerHTML=box('Kassen-App',s.app?'bereit':'nicht erreichbar',s.app?'ok':'bad')+box('Docker',s.docker?'aktiv':'gestoppt',s.docker?'ok':'bad')+box('Kassen-WLAN',s.wifi?'aktiv':'nicht aktiv',s.wifi?'ok':'bad')+box('Geräte im WLAN',s.neighbors,s.neighbors>0?'ok':'warn')+box('Internet-WLAN',w.text,w.state)+box('Rechnungs-E-Mail',s.email.configured?'eingerichtet':'nicht eingerichtet',s.email.configured?'ok':'warn')+box('Letzte Sicherung',s.backup?'erfolgreich':'prüfen',s.backup?'ok':'warn')+box('USB-Sicherung',s.usb?'eingehängt':'nicht bereit',s.usb?'ok':'warn')+box('Freier Speicher',s.diskFree,s.diskPercent>15?'ok':'warn')+box('Internetweg',s.uplink,s.uplink==='offline'?'warn':'ok');document.getElementById('updated').textContent='Aktualisiert: '+new Date().toLocaleTimeString();setEmailState(s.email)}
 function setEmailState(e){let badge=document.getElementById('emailBadge');badge.textContent=!secureMaintenance?'HTTPS nötig':e.configured?'eingerichtet':'nicht eingerichtet';document.getElementById('emailInsecure').classList.toggle('hidden',secureMaintenance);document.querySelectorAll('#emailCard input,#emailCard select,#emailCard button').forEach(control=>control.disabled=!secureMaintenance);if(emailLoaded)return;emailLoaded=true;document.getElementById('smtpHost').value=e.host||'';document.getElementById('smtpPort').value=e.port||587;document.getElementById('smtpSecurity').value=e.security||'starttls';document.getElementById('smtpUser').value=e.user||'';document.getElementById('smtpSender').value=e.sender||'';document.getElementById('smtpPasswordNote').textContent=e.passwordSet?'Passwort ist gespeichert · leer lassen, um es beizubehalten':'Noch kein Passwort gespeichert';renderCashManagers(e.cashManagers?.length?e.cashManagers:['']);if(!secureMaintenance)document.querySelectorAll('#emailCard input,#emailCard select,#emailCard button').forEach(control=>control.disabled=true)}
@@ -435,9 +437,26 @@ def do_later(action):
             run(["nmcli", "connection", "up", KIOSK_CONNECTION], 45)
         elif action == "backup":
             run(["/usr/local/sbin/clubiq", "sichern"], 180)
+        elif action == "recovery_backup":
+            run(["systemctl", "start", "--no-block", "clubiq-recovery.service"], 10)
         elif action == "reboot":
             subprocess.run(["systemctl", "reboot"], timeout=5)
     threading.Thread(target=work, daemon=True).start()
+
+
+def recovery_status():
+    state = {"configured": os.path.isfile("/etc/clubiq-recovery.recipient"), "enabled": active("clubiq-recovery.timer")}
+    try:
+        path = "/var/lib/clubiq-recovery/status.json"
+        with open(path, encoding="utf-8") as handle:
+            saved = json.load(handle)
+        state.update({key: saved.get(key) for key in ("ok", "createdAt", "local", "usb", "r2")})
+        state["stale"] = time.time() - os.stat(path).st_mtime > 7200
+        if state["stale"]:
+            state.update(ok=False, usb=False, r2=False)
+    except (OSError, ValueError):
+        pass
+    return state
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -514,7 +533,7 @@ class Handler(BaseHTTPRequestHandler):
             backup_ok = False
         usb = run(["findmnt", "--mountpoint", "/mnt/vereinskasse-sicherung"], 4)
         uplink = "LAN" if lan.stdout.strip() else "Internet-WLAN" if internet_wifi.get("connected") else "offline"
-        self.json(200, {"app": app_ready(), "docker": active("docker"), "wifi": KIOSK_CONNECTION in wifi.stdout, "neighbors": count, "lan": bool(lan.stdout.strip()), "internetWifi": internet_wifi, "email": email_settings_status(), "uplink": uplink, "backup": backup_ok, "usb": usb.returncode == 0, "diskFree": f"{usage.free / 1024**3:.1f} GB", "diskPercent": round(usage.free / usage.total * 100)})
+        self.json(200, {"app": app_ready(), "docker": active("docker"), "wifi": KIOSK_CONNECTION in wifi.stdout, "neighbors": count, "lan": bool(lan.stdout.strip()), "internetWifi": internet_wifi, "email": email_settings_status(), "recovery": recovery_status(), "uplink": uplink, "backup": backup_ok, "usb": usb.returncode == 0, "diskFree": f"{usage.free / 1024**3:.1f} GB", "diskPercent": round(usage.free / usage.total * 100)})
 
     def do_POST(self):
         if self.path not in ("/api/action", "/api/internet-wifi/connect", "/api/email-settings", "/api/email-test"):
@@ -562,7 +581,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(503, {"error": str(error)})
             return
         action = data.get("action")
-        messages = {"restart_stack": "Kasse wird neu gestartet.", "restart_wifi": "Kassen-WLAN startet neu. Bitte kurz warten.", "backup": "Sicherung wurde gestartet.", "reboot": "Raspberry startet neu. In etwa 90 Sekunden erneut öffnen."}
+        messages = {"restart_stack": "Kasse wird neu gestartet.", "restart_wifi": "Kassen-WLAN startet neu. Bitte kurz warten.", "backup": "Sicherung wurde gestartet.", "recovery_backup": "Notfallpaket wird aktualisiert. Der Status oben zeigt anschließend das Ergebnis.", "reboot": "Raspberry startet neu. In etwa 90 Sekunden erneut öffnen."}
         if action not in messages:
             self.json(400, {"error": "Aktion nicht erlaubt"})
             return

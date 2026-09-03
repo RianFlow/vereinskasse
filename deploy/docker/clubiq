@@ -145,6 +145,9 @@ Clubiq Ledger auf dem Raspberry verwalten
   clubiq protokoll               Laufende Meldungen anzeigen
   clubiq sichern                 Sofort eine geprüfte Sicherung erstellen
   clubiq sicherungen             Vorhandene Sicherungen auflisten
+  clubiq notfall-einrichten DATEI Öffentlichen age-Schlüssel für das Notfallpaket einrichten
+  clubiq notfall-sichern          Verschlüsseltes Notfallpaket jetzt aktualisieren
+  clubiq notfall-status           Zustand des automatischen Notfallpakets anzeigen
   clubiq pruefen                 Datenbank und Anwendung prüfen
   clubiq aktualisieren           Sicherung, Update und automatischer Rückfall
   clubiq wiederherstellen DATEI  Sicherung erst prüfen, dann zurückspielen
@@ -174,6 +177,18 @@ ensure_optional_secrets
 command="${1:-hilfe}"
 
 case "$command" in
+  notfall-einrichten)
+    "$base/../recovery/install.sh" "${2:-/etc/clubiq-recovery.recipient}"
+    ;;
+  notfall-sichern)
+    systemctl start clubiq-recovery.service
+    cat /var/lib/clubiq-recovery/status.json
+    ;;
+  notfall-status)
+    systemctl is-enabled clubiq-recovery.timer
+    systemctl list-timers clubiq-recovery.timer --no-pager
+    cat /var/lib/clubiq-recovery/status.json
+    ;;
   hilfe|help|-h|--help)
     show_help
     ;;

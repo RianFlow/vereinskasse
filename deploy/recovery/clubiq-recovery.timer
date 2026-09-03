@@ -1,0 +1,12 @@
+[Unit]
+Description=ClubIQ Notfallpaket stuendlich aktualisieren
+
+[Timer]
+OnBootSec=3min
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=30
+Unit=clubiq-recovery.service
+
+[Install]
+WantedBy=timers.target

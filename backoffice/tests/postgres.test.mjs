@@ -90,6 +90,55 @@ test('PostgreSQL: migrations, least privilege, auth, snapshots, writes and backu
       await pool.query('UPDATE bo_grants SET active=false WHERE user_id=$1',[user.id]);
       await pool.query('RESET ROLE');
     });
+    await t.test('account block, reactivation and deletion revoke access but preserve invoices and audit',async()=>{
+      const config={origin:'http://127.0.0.1:5176',secret:'local-test-only-000000000000000000000000000000000000000000000000',development:true,smtp:{}};
+      for(const [id,profile,role] of [['access-admin','darts','admin'],['access-target','darts','admin'],['access-outsider','other','viewer']]){
+        await pool.query('INSERT INTO bo_user(id,name,email,"emailVerified","twoFactorEnabled") VALUES ($1,$1,$2,true,true)',[id,`${id}@example.test`]);
+        await pool.query('INSERT INTO bo_grants(user_id,profile_id,role) VALUES ($1,$2,$3)',[id,profile,role]);
+      }
+      const adminActor={...actor,userId:'access-admin'},target='access-target',body={confirmed:true,email:`${target}@example.test`,password:'correct test password'};
+      const auth={api:{getSession:async()=>({user:{id:adminActor.userId,emailVerified:true,twoFactorEnabled:true},session:{createdAt:new Date()}}),verifyPassword:async({body})=>{if(body.password!=='correct test password')throw Error('wrong');}}};
+      const accounts=accountService(pool,auth),outbox=createOutbox(pool,config),app=createApp({auth,accounts,data,pool,config,limiter:rateStorage(pool,config.secret),outbox,staticRoot:null});
+      const request=(id,input=body,origin=config.origin)=>app.request(new Request(`${config.origin}/api/manage/accounts/${id}`,{method:'DELETE',headers:{origin,'content-type':'application/json'},body:JSON.stringify(input)}));
+      await pool.query('SET ROLE clubiq_backoffice');
+      assert.equal((await request(target,body,'https://evil.example')).status,403);
+      assert.equal((await request(target,{...body,password:'wrong'})).status,400);
+      assert.equal((await request(target,{...body,confirmed:false})).status,400);
+      assert.equal((await request('access-outsider')).status,404);
+      assert.equal((await request(adminActor.userId)).status,409);
+      await assert.rejects(accounts.change(adminActor,adminActor.userId,{role:'viewer',active:false}),/eigenen Zugang/);
+      await pool.query('INSERT INTO bo_session(id,"userId",token,"expiresAt","updatedAt") VALUES ($1,$2,$1,now()+interval \'1 hour\',now())',['access-session',target]);
+      await pool.query('INSERT INTO bo_verification(id,identifier,value,"expiresAt") VALUES ($1,$1,$2,now()+interval \'1 hour\')',['access-reset',target]);
+      const job=await outbox.enqueue({to:body.email,text:'Only a fixture report'});
+      await pool.query("INSERT INTO bo_audit(id,user_id,profile_id,action,entity,details) VALUES ('access-mail',$1,'darts','REPORT_MAIL_QUEUED',$2,$3)",[target,job,JSON.stringify({recipientEmail:body.email})]);
+      await accounts.change(adminActor,target,{role:'admin',active:false});
+      assert.equal(await accounts.grant(target),undefined);
+      for(const [table,condition] of [['bo_session','"userId"'],['bo_verification','value']])assert.equal(Number((await pool.query(`SELECT count(*) FROM ${table} WHERE ${condition}=$1`,[target])).rows[0].count),0);
+      assert.equal((await pool.query('SELECT state,payload FROM bo_outbox WHERE id=$1',[job])).rows[0].state,'cancelled');
+      await accounts.change(adminActor,target,{role:'treasurer',active:true});
+      assert.equal((await accounts.grant(target)).role,'treasurer');
+      await pool.query('INSERT INTO bo_account(id,issuer,"accountId","providerId","userId",password,"updatedAt") VALUES ($1,\'test\',$1,\'credential\',$2,\'test-only\',now())',['access-credential',target]);
+      await pool.query('INSERT INTO bo_two_factor(id,secret,"backupCodes","userId") VALUES ($1,\'fake-encrypted\',\'fake-codes\',$2)',['access-mfa',target]);
+      await pool.query("INSERT INTO bo_invoice_notes(profile_id,month,member_id,note,updated_by) VALUES ('darts','2020-01','M-TEST','Historical fixture note',$1)",[target]);
+      assert.equal((await request(target,{...body,email:'stale@example.test'})).status,409);
+      assert.equal((await request(target)).status,429);
+      await pool.query("UPDATE bo_limits SET reset_at=now()-interval '1 second'");
+      assert.equal((await request(target)).status,200);
+      for(const [table,column] of [['bo_user','id'],['bo_account','"userId"'],['bo_two_factor','"userId"'],['bo_grants','user_id']])assert.equal(Number((await pool.query(`SELECT count(*) FROM ${table} WHERE ${column}=$1`,[target])).rows[0].count),0);
+      assert.equal((await pool.query("SELECT note FROM bo_invoice_notes WHERE month='2020-01' AND member_id='M-TEST'")).rows[0].note,'Historical fixture note');
+      assert.equal((await pool.query("SELECT id FROM public.sales WHERE id='fixture-sale'")).rows.length,1);
+      assert.equal((await pool.query("SELECT id FROM public.members WHERE id='M-TEST'")).rows.length,1);
+      assert.ok((await pool.query("SELECT id FROM bo_audit WHERE action='ACCOUNT_DELETED' AND entity=$1",[target])).rows.length);
+      assert.equal((await request(target)).status,404);
+      // A stale actor from a concurrent revocation must not keep admin powers.
+      await pool.query("UPDATE bo_grants SET active=false WHERE user_id='access-admin'");
+      await assert.rejects(accounts.change(adminActor,'access-outsider',{role:'viewer',active:false}),/nicht mehr aktiv/);
+      assert.equal((await request('access-outsider')).status,403);
+      await pool.query("DELETE FROM bo_user WHERE id IN ('access-admin','access-outsider')");
+      await pool.query("DELETE FROM bo_audit WHERE id='access-mail'");
+      await pool.query('DELETE FROM bo_outbox WHERE id=$1',[job]);
+      await pool.query('RESET ROLE');
+    });
     await t.test('optimistic member and price updates preserve cash roles and unrelated products',async()=>{
       await pool.query("UPDATE public.members SET invoice_email='alex@example.test',invoice_email_consent_at=$1 WHERE id='M-TEST'",[stamp]);
       await pool.query('SET ROLE clubiq_backoffice');

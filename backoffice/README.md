@@ -148,6 +148,20 @@ Unter **Mein Konto → Meine Abrechnungsmails** sieht die absendende Person Ziel
 
 ## Wiederherstellung und Sicherung
 
+Das [verschlüsselte Notfallpaket](../deploy/recovery/README.md) ergänzt die Datenbank um Installationsschlüssel, Einstellungen und das lokale Zertifikat. Nach einmaliger Einrichtung läuft es stündlich auf dem Pi, schreibt auf USB und in den bestehenden privaten R2-Bucket. Der eigene Rechner muss nicht eingeschaltet sein; dort wird nur der unveränderte private Entschlüsselungsschlüssel sicher verwahrt.
+
+## Verwaltungszugang sperren oder löschen
+
+Unter **Zugänge & Protokoll → Verwaltungszugänge** stehen für andere Personen **Rechte ändern**, **Sperren / Wieder freigeben** und **Zugang löschen** direkt zur Verfügung. Eigene Zugänge sind sichtbar als geschützt gekennzeichnet. Änderungen am eigenen Zugang erledigt ein anderer aktiver Vorstand; der letzte aktive Vorstand darf nicht entfernt werden.
+
+Sperren beendet alle vorhandenen Anmeldungen und macht offene Einladungs-/Wiederherstellungslinks ungültig. Passwort und Zwei-Faktor-Einrichtung bleiben für eine spätere Freigabe erhalten. Eine abgelaufene/offene Einladung kann die Person danach über „Passwort vergessen“ erneut anfordern.
+
+Löschen erfordert die E-Mail-Adresse der betroffenen Person, das **eigene** aktuelle Vorstands-Passwort und eine ausdrückliche Bestätigung. Gelöscht werden nur das Verwaltungskonto, dessen Passwort, Zwei-Faktor-Daten und Sitzungen. Mitglieder, Rechnungen, Kontoeinträge und Änderungsprotokoll bleiben erhalten. Die erneute Anlage ist über eine neue Einladung möglich. Alte Backups werden nicht rückwirkend umgeschrieben; bei einer Rücksicherung gelöschte/gesperrte Zugänge erneut prüfen.
+
+Noch wartende Abrechnungsmails an/von dem betroffenen Konto werden bei Zugangsänderungen abgebrochen. Bereits an SMTP übergebene E-Mails lassen sich nicht zurückrufen. **Cloudflare Access und allgemeine E-Mail-Verteiler auf der Wartungsseite sind unabhängig**: Dort muss die Person zusätzlich entfernt werden. Eine App-Sperre bleibt auch wirksam, wenn Cloudflare die Person noch durchlässt.
+
+### Sicherungs- und Wiederherstellungshinweise
+
 - `backoffice_secret` zusätzlich offline verwahren! Es verschlüsselt TOTP-Geheimnisse, Wiederherstellungscodes und ausstehende Mails. Datenbankbackup allein genügt nicht. Nicht als Screenshot oder im Chat teilen, nicht in Git committen. Verlust erfordert eine kontrollierte Neuanmeldung/MFA-Einrichtung aller Konten.
 - `clubiq wiederherstellen` und `clubiq neue-datenbank` stoppen eine eingerichtete Verwaltung vor der Änderung. Danach die Verwaltung zunächst **gestoppt lassen**, den öffentlichen Zugang sperren, `backoffice-setup.sh` erneut zur schema-begrenzten Rechte-/Eigentümerreparatur ausführen und anschließend Sicherung testen. Wiederhergestellte Sitzungen und abgelaufene Einladungen vor einer öffentlichen Freigabe kontrollieren/beenden.
 - Handy verloren: erst Wiederherstellungscode verwenden. Sind alle Codes verloren, nur ein vertrauenswürdiger Betreiber nach persönlicher Identitätsprüfung auf dem Pi:

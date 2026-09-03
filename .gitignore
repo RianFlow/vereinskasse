@@ -46,6 +46,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+__pycache__/
 
 # docker
 /docker/postgresql
