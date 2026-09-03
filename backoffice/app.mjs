@@ -156,9 +156,19 @@ export function createApp({ auth, provisioningAuth, accounts, data, pool, config
   });
   app.post('/api/manage/accounts',async c => c.json(await accounts.invite(admin(c),await c.req.json(),provisioningAuth),201));
   app.patch('/api/manage/accounts/:id',async c => c.json(await accounts.change(admin(c),c.req.param('id'),await c.req.json())));
+  app.delete('/api/manage/accounts/:id',async c => {
+    const actor=admin(c),input=await c.req.json();
+    assert((await limiter.consume(`delete-account:${actor.userId}`,{window:900,max:5})).allowed,429,'Zu viele Versuche. Bitte 15 Minuten warten.');
+    assert(typeof input.password==='string' && input.password.length<=128,400,'Bitte dein eigenes aktuelles Passwort eingeben.');
+    try { await auth.api.verifyPassword({headers:c.req.raw.headers,body:{password:input.password}}); }
+    catch { assert(false,400,'Dein aktuelles Passwort stimmt nicht.'); }
+    return c.json(await accounts.remove(actor,c.req.param('id'),input));
+  });
   app.get('/api/manage/audit',async c => {
     const actor=admin(c);
-    return c.json({events:(await pool.query('SELECT a.action,a.entity,a.details,a.created_at,u.name FROM bo_audit a LEFT JOIN bo_user u ON u.id=a.user_id WHERE a.profile_id=$1 ORDER BY a.created_at DESC LIMIT 100',[actor.profileId])).rows});
+    return c.json({events:(await pool.query(`SELECT a.action,a.entity,a.details,a.created_at,
+      COALESCE(u.name,CASE WHEN a.user_id IS NULL THEN 'System' ELSE 'Gelöschter Zugang' END) AS name
+      FROM bo_audit a LEFT JOIN bo_user u ON u.id=a.user_id WHERE a.profile_id=$1 ORDER BY a.created_at DESC LIMIT 100`,[actor.profileId])).rows});
   });
   app.get('/api/manage/mail',async c => {
     const actor=writer(c);

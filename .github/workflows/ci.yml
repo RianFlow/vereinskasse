@@ -20,6 +20,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Verschlüsseltes Notfallpaket mit Wegwerfschlüsseln prüfen
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes age
+          python3 deploy/recovery/test_recovery.py
+          bash -n deploy/recovery/install.sh
+          python3 -m py_compile deploy/recovery/recovery.py deploy/maintenance/server.py
       - name: Docker-Konfiguration prüfen
         run: |
           bash -n deploy/docker/*.sh deploy/docker/clubiq deploy/raspberry/backup.sh deploy/monthly-mail/*.sh

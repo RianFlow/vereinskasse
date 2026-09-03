@@ -1,0 +1,16 @@
+[Unit]
+Description=ClubIQ verschluesseltes Notfallpaket
+After=docker.service local-fs.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/clubiq-recovery.env
+ExecStart=/usr/bin/python3 /usr/local/lib/clubiq-recovery/recovery.py --project ${CLUBIQ_RECOVERY_PROJECT}
+UMask=0077
+TimeoutStartSec=5min
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
