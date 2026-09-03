@@ -204,6 +204,13 @@
       "when": 1786352400000,
       "tag": "0028_member_invoice_email",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1788422321563,
+      "tag": "0029_dry_sage",
+      "breakpoints": true
     }
   ]
 }

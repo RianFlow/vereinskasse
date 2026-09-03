@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {startLivePolling,editingForm} from "./live-poll.mjs";
 import { IconChartBar, IconClock, IconCrown, IconReceiptEuro, IconShoppingBag, IconUsers } from "@tabler/icons-react";
 
 type StatisticProduct={productId:number;productName:string};
@@ -22,13 +23,17 @@ export function StatisticsPanel(){
   const requestKey=`${days}:${productId}:${rankingMode}`;
   const [result,setResult]=useState<{key:string;data:StatisticsData|null;error:string}>({key:"",data:null,error:""});
   const data=result.data,loading=result.key!==requestKey,error=result.key===requestKey?result.error:"";
-  useEffect(()=>{let active=true;const params=new URLSearchParams({days:String(days),ranking:rankingMode});if(productId)params.set("productId",productId);fetch(`/api/statistics?${params}`).then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.error||"Statistiken konnten nicht geladen werden.");if(active)setResult({key:requestKey,data:body,error:""})}).catch(reason=>{if(active)setResult({key:requestKey,data:null,error:reason instanceof Error?reason.message:"Statistiken konnten nicht geladen werden."})});return()=>{active=false}},[days,productId,rankingMode,requestKey]);
+  useEffect(()=>startLivePolling({interval:5000,allowed:()=>!editingForm(),
+    load:async(signal:AbortSignal)=>{const params=new URLSearchParams({days:String(days),ranking:rankingMode});if(productId)params.set("productId",productId);const response=await fetch(`/api/statistics?${params}`,{signal,cache:"no-store"}),body=await response.json();if(!response.ok)throw new Error(body.error||"Statistiken konnten nicht geladen werden.");if(signal.aborted||editingForm())return false;setResult({key:requestKey,data:body,error:""});},
+    onError:(reason:unknown)=>setResult(current=>({key:requestKey,data:current.key===requestKey?current.data:null,error:reason instanceof Error?reason.message:"Verbindung unterbrochen. Angezeigte Statistik kann veraltet sein."}))
+  }),[days,productId,rankingMode,requestKey]);
   const maxTrend=useMemo(()=>Math.max(1,...(data?.trend.map(row=>row.revenue)||[])),[data]);
   const maxProduct=useMemo(()=>Math.max(1,...(data?.topProducts.map(row=>row.quantity)||[])),[data]);
   const maxMember=useMemo(()=>Math.max(1,...(data?.memberRanking.map(row=>row.quantity)||[])),[data]);
   if(error&&!data)return <section className="panel statistics-error" role="alert"><strong>Auswertung nicht verfügbar</strong><span>{error}</span><button onClick={()=>setDays(current=>current===90?30:90)}>Erneut laden</button></section>;
   return <section className={`statistics-dashboard ${loading?"loading":""}`} aria-busy={loading}>
     <div className="statistics-toolbar"><div><p className="eyebrow">VERKAUF & VERBRAUCH</p><h2>Zahlen, die wirklich helfen</h2><small>Stornierte Buchungen werden automatisch ausgeschlossen.</small></div><div className="statistics-period" aria-label="Auswertungszeitraum">{[30,90,365].map(value=><button key={value} className={days===value?"active":""} onClick={()=>setDays(value)}>{value===365?"1 Jahr":`${value} Tage`}</button>)}</div></div>
+    {error&&data&&<p role="status">Datenabgleich unterbrochen: {error} Automatischer Neuversuch läuft.</p>}
     {loading&&!data&&<div className="statistics-skeleton">Statistiken werden berechnet …</div>}
     {data&&<>
       <div className="statistics-kpis">

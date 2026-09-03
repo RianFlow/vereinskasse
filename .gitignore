@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+/backoffice/node_modules/
+/backoffice/dist/
 /.pnp
 .pnp.*
 .yarn/*
@@ -33,6 +35,7 @@ yarn-error.log*
 .env*
 !.env.example
 /deploy/docker/secrets/
+/deploy/docker/.backoffice-enabled
 
 # vercel
 .vercel

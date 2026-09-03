@@ -12,10 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "dist/**",
+    "backoffice/dist/**",
     "tmp/**",
     "output/**",
     "next-env.d.ts",
   ]),
+  { files: ["backoffice/**/*.jsx"], rules: { "@next/next/no-img-element": "off", "@next/next/no-html-link-for-pages": "off" } },
 ]);
 
 export default eslintConfig;

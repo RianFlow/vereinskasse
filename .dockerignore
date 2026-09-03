@@ -5,6 +5,8 @@
 .wrangler
 dist
 node_modules
+**/node_modules
+backoffice/dist
 output
 outputs
 tmp
@@ -15,4 +17,5 @@ coverage
 .env
 .env.*
 deploy/docker/secrets
+deploy/docker/.backoffice-enabled
 

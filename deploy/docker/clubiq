@@ -4,6 +4,15 @@ set -Eeuo pipefail
 self="$(readlink -f "${BASH_SOURCE[0]}")"
 base="$(cd "$(dirname "$self")" && pwd)"
 compose=(docker compose --project-directory "$base" --env-file "$base/.env" -f "$base/compose.yaml")
+if [[ -f "$base/.backoffice-enabled" ]]; then
+  compose+=(-f "$base/backoffice.compose.yaml")
+fi
+
+stop_backoffice_for_database_change() {
+  [[ -f "$base/.backoffice-enabled" ]] || return 0
+  "${compose[@]}" stop backoffice
+  echo 'Verwaltung bleibt nach der Datenbankänderung gestoppt. Vor erneuter Freigabe backoffice-setup.sh ausführen und Zugänge/Sicherungen prüfen.'
+}
 
 require_installation() {
   [[ -f "$base/.env" && -d "$base/secrets" ]] || {
@@ -250,6 +259,7 @@ case "$command" in
     read -r -p "Soll dieser geprüfte Stand wirklich aktiviert werden? Exakt WIEDERHERSTELLEN eingeben: " confirmation
     [[ "$confirmation" == "WIEDERHERSTELLEN" ]] || { echo "Abgebrochen."; exit 1; }
     "${compose[@]}" exec -T backup /app/deploy/raspberry/backup.sh
+    stop_backoffice_for_database_change
     "${compose[@]}" stop app backup
     restart_after_restore() { "${compose[@]}" up -d app backup proxy >/dev/null 2>&1 || true; }
     trap restart_after_restore EXIT
@@ -262,6 +272,7 @@ case "$command" in
     ;;
   neue-datenbank|new-database)
     "${compose[@]}" exec -T backup /app/deploy/raspberry/backup.sh
+    stop_backoffice_for_database_change
     "${compose[@]}" stop app backup
     restart_after_reset() { "${compose[@]}" up -d app backup proxy >/dev/null 2>&1 || true; }
     trap restart_after_reset EXIT

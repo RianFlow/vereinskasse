@@ -7,7 +7,8 @@ const decimal=(value:number)=>Number(value||0).toFixed(2).replace(".",",");
 const htmlEscape=(value:unknown)=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]!));
 const csvCell=(value:unknown)=>{
   let text=String(value??"");
-  if(/^[=+@]/.test(text)||/^-[^\d.,]/.test(text))text=`'${text}`;
+  const formulaCandidate=text.trimStart();
+  if(/^[=+@]/.test(formulaCandidate)||(/^-/.test(formulaCandidate)&&!/^-[0-9]+(?:[.,][0-9]+)?$/.test(formulaCandidate)))text=`'${text}`;
   return `"${text.replace(/"/g,'""')}"`;
 };
 const csv=(rows:unknown[][])=>"\uFEFF"+rows.map(row=>row.map(csvCell).join(";")).join("\r\n")+"\r\n";

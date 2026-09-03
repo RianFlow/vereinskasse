@@ -1,0 +1,46 @@
+name: Verwaltung prüfen
+on:
+  push:
+    branches: [main, "codex/**"]
+    paths: ["backoffice/**", "deploy/docker/backoffice*", "app/monthly-cash-manager-report.ts", "app/live-poll.mjs", "app/configuration-state.ts", "app/api/data/**", "postgres/migrations/**", "raspberry/postgres-sql.mjs", ".github/workflows/backoffice.yml"]
+  pull_request:
+    paths: ["backoffice/**", "deploy/docker/backoffice*", "app/monthly-cash-manager-report.ts", "app/live-poll.mjs", "app/configuration-state.ts", "app/api/data/**", "postgres/migrations/**", "raspberry/postgres-sql.mjs", ".github/workflows/backoffice.yml"]
+permissions:
+  contents: read
+jobs:
+  backoffice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: clubiq_backoffice_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d clubiq_backoffice_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backoffice
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backoffice/package-lock.json
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
+      - run: npm test
+        env:
+          BACKOFFICE_TEST_DATABASE_URL: postgres://postgres:local-ci-only@127.0.0.1:5432/clubiq_backoffice_test
+      - run: node --test ../tests/live-poll.test.mjs
+      - run: npm run build
+      - name: Shell prüfen
+        run: bash -n ../deploy/docker/backoffice-setup.sh && sh -n entrypoint.sh
+      - name: Eigenständigen Container bauen
+        run: docker build -f backoffice/Dockerfile -t clubiq-backoffice:test .
+        working-directory: .
