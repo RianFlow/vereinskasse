@@ -17,6 +17,7 @@ import {postgresSql} from '../../raspberry/postgres-sql.mjs';
 
 test('PostgreSQL: migrations, least privilege, auth, snapshots, writes and backup compatibility',async t=>{
   const {pool,close}=await postgresFixture();
+  t.afterEach(async()=>{await pool.query('RESET ROLE');});
   try{
     const month=currentMonth(),stamp=`${month}-01T12:00:00.000Z`;
     for(const id of ['darts','other'])await pool.query("INSERT INTO public.profiles(id,name,short_name,pin_salt,pin_hash,created_at,updated_at) VALUES ($1,$1,$1,'test','test',$2,$2)",[id,stamp]);
