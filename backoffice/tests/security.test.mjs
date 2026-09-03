@@ -21,6 +21,14 @@ test('deployment requires an explicit HTTPS origin and preserves the opted-in se
   assert.match(manager,/if \[\[ -f "\$base\/\.backoffice-enabled" \]\]; then\s+compose\+=\(-f "\$base\/backoffice.compose.yaml"\)/);
   assert.equal((manager.match(/\n\s+stop_backoffice_for_database_change\n/g)||[]).length,2);
 });
+test('restricted entrypoint sets modes before transferring ownership, without adding capabilities',()=>{
+  const entry=readFileSync(new URL('../entrypoint.sh',import.meta.url),'utf8');
+  assert.ok(entry.indexOf('chmod 0600')<entry.indexOf('chown node:node "/run/clubiq-backoffice/'));
+  assert.ok(entry.indexOf('chmod 0700')<entry.indexOf('chown node:node /run/clubiq-backoffice'));
+  const compose=readFileSync(new URL('../../deploy/docker/backoffice.compose.yaml',import.meta.url),'utf8');
+  assert.match(compose,/cap_drop: \[ALL\]/);
+  assert.match(compose,/cap_add: \[CHOWN,SETUID,SETGID\]/);
+});
 test('strict money, month and email validation',()=>{
   assert.equal(money('12,34'),1234);assert.equal(money('-1.05',true),-105);
   for(const v of ['1.001','NaN','1e4','-1',{},Infinity])assert.throws(()=>money(v));
