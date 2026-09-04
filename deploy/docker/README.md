@@ -25,6 +25,20 @@ veröffentlicht. Nur der Webzugang auf Port 80/443 und der Download des lokalen
 Zertifikats auf Port 8080 sind erreichbar. Kennwörter liegen nicht in Git oder
 der Compose-Datei, sondern als nur für root lesbare Dateien unter `secrets/`.
 
+Der Dienst `clubiq-ledger-boot.service` ordnet bei jedem Raspberry-Start Docker
+und Tailscale. Er erstellt ausschließlich den zustandslosen Caddy-Proxy neu,
+prüft anschließend die Kasse auf Port 8090 und – wenn eingerichtet – die
+Verwaltung auf Port 8092. Bei einem vorübergehenden Startfehler wiederholt
+systemd den Versuch automatisch. Status und ein manueller erneuter Prüflauf:
+
+```bash
+sudo systemctl status clubiq-ledger-boot --no-pager
+sudo systemctl restart clubiq-ledger-boot
+```
+
+Music-App, Bluetooth-Player, Wartungsportal und Cloudflare-Tunnel besitzen
+eigene Autostart-Regeln und werden von dieser Prüfung nicht unnötig neu gebaut.
+
 Die Anwendung kann technisch auch einen entfernten PostgreSQL-Host mit
 Benutzer/Kennwort, `POSTGRES_SSL=require` und
 `POSTGRES_SSL_MODE=verify-full` verwenden. Für den Raspberry-Start
