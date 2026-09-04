@@ -1,0 +1,21 @@
+[Unit]
+Description=ClubIQ Ledger zuverlässiger Systemstart
+Requires=docker.service
+Wants=network-online.target
+After=docker.service network-online.target tailscaled.service
+Before=cloudflared.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/clubiq-ledger-boot.env
+ExecStart=/usr/local/lib/clubiq-ledger-boot/boot-ensure.sh
+TimeoutStartSec=360
+Restart=on-failure
+RestartSec=15
+RemainAfterExit=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

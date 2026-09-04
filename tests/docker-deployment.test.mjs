@@ -256,3 +256,24 @@ test("stellt ein unabhaengiges PIN-geschuetztes Wartungsportal bereit", async ()
   assert.match(manager,/https:\/\/10\.42\.0\.1\/wartung\//);
   assert.match(installer,/https:\/\/10\.42\.0\.1\/wartung\//);
 });
+
+test("ordnet den Docker- und Tailscale-Start nach jedem Raspberry-Boot", async () => {
+  const [service, boot, installer, mainInstaller] = await Promise.all([
+    read("deploy/boot/clubiq-ledger-boot.service"),
+    read("deploy/boot/boot-ensure.sh"),
+    read("deploy/boot/install.sh"),
+    read("deploy/docker/install.sh"),
+  ]);
+  assert.match(service, /Requires=docker\.service/);
+  assert.match(service, /After=.*docker\.service.*tailscaled\.service/);
+  assert.match(service, /Before=cloudflared\.service/);
+  assert.match(service, /Restart=on-failure/);
+  assert.match(service, /TimeoutStartSec=360/);
+  assert.match(boot, /tailscale serve --https=443 off/);
+  assert.match(boot, /--no-deps --force-recreate proxy/);
+  assert.match(boot, /http:\/\/127\.0\.0\.1:8090\/api\/profiles/);
+  assert.match(boot, /http:\/\/127\.0\.0\.1:8092\/health/);
+  assert.match(boot, /tailscale serve --bg http:\/\/127\.0\.0\.1:8090/);
+  assert.match(installer, /systemctl enable clubiq-ledger-boot\.service/);
+  assert.match(mainInstaller, /deploy\/boot\/install\.sh/);
+});
