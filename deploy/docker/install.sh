@@ -98,7 +98,7 @@ fi
 
 ln -sfn "$base/clubiq" /usr/local/sbin/clubiq
 "$root/deploy/maintenance/install.sh"
-"$root/deploy/boot/install.sh"
+bash "$root/deploy/boot/install.sh"
 
 cd "$base"
 hostname_setting="$(sed -n 's/^CLUBIQ_HOSTNAME=//p' "$base/.env" | tail -n 1)"
