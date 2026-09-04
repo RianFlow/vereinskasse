@@ -275,5 +275,5 @@ test("ordnet den Docker- und Tailscale-Start nach jedem Raspberry-Boot", async (
   assert.match(boot, /http:\/\/127\.0\.0\.1:8092\/health/);
   assert.match(boot, /tailscale serve --bg http:\/\/127\.0\.0\.1:8090/);
   assert.match(installer, /systemctl enable clubiq-ledger-boot\.service/);
-  assert.match(mainInstaller, /deploy\/boot\/install\.sh/);
+  assert.match(mainInstaller, /bash "\$root\/deploy\/boot\/install\.sh"/);
 });
