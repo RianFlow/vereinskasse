@@ -27,7 +27,7 @@ export function Statistics({api,refresh,onError,onSync,onExpired}){
   useEffect(()=>startLivePolling({interval:5000,allowed:()=>!editingForm(),
     load:async signal=>{const value=await api(`/api/manage/statistics?${new URLSearchParams(range)}`,undefined,'GET',signal);if(signal.aborted||editingForm())return false;setStats(value);setLoading(false);},
     onSuccess:()=>onSync({state:'online',at:Date.now()}),
-    onError:error=>{setLoading(false);onError(error.message);onSync(current=>({...current,state:'offline'}));if(error.status===401||error.status===403)onExpired();}
+    onError:error=>{setLoading(false);if(error.kind==='cloudflare-access'){onError('');onSync(current=>({...current,state:'access'}));}else if(error.status===401||error.status===403)onExpired();else{onError(error.message);onSync(current=>({...current,state:'offline'}));}}
   }),[api,range,refresh,onError,onSync,onExpired]);
   function choose(value){setDraft(value);setRange(value);setLoading(true);}
   return <>
