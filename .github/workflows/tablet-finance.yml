@@ -1,0 +1,54 @@
+name: Tablet-Kasse mit PostgreSQL prüfen
+on:
+  pull_request:
+  push:
+    branches: ["codex/tablet-cash-release"]
+permissions:
+  contents: read
+jobs:
+  tablet-finance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_PASSWORD: disposable-test-password
+          POSTGRES_DB: tablet_qa_20261017
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGDATABASE: tablet_qa_20261017
+      PGUSER: postgres
+      PGPASSWORD: disposable-test-password
+      VEREINSKASSE_RUNTIME: raspberry
+      VEREINSKASSE_DATABASE_PROVIDER: postgres
+      CLUBIQ_TABLET_QA: "20261017"
+      CLUBIQ_QA_STATE: work/tablet-qa-state.json
+      VINEXT_TRUSTED_HOSTS: vereinskasse.local,localhost,127.0.0.1
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:raspberry
+      - name: Getrennte Testkasse starten
+        run: |
+          mkdir -p work/tablet-data
+          VEREINSKASSE_DATA_DIR="$PWD/work/tablet-data" VEREINSKASSE_BACKUP_DIR="$PWD/work/tablet-data/objects" node raspberry/start-production.mjs >work/tablet-server.log 2>&1 &
+          echo "$!" >work/tablet-server.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent -H 'Host: vereinskasse.local' http://127.0.0.1:3000/api/profiles >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat work/tablet-server.log
+          exit 1
+      - run: node tests/tablet-finance-runtime.mjs
+      - if: always()
+        run: test ! -f work/tablet-server.pid || kill "$(cat work/tablet-server.pid)"

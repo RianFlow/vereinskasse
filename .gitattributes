@@ -1,0 +1,4 @@
+# Migration checksums must be identical on Windows and on the Raspberry.
+postgres/migrations/*.sql text eol=lf
+drizzle/*.sql text eol=lf
+*.sh text eol=lf

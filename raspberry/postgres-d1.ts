@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import pg, { type PoolClient, type QueryResult } from "pg";
@@ -156,6 +157,27 @@ class PostgresD1PreparedStatement {
 export class PostgresD1Database {
   private readonly pool: pg.Pool;
   private readonly ready: Promise<void>;
+  private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
+
+  // A profile lock serializes cash movements, balance checks and shift closing.
+  // AsyncLocalStorage keeps concurrent HTTP requests on their own connection.
+  async transaction(profileId: string, action: () => Promise<Response>): Promise<Response> {
+    if (this.transactionClient.getStore()) return action();
+    await this.ready;
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`cash:${profileId}`]);
+      const response = await this.transactionClient.run(client, action);
+      await client.query(response.ok ? "COMMIT" : "ROLLBACK");
+      return response;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 
   constructor(projectRoot: string) {
     this.pool = new Pool({
@@ -174,11 +196,11 @@ export class PostgresD1Database {
   async query(
     sql: string,
     values: SqlValue[],
-    client: QueryClient = this.pool,
+    client?: QueryClient,
     rowMode?: "array",
   ): Promise<QueryResult> {
     await this.ready;
-    return client.query({
+    return (client || this.transactionClient.getStore() || this.pool).query({
       text: sql,
       values: values.map((value) =>
         value instanceof Uint8Array ? Buffer.from(value) : value,
@@ -189,6 +211,12 @@ export class PostgresD1Database {
 
   async batch(statements: PostgresD1PreparedStatement[]) {
     await this.ready;
+    const existing = this.transactionClient.getStore();
+    if (existing) {
+      const results = [];
+      for (const statement of statements) results.push(await statement.run(existing));
+      return results;
+    }
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -208,7 +236,7 @@ export class PostgresD1Database {
 
   async exec(sql: string) {
     await this.ready;
-    const result = await this.pool.query(sql);
+    const result = await (this.transactionClient.getStore() || this.pool).query(sql);
     return { count: result.rowCount || 0, duration: 0 };
   }
 }

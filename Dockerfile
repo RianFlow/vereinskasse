@@ -47,7 +47,6 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=production-dependencies /app/node_modules ./node_modules
-COPY --from=builder /app/node_modules/vinext ./node_modules/vinext
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/postgres ./postgres

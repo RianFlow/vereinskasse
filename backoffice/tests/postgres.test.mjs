@@ -245,7 +245,9 @@ test('PostgreSQL: migrations, least privilege, auth, snapshots, writes and backu
       }
       await pool.query("INSERT INTO public.reversals(id,sale_id,reason,amount,operator_id,operator_name,created_at) VALUES ('rev','reversed-sale','Test',99,'test','Test',$1)",[stamp]);
       await pool.query("INSERT INTO public.account_transactions(id,profile_id,member_id,member_name,type,amount,note,operator_id,created_at) VALUES ('credit','darts','M-CREDIT','Guthaben','Anpassung',-3,'test','test',$1)",[priorStamp]);
+      await pool.query("INSERT INTO public.account_transactions(id,profile_id,member_id,member_name,type,amount,note,operator_id,created_at) VALUES ('fund-credit','darts','FUND-test','Interner Getränketopf','Getränketopf',-50,'test','test',$1)",[stamp]);
       await pool.query('SET ROLE clubiq_backoffice');
+      const draft=await data.report('darts',month);assert.ok(!draft.people.some(person=>person.memberId==='FUND-test'));assert.ok(!draft.balances.some(person=>person.member_id==='FUND-test'));
       const current=await data.statistics('darts',{from:month,to:month});
       assert.equal(current.months.length,1);assert.equal(current.summary.revenue,12.5);assert.equal(current.summary.sales,1);assert.equal(current.summary.averageSale,12.5);
       assert.equal(current.summary.payments,2.5);assert.equal(current.summary.outstanding,9);assert.equal(current.summary.credits,3);assert.equal(current.summary.openAccounts,1);

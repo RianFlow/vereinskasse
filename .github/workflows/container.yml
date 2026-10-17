@@ -63,6 +63,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - id: version
+        name: Versionsnummer aus dem Paket lesen
+        run: node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); if(!/^\d+\.\d+\.\d+$/.test(p.version))throw new Error('Invalid release version'); fs.appendFileSync(process.env.GITHUB_OUTPUT,'version='+p.version+'\n');"
+
       - id: meta
         uses: docker/metadata-action@v6
         with:
@@ -70,7 +74,7 @@ jobs:
           tags: |
             type=raw,value=test,enable=${{ github.ref == 'refs/heads/codex/raspberry-docker' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=1.7.3,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=sha,prefix=sha-
 

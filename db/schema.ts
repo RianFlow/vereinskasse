@@ -1,4 +1,19 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+export const tabletFunds=sqliteTable("tablet_funds",{
+  id:text("id").primaryKey().notNull(),profileId:text("profile_id").notNull(),label:text("label").notNull(),
+  sponsorId:text("sponsor_id").notNull(),sponsorName:text("sponsor_name").notNull(),kind:text("kind").notNull(),state:text("state").notNull(),
+  budgetCents:integer("budget_cents").notNull().default(0),spentCents:integer("spent_cents").notNull().default(0),refundedCents:integer("refunded_cents").notNull().default(0),revision:integer("revision").notNull().default(0),createdAt:text("created_at").notNull(),updatedAt:text("updated_at").notNull(),
+},table=>[
+  uniqueIndex("tablet_funds_open_idx").on(table.profileId).where(sql`${table.state} IN ('active','paused')`),
+  check("tablet_funds_kind_check",sql`${table.kind} IN ('cash','once')`),check("tablet_funds_state_check",sql`${table.state} IN ('active','paused','closed')`),
+  check("tablet_funds_budget_check",sql`${table.budgetCents}>=0 AND ${table.spentCents}>=0 AND ${table.refundedCents}>=0`),
+  check("tablet_funds_balance_check",sql`${table.kind}='once' OR ${table.spentCents}+${table.refundedCents}<=${table.budgetCents}`),
+]);
+export const tabletOperations=sqliteTable("tablet_operations",{
+  id:text("id").primaryKey().notNull(),profileId:text("profile_id").notNull(),kind:text("kind").notNull(),requestHash:text("request_hash").notNull(),undoHash:text("undo_hash").notNull(),payloadJson:text("payload_json").notNull(),resultJson:text("result_json").notNull(),createdAt:text("created_at").notNull(),undoneAt:text("undone_at"),
+},table=>[index("tablet_operations_profile_idx").on(table.profileId,table.createdAt)]);
 
 export const configurationState=sqliteTable("configuration_state",{
   profileId:text("profile_id").primaryKey(),revision:integer("revision").notNull().default(0),lastMutation:text("last_mutation").notNull().default("")
