@@ -10,7 +10,7 @@ test('deployment requires an explicit HTTPS origin and preserves the opted-in se
   for(const origin of ['http://verwaltung.clubiq.party','https://verwaltung.clubiq.party/path','https://user:pass@verwaltung.clubiq.party']){
     assert.throws(()=>loadConfig({BACKOFFICE_ORIGIN:origin}),/HTTPS-Adresse/);
   }
-  const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
+  const read=path=>readFileSync(new URL(path,import.meta.url),'utf8').replace(/\r\n/g,'\n');
   const compose=read('../../deploy/docker/backoffice.compose.yaml');
   assert.match(compose,/BACKOFFICE_ORIGIN:\s*\$\{BACKOFFICE_ORIGIN:\?/);
   assert.match(compose,/127\.0\.0\.1:8092:8092/);
