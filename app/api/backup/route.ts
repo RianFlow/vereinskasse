@@ -2,10 +2,10 @@ import { env } from "cloudflare:workers";
 import { hasRole, requireRole, type SessionUser } from "../session";
 import { requireProfile, type ActiveProfile } from "../profile-session";
 
-const SCHEMA_VERSION=25;
-const COMPATIBLE_SCHEMA_VERSIONS=[22,23,24,SCHEMA_VERSION];
+const SCHEMA_VERSION=26;
+const COMPATIBLE_SCHEMA_VERSIONS=[22,23,24,25,SCHEMA_VERSION];
 const BACKUP_FORMAT_VERSION=3;
-const tables=["profiles","profile_recovery_keys","profile_sessions","members","member_lifecycle","rfid_devices","rfid_cards","rfid_scans","rfid_write_commands","rfid_display_states","guest_accounts","products","discount_rules","events","sales","sale_items","sale_allocations","payments","account_transactions","rounds","round_claims","random_reward_campaigns","random_reward_slots","shifts","reversals","monthly_closures","audit_logs"] as const;
+const tables=["profiles","profile_recovery_keys","profile_sessions","members","member_lifecycle","rfid_devices","rfid_cards","rfid_scans","rfid_write_commands","rfid_display_states","guest_accounts","products","discount_rules","events","sales","sale_items","sale_allocations","payments","account_transactions","rounds","round_claims","random_reward_campaigns","random_reward_slots","shifts","reversals","monthly_closures","audit_logs","tablet_funds","tablet_operations"] as const;
 type Snapshot=Record<string,unknown>&{formatVersion:number;schemaVersion:number;createdAt:string;rowCounts:Record<string,number>};
 const hex=(buffer:ArrayBuffer)=>Array.from(new Uint8Array(buffer),byte=>byte.toString(16).padStart(2,"0")).join("");
 const digest=async(payload:string)=>hex(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(payload)));
@@ -30,6 +30,7 @@ async function validatedSnapshot(key:string){
   const payload=await new Response(object.body).text(),checksum=await digest(payload),expected=object.customMetadata?.sha256||"";
   if(!expected||checksum!==expected)throw new Error("Prüfsumme stimmt nicht – diese Sicherung darf nicht verwendet werden");
   const snapshot=JSON.parse(payload) as Snapshot;
+  if(snapshot.schemaVersion<26){snapshot.tablet_funds=[];snapshot.tablet_operations=[]}
   const compatible=COMPATIBLE_SCHEMA_VERSIONS.includes(snapshot.schemaVersion)&&snapshot.formatVersion===BACKUP_FORMAT_VERSION&&tables.every(table=>Array.isArray(snapshot[table]));
   return {snapshot,checksum,size:new TextEncoder().encode(payload).byteLength,compatible};
 }

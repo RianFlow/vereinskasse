@@ -211,6 +211,13 @@
       "when": 1788422321563,
       "tag": "0029_dry_sage",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1792220419351,
+      "tag": "0030_tablet_finance",
+      "breakpoints": true
     }
   ]
 }

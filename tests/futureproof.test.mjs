@@ -36,7 +36,7 @@ test("nimmt die letzte Buchung sicher und nachvollziehbar zurück",async()=>{
   for(const feature of ["Rückgängig","undoLastSale","vereinskasse-pending-","undoToken","Buchung zurückgenommen"])assert.ok(page.includes(feature),`${feature} fehlt`);
   for(const feature of ["export async function PATCH","Sofort rückgängig","SALE_UNDONE","Date.now()-created>30000","round_claims","reversals/"])assert.ok(data.includes(feature),`${feature} fehlt`);
   assert.ok(data.includes("-Number(allocation.amount)"),"Gegenbuchung für offene Konten fehlt");
-  assert.ok(style.includes("animation:undo-window 10s"));
+  assert.ok(style.includes("animation:undo-window 30s"));
 });
 
 test("stellt vergessene Profil-PINs im 2-aus-3-Verfahren wieder her",async()=>{
@@ -48,7 +48,7 @@ test("stellt vergessene Profil-PINs im 2-aus-3-Verfahren wieder her",async()=>{
   assert.ok(profiles.includes("recoveryCards")&&profiles.includes('recoveryScheme:"2-of-3"'));
   assert.ok(helper.includes("PBKDF2")&&helper.includes("randomRecoveryCard"));
   assert.ok(schema.includes("profileRecoveryKeys")&&migration.includes("profile_recovery_keys"));
-  assert.ok(backup.includes("SCHEMA_VERSION=25")&&backup.includes('"profile_recovery_keys"'));
+  assert.ok(backup.includes("SCHEMA_VERSION=26")&&backup.includes('"profile_recovery_keys"'));
 });
 
 test("teilt den Adminbereich in übersichtliche Tablet-Bereiche",async()=>{
@@ -92,7 +92,7 @@ test("verwendet das Clubiq-Logo und den Slogan ohne das Kassentheme umzubauen",a
   assert.ok((page.match(/<ClubiqSignature/g)||[]).length===3,"Die dezente Markensignatur soll genau an drei zusätzlichen Stellen erscheinen");
   assert.ok(brand.includes(".clubiq-signature")&&brand.includes("opacity:.62"),"Die zusätzlichen Markenhinweise sind nicht zurückhaltend gestaltet");
   assert.ok(brand.includes(".theme-toggle{display:none!important}"),"Darkmode ist noch sichtbar");
-  assert.ok(page.includes('className="app kiosk-design light"'),"Die App startet nicht fest im hellen Modus");
+  assert.ok(page.includes('app kiosk-design light'),"Die App startet nicht fest im hellen Modus");
 });
 
 test("startet mit Clubiq-Splashscreen und sicherer Marken-Anmeldung",async()=>{
@@ -202,13 +202,14 @@ test("verteilt geheime Glücksmomente nur über den Adminbereich",async()=>{
   assert.ok(data.includes("finalTotal")&&data.includes("adjustedAllocations"),"Gewinn wird nicht sauber auf Endbetrag und Rechnungen verteilt");
   assert.ok(schema.includes("randomRewardCampaigns")&&schema.includes("randomRewardSlots"));
   assert.ok(migration.includes("random_reward_campaigns")&&migration.includes("random_reward_slots"));
-  assert.ok(backup.includes("SCHEMA_VERSION=25")&&backup.includes('"random_reward_campaigns"')&&backup.includes('"random_reward_slots"'));
+  assert.ok(backup.includes("SCHEMA_VERSION=26")&&backup.includes('"random_reward_campaigns"')&&backup.includes('"random_reward_slots"'));
   assert.ok(receipt.includes("rr.reward_amount")&&receipt.includes("rewardRow"),"Gewinn fehlt auf dem Beleg");
 });
 
 test("berechnet Preise, Pakete und Glücksrabatte serverseitig",async()=>{
   const [data,page]=await Promise.all([read("app/api/data/route.ts"),read("app/page.tsx")]);
-  for(const feature of ["canonicalCart","member_price","discount_rules","included_items_json","Die Aufteilung stimmt nicht","expectedTotal"])assert.ok(data.includes(feature),`${feature} fehlt`);
+  const canonical=await read("app/api/canonical-cart.ts");
+  for(const feature of ["canonicalCart","member_price","discount_rules","included_items_json","Die Aufteilung stimmt nicht","expectedTotal"])assert.ok((data+canonical).includes(feature),`${feature} fehlt`);
   assert.ok(data.includes("body.total*Number(candidate.rewardValue)/100"),"Prozentgewinn wird nicht korrekt durch 100 geteilt");
   assert.ok(page.includes('priceMode:memberPricing?"member":"non_member"'),"Preisart wird nicht an den Server übergeben");
 });

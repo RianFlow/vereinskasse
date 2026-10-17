@@ -79,3 +79,29 @@ PostgreSQL wird zusammen mit pgadmin in einer Docker-Umgebung bereitgestellt. Di
 - `docker compose up` – Docker-Umgebung starten
 - `docker compose down` – Docker-Umgebung stoppen
 - `docker compose pull` – Images neu laden / aktualisieren
+
+## Tablet-Kasse ab 1.9.0
+
+Auf der PostgreSQL-Kasse ist die neue Oberfläche für ein 10-Zoll-Tablet im Querformat voreingestellt.
+Im Menü lässt sich jederzeit zur bisherigen Oberfläche wechseln; `?layout=classic` öffnet sie auch direkt.
+Beide Ansichten verwenden dieselben Konten und Buchungen. Ein noch unbestätigter Zahlungsvorgang
+muss zuerst mit derselben Vorgangsnummer geprüft werden.
+
+- Der Bon scrollt innerhalb seines Bereichs; Gesamtbetrag und Bezahlen bleiben sichtbar.
+- Bargeld und Teilzahlungen haben ein Zahlenfeld mit Rückgeldanzeige.
+- Mitglieder und Gäste können Beträge gemeinsam übernehmen, gleichmäßig, frei oder nach Artikeln.
+- Eine Geburtstagsrunde kann die nächste gemeinsame Getränkebestellung übernehmen oder ein bar
+  vorausbezahltes Budget verwenden. Nur Artikel der Kategorie **Getränke** werden übernommen.
+  Essen und alte Rechnungen bleiben getrennt. Der Topf wird erst beim Buchen belastet.
+- Nicht verbrauchtes Guthaben wird beim Beenden ausgezahlt. Die Einzahlung belastet kein Mitgliedskonto.
+- Sofort-Rücknahme ist in beiden Ansichten **30 Sekunden** möglich. Eine abgeschlossene Schicht oder
+  inzwischen geänderte Topfbewegung wird nicht stillschweigend zurückgesetzt. Spätere Verkaufsstornos
+  laufen über die geschützte Verwaltung und weisen nötige Barauszahlungen aus.
+- Geparkte und angefangene Bestellungen bleiben auf dem jeweiligen Tablet gespeichert.
+  Fertige Buchungen und Getränketöpfe werden zentral gespeichert. Ohne Serverbestätigung
+  zeigt die neue Ansicht einen Vorgang als ungeklärt und prüft beim Wiederholen dieselbe Kennung.
+
+Die PostgreSQL-Prüfung `tests/tablet-finance-runtime.mjs` läuft ausschließlich in einer ausdrücklich
+markierten Wegwerf-Datenbank. Sie prüft unter anderem konkurrierende Zahlungen, atomare Rücknahme,
+Getränketöpfe, gemischte Aufteilung und Kassenbestand. `.gitattributes` fixiert die Zeilenumbrüche
+von Migrationen, damit unveränderte Prüfsummen unter Windows und Linux übereinstimmen.
