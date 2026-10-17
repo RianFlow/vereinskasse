@@ -218,13 +218,13 @@ export default function Home() {
     finally{configurationBusy.current--;}
   };
   const saveDiscounts=(next:Discount[])=>{setDiscounts(next);if(discountSaveTimer.current)clearTimeout(discountSaveTimer.current);discountSaveTimer.current=setTimeout(()=>{discountSaveTimer.current=null;persistConfiguration({discounts:next});},500);};
-  const selectMember=(member:Member|null)=>{setActiveMember(member);setMemberPrompt(false);if(member){if(operationMode==="club"){setSelectedGuest(null);setMemberPricing(true)}sessionStorage.setItem("vereinskasse-active-member",member.id)}else sessionStorage.removeItem("vereinskasse-active-member")};
+  const selectMember=(member:Member|null)=>{setListMember(null);setActiveMember(member);setMemberPrompt(false);if(member){if(operationMode==="club"){setSelectedGuest(null);setMemberPricing(true)}sessionStorage.setItem("vereinskasse-active-member",member.id)}else sessionStorage.removeItem("vereinskasse-active-member")};
   const billingMember=listMember||activeMember;
   const displayCustomerName=billingMember?.name||selectedGuest?.name||"";
   const displayActive=Boolean(displayCustomerName||itemCount);
   const displayItems=useMemo(()=>products.filter(product=>cart[product.id]).map(product=>`${cart[product.id]}x ${product.name}`).join(" + ").slice(0,100),[cart,products]);
   useEffect(()=>{
-    if(!activeProfile)return;
+    if(!activeProfile||view!=="kasse"||tabletEnabled&&tabletAvailable)return;
     let heartbeat:ReturnType<typeof setInterval>|undefined;
     let lastDisplaySync=0;
     const syncDisplay=()=>{
@@ -243,7 +243,7 @@ export default function Home() {
     window.addEventListener("focus",resumeDisplay);
     window.addEventListener("pageshow",resumeDisplay);
     return()=>{clearTimeout(timer);if(heartbeat)clearInterval(heartbeat);document.removeEventListener("visibilitychange",resumeDisplay);window.removeEventListener("focus",resumeDisplay);window.removeEventListener("pageshow",resumeDisplay)};
-  },[activeProfile,itemCount,total,displayActive,displayCustomerName,displayItems]);
+  },[activeProfile,itemCount,total,displayActive,displayCustomerName,displayItems,tabletEnabled,tabletAvailable,view]);
   const openEntries=control.accountEntries||[],allAccountRows=flattenAccounts(control.accounts),accountBalance=(id?:string)=>Number(allAccountRows.find(account=>account.memberId===id)?.balance||0),guestOpenAccounts=control.accounts.filter(account=>accountUrgency(account,openEntries)==="guest"),guestOpenTotal=guestOpenAccounts.reduce((sum,account)=>sum+Number(account.balance),0);
   const currentLines=()=>{const sold=products.filter(p=>cart[p.id]).map(p=>({productId:p.id,productName:p.name,quantity:cart[p.id],unitPrice:unitPrice(p),total:Math.round(unitPrice(p)*cart[p.id]*100)/100,countsForConsumption:!p.isOffer||!(p.includedItems||[]).length}));const included=products.filter(parent=>cart[parent.id]).flatMap(parent=>(parent.includedItems||[]).flatMap(item=>{const component=products.find(product=>product.id===item.productId);return component?[{productId:component.id,productName:component.name,quantity:item.quantity*cart[parent.id],unitPrice:0,total:0,countsForConsumption:true}]:[]}));return [...sold,...included]};
   const consumptionItemCount=()=>currentLines().filter(line=>line.countsForConsumption).reduce((sum,line)=>sum+line.quantity,0);

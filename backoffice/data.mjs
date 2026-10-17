@@ -91,7 +91,7 @@ export function dataService(pool) {
       billingMonth(month);
       const { rows: [closure] } = await pool.query('SELECT * FROM public.monthly_closures WHERE profile_id=$1 AND month=$2', [profile,month]);
       const notes = (await pool.query('SELECT member_id,note,version FROM bo_invoice_notes WHERE profile_id=$1 AND month=$2', [profile,month])).rows;
-      const balances = (await pool.query('SELECT member_id,SUM(amount) AS balance FROM public.account_transactions WHERE profile_id=$1 GROUP BY member_id', [profile])).rows;
+      const balances = (await pool.query("SELECT member_id,SUM(amount) AS balance FROM public.account_transactions WHERE profile_id=$1 AND member_id NOT LIKE 'FUND-%' GROUP BY member_id", [profile])).rows;
       if (closure) {
         const digest = createHash('sha256').update(closure.snapshot_json).digest('hex');
         assert(digest === closure.checksum, 409, 'Die Prüfsumme dieser festgeschriebenen Abrechnung stimmt nicht. Bitte vor Bearbeitung prüfen.');
@@ -106,7 +106,7 @@ export function dataService(pool) {
         COALESCE(SUM(CASE WHEN created_at>=$2 AND amount>0 THEN amount ELSE 0 END),0) AS charges,
         COALESCE(SUM(CASE WHEN created_at>=$2 AND type='Zahlung' THEN -amount ELSE 0 END),0) AS payments,
         COALESCE(SUM(CASE WHEN created_at>=$2 AND amount<0 AND type<>'Zahlung' THEN amount ELSE 0 END),0) AS adjustments,
-        SUM(amount) AS closing FROM public.account_transactions WHERE profile_id=$1 AND created_at<$3 GROUP BY member_id
+        SUM(amount) AS closing FROM public.account_transactions WHERE profile_id=$1 AND member_id NOT LIKE 'FUND-%' AND created_at<$3 GROUP BY member_id
         HAVING SUM(amount)<>0 OR MAX(created_at)>=$2 ORDER BY name`, [profile,start,end]);
       let people = rows.map(row => ({ memberId:row.member_id,memberName:row.name,openingBalance:Number(row.opening),charges:Number(row.charges),payments:Number(row.payments),adjustments:Number(row.adjustments),closingBalance:Number(row.closing) }));
       const guests = (await pool.query('SELECT id,name,type,parent_id FROM public.guest_accounts WHERE profile_id=$1', [profile])).rows;

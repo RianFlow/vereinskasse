@@ -42,7 +42,7 @@ export async function statistics(pool, profile, input) {
   const quantity = Number((await pool.query(`SELECT COALESCE(SUM(si.quantity),0) AS quantity FROM public.sale_items si JOIN public.sales s ON s.id=si.sale_id
     WHERE ${validSales} AND si.counts_for_consumption=1`,params)).rows[0].quantity);
   const balances = (await pool.query(`SELECT member_id,SUM(amount) AS balance FROM public.account_transactions
-    WHERE profile_id=$1 GROUP BY member_id`,[profile])).rows.map(row=>Number(row.balance));
+    WHERE profile_id=$1 AND member_id NOT LIKE 'FUND-%' GROUP BY member_id`,[profile])).rows.map(row=>Number(row.balance));
   const bands = [{name:'Bis 10 €',count:0,amount:0},{name:'Über 10 bis 50 €',count:0,amount:0},{name:'Über 50 €',count:0,amount:0}];
   for(const balance of balances.filter(value=>value>0)){const band=bands[balance<=10?0:balance<=50?1:2];band.count++;band.amount+=Math.round(balance*100);}
   for(const band of bands)band.amount/=100;
