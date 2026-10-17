@@ -84,7 +84,7 @@ PostgreSQL wird zusammen mit pgadmin in einer Docker-Umgebung bereitgestellt. Di
 
 Auf der PostgreSQL-Kasse ist die neue Oberfläche für ein 10-Zoll-Tablet im Querformat voreingestellt.
 Im Menü lässt sich jederzeit zur bisherigen Oberfläche wechseln; `?layout=classic` öffnet sie auch direkt.
-Beide Ansichten verwenden dieselben Konten und Buchungen. Ein noch unbestätigter Zahlungsvorgang
+Beide Ansichten verwenden dieselben Konten und Buchungen. Eine aktive Getränkerunde wird vor dem Wechsel pausiert; auch die API verhindert, dass sie durch die bisherige Ansicht unbemerkt umgangen wird. Ein noch unbestätigter Zahlungsvorgang
 muss zuerst mit derselben Vorgangsnummer geprüft werden.
 
 - Der Bon scrollt innerhalb seines Bereichs; Gesamtbetrag und Bezahlen bleiben sichtbar.

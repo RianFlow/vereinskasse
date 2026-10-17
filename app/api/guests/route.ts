@@ -1,3 +1,4 @@
+import { cashTransaction } from "../cash-transaction";
 import { env } from "cloudflare:workers";
 import { requireProfile } from "../profile-session";
 import { sessionUser } from "../session";
@@ -9,7 +10,8 @@ const today=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Europe/Berlin",year:"
 const cleanName=(value:unknown)=>String(value||"").trim().replace(/\s+/g," ").replace(/[^a-zA-Z0-9äöüÄÖÜß .&'\-]/g,"").slice(0,70);
 const guestsFor=async(profileId:string)=>(await env.DB.prepare("SELECT id,profile_id profileId,name,type,parent_id parentId,visit_date visitDate,active,created_at createdAt,updated_at updatedAt FROM guest_accounts WHERE profile_id=? AND active=1 ORDER BY CASE WHEN type='club' THEN 0 ELSE 1 END,updated_at DESC,name").bind(profileId).all<GuestRow>()).results;
 
-export async function POST(request:Request){
+export async function POST(request:Request){return cashTransaction(request,()=>changeGuests(request))}
+async function changeGuests(request:Request){
   try{
     const [profile,operator]=await Promise.all([requireProfile(request),sessionUser(request)]);
     if(!profile)return Response.json({error:"Bitte zuerst ein Profil entsperren"},{status:401});
