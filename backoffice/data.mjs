@@ -156,6 +156,8 @@ export function dataService(pool) {
       const signed = input.kind === 'payment' ? -amount : amount;
       const fingerprint = createHash('sha256').update(JSON.stringify([actor.profileId,memberId,signed,input.kind,reason,month])).digest('hex');
       return transaction(pool, async db => {
+        // Share the POS lock before reading a balance or reserving a mutation id.
+        await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`cash:${actor.profileId}`]);
         const prior = await db.query('INSERT INTO bo_mutations(id,user_id,fingerprint) VALUES ($1,$2,$3) ON CONFLICT(id) DO NOTHING RETURNING id',[input.idempotencyKey,actor.userId,fingerprint]);
         if (!prior.rowCount) {
           const { rows:[old] } = await db.query('SELECT user_id,fingerprint FROM bo_mutations WHERE id=$1',[input.idempotencyKey]);

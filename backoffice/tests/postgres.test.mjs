@@ -14,6 +14,7 @@ import {configuredRecipients,recipientService} from '../recipients.mjs';
 import {statisticsRange} from '../statistics.mjs';
 import {configurationClaim,configurationGuard} from '../../app/configuration-state.ts';
 import {postgresSql} from '../../raspberry/postgres-sql.mjs';
+import {Pool} from 'pg';
 
 test('PostgreSQL: migrations, least privilege, auth, snapshots, writes and backup compatibility',async t=>{
   const {pool,close}=await postgresFixture();
@@ -293,6 +294,38 @@ test('PostgreSQL: migrations, least privilege, auth, snapshots, writes and backu
       await data.addEntry(liveActor,{kind:'payment',memberId:'M-LIVE',amount:'2',reason:'Nur Testdaten Bankbeleg',referenceMonth:month,expectedBalance:6,idempotencyKey:randomUUID()});
       await pool.query('RESET ROLE');
       assert.equal(Number((await pool.query("SELECT SUM(amount) balance FROM public.account_transactions WHERE profile_id=$1 AND member_id='M-LIVE'",[profile])).rows[0].balance),4);
+    });
+    await t.test('cash payment commits before a simultaneous administrative payment rechecks its balance',{skip:!process.env.BACKOFFICE_TEST_DATABASE_URL},async()=>{
+      const profile='shared-payment-lock',memberId='M-SHARED-LOCK';
+      await pool.query("INSERT INTO public.profiles(id,name,short_name,pin_salt,pin_hash,created_at,updated_at) VALUES ($1,$1,$1,'test','test',$2,$2)",[profile,stamp]);
+      await pool.query("INSERT INTO public.members(id,name,role,code,initials,active) VALUES ($1,'Lock Beispiel','Mitglied','NOLOGIN-LOCK','LB',1)",[memberId]);
+      await pool.query("INSERT INTO public.account_transactions(id,profile_id,member_id,member_name,type,amount,note,operator_id,created_at) VALUES ('shared-lock-debt',$1,$2,'Lock Beispiel','Belastung',2,'test','test',$3)",[profile,memberId,stamp]);
+      const native=new Pool({connectionString:process.env.BACKOFFICE_TEST_DATABASE_URL,max:1});
+      const pos=await native.connect();let active=false,pending,settled=false;
+      try{
+        await pos.query('BEGIN');active=true;
+        await pos.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`cash:${profile}`]);
+        await pool.query('SET ROLE clubiq_backoffice');
+        pending=data.addEntry({...actor,profileId:profile},{kind:'payment',memberId,amount:'2',reason:'Gleichzeitiger Test',referenceMonth:month,expectedBalance:2,idempotencyKey:randomUUID()}).then(value=>{settled=true;return{value}},error=>{settled=true;return{error}});
+        let waiting=false;
+        for(let attempt=0;attempt<100&&!settled;attempt++){
+          await pos.query('SELECT pg_stat_clear_snapshot()');
+          waiting=Number((await pos.query("SELECT COUNT(*)::int count FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory' AND pid<>pg_backend_pid()")).rows[0].count)>0;
+          if(waiting)break;
+          await new Promise(resolve=>setTimeout(resolve,20));
+        }
+        assert.equal(settled,false);assert.equal(waiting,true,'The administrative payment must wait for the real POS transaction lock');
+        await pos.query("INSERT INTO public.account_transactions(id,profile_id,member_id,member_name,type,amount,note,operator_id,created_at) VALUES ('shared-lock-pos',$1,$2,'Lock Beispiel','Zahlung',-2,'POS Test','test',$3)",[profile,memberId,stamp]);
+        await pos.query("INSERT INTO public.payments(id,profile_id,member_id,method,amount,note,operator_id,created_at) VALUES ('shared-lock-pos-payment',$1,$2,'Bar',2,'POS Test','test',$3)",[profile,memberId,stamp]);
+        await pos.query('COMMIT');active=false;
+        const result=await pending;assert.equal(result.error?.status,409);
+        await pool.query('RESET ROLE');
+        assert.equal(Number((await pool.query('SELECT SUM(amount) balance FROM public.account_transactions WHERE profile_id=$1 AND member_id=$2',[profile,memberId])).rows[0].balance),0);
+        assert.equal(Number((await pool.query('SELECT COUNT(*) count FROM public.payments WHERE profile_id=$1',[profile])).rows[0].count),1);
+      }finally{
+        if(active)await pos.query('ROLLBACK');pos.release();await native.end();
+        if(pending)await pending;await pool.query('RESET ROLE');
+      }
     });
   }finally{await close();}
 });
