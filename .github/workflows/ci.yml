@@ -44,3 +44,7 @@ jobs:
             -f deploy/docker/compose.yaml config --quiet
       - run: npm run lint
       - run: npm test
+      - name: Persönliche Tablet-Favoriten mit getrennter Datenbank prüfen
+        run: |
+          npm run build:raspberry
+          CLUBIQ_LAYOUT_QA=20261108 node tests/tablet-layout-runtime.mjs
