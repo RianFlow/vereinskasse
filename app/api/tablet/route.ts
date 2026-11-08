@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { requireProfile } from "../profile-session";
-import { sessionUser } from "../session";
+import { requireRole, sessionUser } from "../session";
 import { cashTransaction } from "../cash-transaction";
 import { canonicalCart } from "../canonical-cart";
 import { POST as legacySale, PATCH as legacyUndo } from "../data/route";
@@ -16,7 +16,8 @@ const forwarded=(request:Request,body:unknown)=>new Request(request.url,{method:
 
 export async function GET(request:Request) {
   const profile=await requireProfile(request);if(!profile)return Response.json({error:"Profilanmeldung erforderlich"},{status:401});
-  return Response.json({fund:await activeFund(profile.id),undoSeconds:30},{headers:{"cache-control":"no-store"}});
+  const [fund,operator]=await Promise.all([activeFund(profile.id),requireRole(request,["Mitglied","Kassendienst","Kassenwart","Vorstand"])]);
+  return Response.json({fund,undoSeconds:30,canSettle:Boolean(operator)},{headers:{"cache-control":"no-store"}});
 }
 
 export async function POST(request:Request) {

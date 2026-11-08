@@ -37,12 +37,26 @@ dauerhafte persönliche Historie im Tablet gespeichert.
 Der Einstieg „Kasse abschließen“ führt nach der persönlichen Berechtigungsprüfung
 direkt zur Abrechnung. Das Datenbankschema und die Berechtigungen ändern sich
 durch dieses Layout nicht.
+Bei der Kontenabrechnung führt „Mitglied anmelden & Zahlung freigeben“ bei Bedarf
+zur vorhandenen Mitgliedsanmeldung und anschließend zurück zu den eingegebenen
+Zahlungsbeträgen. Die Auswahl eines Bestellers ersetzt diese Anmeldung nicht.
 
 Zusätzliche Prüfungen: `node --test tests/tablet-cash-model.test.mjs` und nach
 `npm run build:raspberry`
 `CLUBIQ_LAYOUT_QA=20261108 node tests/tablet-layout-runtime.mjs`.
 Die Laufzeitprüfung startet ausschließlich eine eigene Wegwerf-Datenbank;
 Produktivdaten werden nicht verwendet.
+
+`tests/tablet-layout-browser.mjs` prüft zusätzlich echte Browserbuchungen mit
+PostgreSQL: Aufteilen, Rücknahme, Rundenbudget, Favoriten, verlorene Antworten,
+Barzahlung, Teilabrechnung, Besuchervereine und den Einstieg zum Kassenabschluss.
+Sie benötigt `CLUBIQ_LAYOUT_QA=20261108`, die ausdrücklich isolierte Datenbank
+`PGDATABASE=tablet_layout_qa_20261108` auf localhost und eine lokale Test-App
+(`CLUBIQ_LAYOUT_QA_URL`, standardmäßig Port4251). Die Datenbank muss bereits
+migriert sein; das Skript legt ausschließlich erfundene, frische Testkonten an.
+Die unterstützten Tablet-Prüfgrößen sind 1280×800, 1024×768 und 1024×600.
+Playwright lässt sich über `PLAYWRIGHT_MODULE` und `PLAYWRIGHT_CHANNEL` auswählen;
+Screenshots werden optional in `CLUBIQ_LAYOUT_QA_OUTPUTS` geschrieben.
 
 ## RFID-Betrieb
 

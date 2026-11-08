@@ -77,7 +77,7 @@ test("ist als Vollbild-Web-App auf Tablets installierbar",async()=>{
   for(const feature of ["requestFullscreen","beforeinstallprompt","wakeLock","KioskHelpDialog","Vereinskasse als App öffnen","IconMaximize"])assert.ok(page.includes(feature),`${feature} fehlt`);
 });
 
-test("verwendet das Clubiq-Logo und den Slogan ohne das Kassentheme umzubauen",async()=>{
+test("verwendet Clubiq-Logo und Slogan mit wählbarer heller und dunkler Darstellung",async()=>{
   const [page,layout,brand,info,legal,legalStyle,packageFile]=await Promise.all([read("app/page.tsx"),read("app/layout.tsx"),read("app/clubiq-brand.css"),read("app/app-info.ts"),read("app/legal/page.tsx"),read("app/legal.css"),read("package.json")]);
   const packageVersion=JSON.parse(packageFile).version;
   for(const feature of ["Clubiq Ledger","Mehr als eine Vereinskasse.","APP_NAME","APP_SLOGAN"])assert.ok(`${layout}\n${info}`.includes(feature),`${feature} fehlt`);
@@ -91,8 +91,7 @@ test("verwendet das Clubiq-Logo und den Slogan ohne das Kassentheme umzubauen",a
   for(const feature of ["ClubiqSignature","cart-brand-signature","payment-brand-signature","admin-brand-signature"])assert.ok(page.includes(feature),`${feature} fehlt`);
   assert.ok((page.match(/<ClubiqSignature/g)||[]).length===3,"Die dezente Markensignatur soll genau an drei zusätzlichen Stellen erscheinen");
   assert.ok(brand.includes(".clubiq-signature")&&brand.includes("opacity:.62"),"Die zusätzlichen Markenhinweise sind nicht zurückhaltend gestaltet");
-  assert.ok(brand.includes(".theme-toggle{display:none!important}"),"Darkmode ist noch sichtbar");
-  assert.ok(page.includes('app kiosk-design light'),"Die App startet nicht fest im hellen Modus");
+  assert.ok(page.includes('app kiosk-design ${darkMode?"dark":"light"}'),"Die App übernimmt die gewählte Darstellung nicht");
 });
 
 test("startet mit Clubiq-Splashscreen und sicherer Marken-Anmeldung",async()=>{

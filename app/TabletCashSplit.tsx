@@ -53,6 +53,6 @@ export function TabletCashSplit({ people, selectedId, totalCents, units, disable
         <p className="tc5-split-help">{kind === "items" ? "Getränke aus einer aktiven Runde sind bereits abgezogen." : "Betrag antippen, um ihn zu ändern. Der Rest verteilt sich automatisch."}</p>
       </section>
     </div>
-    <div className="tc5-split-footer"><div><span>Zu verteilen <strong>{money(totalCents)}</strong></span><small className={ready ? "ready" : ""} role="status">{message}</small></div><button disabled={disabled} onClick={onClose}>Abbrechen</button><button className="tc-primary" disabled={disabled || !ready || totalCents <= 0} onClick={confirm}>{parts.length > 1 ? `Auf ${parts.length} Konten buchen` : "Personen auswählen"}</button></div>
+    <div className="tc5-split-footer"><div><span>Zu verteilen <strong>{money(totalCents)}</strong></span><small className={ready ? "ready" : ""} role="status">{message}</small></div><button disabled={disabled} onClick={onClose}>Abbrechen</button><button className="tc-primary" disabled={disabled || !ready || totalCents <= 0} onClick={confirm}>{ready ? `Auf ${actual.filter(part => Number(part.cents) > 0).length} ${actual.filter(part => Number(part.cents) > 0).length === 1 ? "Konto" : "Konten"} buchen` : parts.length > 1 ? `Auf ${parts.length} Konten buchen` : "Personen auswählen"}</button></div>
   </>;
 }

@@ -14,8 +14,8 @@ export async function GET(request: Request) {
   const result = await env.DB.prepare(`
     SELECT s.id,s.time,s.cart_json FROM sales s
     WHERE s.profile_id=? AND NOT EXISTS (SELECT 1 FROM reversals r WHERE r.sale_id=s.id)
-      AND ((s.method='Bar' AND s.member_id=? AND NOT EXISTS (SELECT 1 FROM sale_allocations a WHERE a.sale_id=s.id))
-        OR ((SELECT COUNT(*) FROM sale_allocations a WHERE a.sale_id=s.id)=1
+      AND ((s.method='Bar' AND s.member_id=? AND NOT EXISTS (SELECT 1 FROM sale_allocations a WHERE a.profile_id=s.profile_id AND a.sale_id=s.id))
+        OR ((SELECT COUNT(*) FROM sale_allocations a WHERE a.profile_id=s.profile_id AND a.sale_id=s.id)=1
           AND EXISTS (SELECT 1 FROM sale_allocations a WHERE a.sale_id=s.id AND a.profile_id=s.profile_id AND a.member_id=? AND a.kind='anteil' AND ABS(a.amount-s.total)<0.001)))
     ORDER BY s.time DESC,s.id DESC LIMIT 10
   `).bind(profile.id, id, id).all<{ id: string; time: string; cart_json: string }>();

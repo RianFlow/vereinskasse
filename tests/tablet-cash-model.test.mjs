@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {parseEuroCents,euroText,distributeShares,validateShares,personalFavorites,repeatCart,unitsAfterCoverage} from '../app/tablet-cash-model.ts';
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
+// Exercise the actual pure source on all supported Node 22 versions, including
+// versions before native TypeScript stripping was enabled by default.
+const compiled=ts.transpileModule(readFileSync(new URL('../app/tablet-cash-model.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+const {parseEuroCents,euroText,distributeShares,validateShares,personalFavorites,repeatCart,unitsAfterCoverage}=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
 const part=(id,cents=null,fixed=false)=>({id,cents,text:cents===null?'':euroText(cents),fixed});
 
 test('decimal entries preserve cents and reject invalid or excessive precision',()=>{
