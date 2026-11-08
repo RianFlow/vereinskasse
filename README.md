@@ -105,3 +105,14 @@ Die PostgreSQL-Prüfung `tests/tablet-finance-runtime.mjs` läuft ausschließlic
 markierten Wegwerf-Datenbank. Sie prüft unter anderem konkurrierende Zahlungen, atomare Rücknahme,
 Getränketöpfe, gemischte Aufteilung und Kassenbestand. `.gitattributes` fixiert die Zeilenumbrüche
 von Migrationen, damit unveränderte Prüfsummen unter Windows und Linux übereinstimmen.
+
+
+## Kassentablet ohne tägliche Profilanmeldung
+
+Beim Anmelden per Chip oder Profil-PIN kann **Dieses Tablet merken** aktiviert werden. Das gewählte Profil öffnet sich danach auf diesem Browser direkt. Die Freigabe gilt höchstens ein Jahr, endet beim Abmelden und wird auf anderen Geräten widerrufen, wenn die Profil-PIN geändert oder wiederhergestellt wird. Eine Deaktivierung des Profils sperrt auch gemerkte Geräte. Ohne Auswahl bleibt es bei zwölf Stunden.
+
+Auf einem bereits angemeldeten Tablet lässt sich die Freigabe auch im Tablet-Menü über **Dieses Tablet merken** aktivieren. **Tablet abmelden** entfernt sie wieder; ein Profilwechsel meldet das bisherige Profil ebenfalls ab. Gelöschte Browserdaten oder ein privater Browsermodus können eine erneute Anmeldung erforderlich machen. Die Freigabe speichert keinen PIN im Browser und verlängert nur das Profilcookie, weder den persönlichen Verwaltungszugang noch die Backoffice-Anmeldung. Ein Erstprofil muss vor dem Merken seine eigene PIN erhalten.
+
+Prüfung am isolierten lokalen Raspberry-Build: `CLUBIQ_DEVICE_QA=20261108 node tests/remembered-tablet-runtime.mjs`. Der Test startet einen eigenen Server mit einer neuen Wegwerfdatenbank. Mit `CLUBIQ_DEVICE_QA_BROWSER=1` und vorhandenem `PLAYWRIGHT_MODULE` prüft er zusätzlich Profil-PIN, gemerktes Cookie, Browserneustart und Abmelden. PostgreSQL ist nur mit `CLUBIQ_DEVICE_QA_POSTGRES=1` und der ausdrücklich festgelegten Datenbank `device_qa_20261108` erlaubt. Keine Produktionskonten verwenden.
+
+Bei langsamen Fernverbindungen kann `CLUBIQ_DEVICE_QA_ASSETS` auf eine bytegleiche Kopie von `dist/client` aus dem Testimage zeigen. Der Browsertest bedient dann dessen statische Dateien sowie unveränderte Dateien aus `public` lokal. Anmeldung, Cookies und sämtliche API-Aufrufe bleiben mit dem echten Testserver und seiner Datenbank verbunden. Serverbereitschaft und Netzwerkzeitüberschreitungen werden im Test ausdrücklich geprüft.

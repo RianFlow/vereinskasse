@@ -44,3 +44,8 @@ jobs:
             -f deploy/docker/compose.yaml config --quiet
       - run: npm run lint
       - run: npm test
+
+      - name: Gemerktes Kassentablet und getrennte Verwaltungsrechte prüfen
+        run: |
+          npm run build:raspberry
+          CLUBIQ_DEVICE_QA=20261108 node tests/remembered-tablet-runtime.mjs
