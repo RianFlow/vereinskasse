@@ -52,6 +52,7 @@ import "./clubiq-brand.css";
 import "./legal.css";
 import "./profile-brand-refresh.css";
 import "./tablet-cash.css";
+import "./tablet-cash-a5.css";
 import { APP_NAME, APP_SHORT_NAME, APP_SLOGAN, APP_VERSION } from "./app-info";
 
 export const metadata: Metadata = {

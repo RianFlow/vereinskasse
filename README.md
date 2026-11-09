@@ -9,6 +9,55 @@ kontrollierter Wiederherstellung steht unter
 
 Tabletfreundliches Kassensystem für den SV Barver Darts und weitere Sparten im Dorfgemeinschaftshaus.
 
+## Tablet-Kasse 1.10
+
+Die Tablet-Oberfläche verwendet die Clubiq-Farben mit dunkler Darstellung als
+Standard. Eine helle Darstellung bleibt umschaltbar und wird für dieses Gerät
+gespeichert. Die Personenauswahl steht über den Artikeln; zuletzt ausgewählte
+Personen sind direkt erreichbar. „Auf Konto buchen“ ist die Hauptaktion,
+„Sofort bezahlen“ bleibt daneben. Der Beleg scrollt innerhalb seines Bereichs,
+während Gesamtbetrag und Buchung sichtbar bleiben.
+
+Beim Aufteilen werden weitere Konten angetippt und die Anteile centgenau
+gleichmäßig verteilt. Eigene Beträge bleiben fest, der Rest wird auf die übrigen
+Konten verteilt. Bestätigen ist erst bei vollständiger Verteilung möglich.
+„Nach Artikeln“ erhält die einzelne Artikelzuordnung. Auch mit einer aktiven
+Getränkerunde wird nur der verbleibende Betrag verteilt. Buchung, Wiederholung
+bei unklarer Antwort und die gemeinsame Rücknahme verwenden weiterhin die
+vorhandene PostgreSQL-Transaktion und den bisherigen 30-Sekunden-Zeitraum.
+
+Persönliche Favoriten beruhen auf höchstens zehn nicht stornierten,
+eindeutig einer Person zugeordneten Bestellungen des geöffneten Profils.
+Reine Betragsaufteilungen und Runden werden keiner Person als Artikelvorliebe
+zugeschrieben. Ohne Historie werden allgemeine Favoriten angezeigt.
+„Letzte Bestellung“ fügt verfügbare Artikel zu aktuellen Preisen hinzu.
+Die Historie wird nach der Personenauswahl vom Server gelesen und nicht als
+dauerhafte persönliche Historie im Tablet gespeichert.
+
+Der Einstieg „Kasse abschließen“ führt nach der persönlichen Berechtigungsprüfung
+direkt zur Abrechnung. Das Datenbankschema und die Berechtigungen ändern sich
+durch dieses Layout nicht.
+Bei der Kontenabrechnung führt „Mitglied anmelden & Zahlung freigeben“ bei Bedarf
+zur vorhandenen Mitgliedsanmeldung und anschließend zurück zu den eingegebenen
+Zahlungsbeträgen. Die Auswahl eines Bestellers ersetzt diese Anmeldung nicht.
+
+Zusätzliche Prüfungen: `node --test tests/tablet-cash-model.test.mjs` und nach
+`npm run build:raspberry`
+`CLUBIQ_LAYOUT_QA=20261108 node tests/tablet-layout-runtime.mjs`.
+Die Laufzeitprüfung startet ausschließlich eine eigene Wegwerf-Datenbank;
+Produktivdaten werden nicht verwendet.
+
+`tests/tablet-layout-browser.mjs` prüft zusätzlich echte Browserbuchungen mit
+PostgreSQL: Aufteilen, Rücknahme, Rundenbudget, Favoriten, verlorene Antworten,
+Barzahlung, Teilabrechnung, Besuchervereine und den Einstieg zum Kassenabschluss.
+Sie benötigt `CLUBIQ_LAYOUT_QA=20261108`, die ausdrücklich isolierte Datenbank
+`PGDATABASE=tablet_layout_qa_20261108` auf localhost und eine lokale Test-App
+(`CLUBIQ_LAYOUT_QA_URL`, standardmäßig Port4251). Die Datenbank muss bereits
+migriert sein; das Skript legt ausschließlich erfundene, frische Testkonten an.
+Die unterstützten Tablet-Prüfgrößen sind 1280×800, 1024×768 und 1024×600.
+Playwright lässt sich über `PLAYWRIGHT_MODULE` und `PLAYWRIGHT_CHANNEL` auswählen;
+Screenshots werden optional in `CLUBIQ_LAYOUT_QA_OUTPUTS` geschrieben.
+
 ## RFID-Betrieb
 
 Der Raspberry stellt ein festes 2,4-GHz-WLAN `BarverKasse` für Tablet und
