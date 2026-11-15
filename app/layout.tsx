@@ -54,6 +54,7 @@ import "./profile-brand-refresh.css";
 import "./tablet-cash.css";
 import "./tablet-cash-a5.css";
 import "./input-viewport.css";
+import "./tablet-music.css";
 import { InputViewport } from "./InputViewport";
 import { APP_NAME, APP_SHORT_NAME, APP_SLOGAN, APP_VERSION } from "./app-info";
 
