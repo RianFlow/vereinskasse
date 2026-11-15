@@ -1,0 +1,127 @@
+.tc-a5 .tc5-music-button.active {
+  color: var(--tc5-gold-light);
+  border-color: var(--tc5-gold);
+}
+
+.tc5-music-controls,
+.tc5-music-controls > section {
+  display: grid;
+  gap: 10px;
+}
+
+.tc5-music-controls > section {
+  border-top: 1px solid var(--tc5-line);
+  padding-top: 10px;
+}
+
+.tc5-music-controls h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.tc-a5 .tc5-music-controls button {
+  justify-content: space-between;
+}
+
+/* Keep the official player alongside the register, including while a payment
+   dialog is open. The player and its controls stay outside the dialog overlay. */
+.app:has(.tc5-music-video) {
+  --tc5-music-width: clamp(228px, 23vw, 340px);
+}
+
+.app:has(.tc5-music-video) .tc-a5 {
+  width: calc(100% - var(--tc5-music-width));
+  margin-inline: 0;
+}
+
+.app:has(.tc5-music-video) :is(.tc-backdrop, .modal-backdrop) {
+  right: var(--tc5-music-width);
+}
+
+.app:has(.tc5-music-video) .tc5-recent > :not(.tc5-all-people),
+.app:has(.tc5-music-video) .tc5-header > .tc5-utility > span,
+.app:has(.tc5-music-video) .tc5-reader .rfid-header-label {
+  display: none;
+}
+
+.app:has(.tc5-music-video) .tc5-body {
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 30vw, 350px);
+}
+
+.app:has(.tc5-music-video) .tc5-products {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.app:has(.tc5-music-video) .tc5-line {
+  grid-template-columns: minmax(0, 1fr) 104px 50px;
+  gap: 5px;
+}
+
+.app:has(.tc5-music-video) .tc5-stepper > button {
+  width: 40px;
+}
+
+.app:has(.tc5-music-video) .tc5-footer {
+  gap: 8px;
+  padding-inline: 12px;
+}
+
+.tc5-music-video {
+  position: fixed;
+  z-index: 75;
+  inset: 0 0 0 auto;
+  width: var(--tc5-music-width);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--tc5-panel);
+  color: var(--tc5-text);
+  border-inline-start: 1px solid var(--tc5-line);
+}
+
+.tc5-music-video-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tc5-music-video-head strong {
+  overflow-wrap: anywhere;
+}
+
+.tc5-music-video iframe {
+  display: block;
+  width: 100%;
+  height: max(204px, calc((var(--tc5-music-width) - 24px) * .5625));
+  border: none;
+  background: #111;
+}
+
+.tc5-music-video a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding-block: 8px;
+}
+
+@media (max-height: 630px) {
+  .app:has(.tc5-music-video) .tc5-who {
+    min-height: 68px;
+    padding-block: 6px;
+  }
+  .app:has(.tc5-music-video) .tc5-person-choice {
+    height: 54px;
+  }
+  .app:has(.tc5-music-video) .tc5-receipt {
+    gap: 6px;
+    padding-block: 10px;
+  }
+  .app:has(.tc5-music-video) .tc5-book {
+    min-height: 50px;
+  }
+  .app:has(.tc5-music-video) .tc5-account-summary {
+    padding-block: 6px;
+  }
+}

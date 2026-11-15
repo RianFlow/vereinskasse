@@ -344,6 +344,7 @@ export const env = {
       : new LocalD1Database(databasePath),
   BACKUPS: new LocalR2Bucket(),
   VEREINSKASSE_RUNTIME: "raspberry",
+  CLUBIQ_MUSIC_API: process.env.CLUBIQ_MUSIC_API || "http://10.42.0.1:8000/api/v1/music",
   VEREINSKASSE_DATABASE_PROVIDER: databaseProvider,
   VEREINSKASSE_DATABASE_PATH: databasePath,
   VEREINSKASSE_BACKUP_DIR: objectDirectory,
