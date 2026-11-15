@@ -47,6 +47,43 @@ try{
  const clear=()=>page.getByRole('button',{name:'Bestellung leeren',exact:true}).click();
  const cart=async()=>{await choose(names[0]);await page.locator('.tc5-catalog-heading h2').filter({hasText:'Alice'}).waitFor();await add('QA Pils',2);await add('QA Cola')};
  const shot=async name=>{if(process.env.CLUBIQ_LAYOUT_QA_OUTPUTS){mkdirSync(process.env.CLUBIQ_LAYOUT_QA_OUTPUTS,{recursive:true});await page.screenshot({path:resolve(process.env.CLUBIQ_LAYOUT_QA_OUTPUTS,name+'.png')})}};
+ // Reduced viewports simulate the space left above Android's keyboard. The
+ // real tablet still needs a physical keyboard check after deployment.
+ check((await page.locator('meta[name="viewport"]').getAttribute('content')).includes('interactive-widget=resizes-content'),'Android keyboard is configured to resize the usable page');
+ const fits = locator => locator.evaluate(element => {const r=element.getBoundingClientRect(),v=visualViewport;return r.height>0&&r.top>=(v?.offsetTop||0)-1&&r.bottom<=(v?.offsetTop||0)+(v?.height||innerHeight)+1});
+ const beforeSearchSales=await sales();
+ for(const [width,height] of [[1024,300],[1280,360]]){
+  await page.setViewportSize({width,height:800});
+  await page.getByRole('button',{name:'Alle Personen',exact:false}).tap();
+  check(await page.getByLabel('Person suchen',{exact:true}).evaluate(el=>el!==document.activeElement),'Touch opens the person list without immediately raising the keyboard');
+  const search=page.getByLabel('Person suchen',{exact:true});await search.fill('Alice');
+  await page.setViewportSize({width,height});await page.locator('html[data-input-compact]').waitFor();
+  const result=page.locator('.tc5-person-grid button').filter({hasText:names[0]});
+  check(await fits(search)&&await fits(result),`Person query and matching person fit above a keyboard at ${width}x${height}`);
+  await search.fill('');await page.locator('.tc5-person-content').evaluate(el=>el.scrollTop=el.scrollHeight);
+  check(await fits(search),'Person search stays visible while scrolling a long result list');
+  await search.fill('Alice');await result.scrollIntoViewIfNeeded();await result.tap();
+  await page.setViewportSize({width,height:800});await page.locator('.tc5-person-choice').filter({hasText:names[0]}).waitFor();
+ }
+ await add('QA Pils');const retainedCart=await page.locator('.tc5-lines').innerText();
+ await page.getByRole('button',{name:'Person abwählen',exact:true}).tap();
+ check(await page.locator('.tc5-person-choice.no-person').count()===1&&(await page.locator('.tc5-total strong').innerText()).includes('2,50'),'Deselecting a member restores normal prices');
+ check((await page.locator('.tc5-lines').innerText()).includes('QA Pils')&&retainedCart.includes('QA Pils')&&await sales()===beforeSearchSales,'Deselecting keeps the cart and creates no booking');await clear();
+ for(const [width,height] of [[1024,300],[1280,360]]){
+  const search=page.getByLabel('Artikel suchen',{exact:true});await search.fill('QA Pils');await page.setViewportSize({width,height});await page.locator('html[data-input-catalog]').waitFor();
+  const result=page.locator('.tc5-products button').filter({hasText:'QA Pils'});
+  check(await fits(search)&&await fits(result),`Product search and result remain visible at ${width}x${height}`);
+  await shot(`Kasse-1.10.1-Artikelsuche-${height}`);await result.tap();
+  check(await page.locator('html[data-input-catalog]').count()===1,'Tapping a product does not move the result before its click');
+  await page.setViewportSize({width,height:800});await page.locator('html:not([data-input-catalog])').waitFor();
+  check((await page.locator('.tc5-lines').innerText()).includes('QA Pils'),'The complete receipt returns after the keyboard closes');await search.fill('');await clear();
+ }
+ await cart();await page.getByRole('button',{name:'Aufteilen',exact:true}).click();
+ const splitSearch=page.getByLabel('Personen zum Aufteilen suchen',{exact:true});await splitSearch.fill('Bob');await page.setViewportSize({width:1024,height:300});await page.locator('html[data-input-compact]').waitFor();
+ const splitResult=page.locator('.tc5-split-people button').filter({hasText:names[1]});
+ check(await fits(splitSearch)&&await fits(splitResult),'Split search and matching person fit above a landscape keyboard');
+ await splitResult.tap();check(await splitResult.getAttribute('aria-pressed')==='true','A split participant can be selected with the keyboard open');await shot('Kasse-1.10.1-Aufteilen-Tastatur');
+ await page.setViewportSize({width:1280,height:800});await page.getByRole('button',{name:'Abbrechen',exact:true}).click();await clear();
  await cart();await shot('Kasse-1.10-Umsetzung');
  const before=await sales();await page.locator('.tc5-book').evaluate(button=>{button.click();button.click()});await page.locator('.tc5-notice').filter({hasText:'gebucht'}).waitFor();
  check(await sales()===before+1&&await balance(ids[0])===initialBalances[0]+550,'Double tapping account booking creates exactly one purchase');
@@ -102,7 +139,11 @@ try{
  await page.locator('.tc5-notice').filter({hasText:'6,00'}).waitFor();check(await balance(ids[0])===initialBalances[0],'Cash payment calculates change without debiting the account');
  await page.getByRole('button',{name:/Rückgängig ·/}).click();await page.locator('.tc5-notice').filter({hasText:'zurückgenommen'}).waitFor();
  await page.getByRole('button',{name:'Konten abrechnen',exact:false}).click();await page.locator('.tc-account-row').filter({hasText:names[0]}).click();
- await page.getByLabel('Jetzt bezahlen',{exact:true}).fill('2,00');await page.getByLabel('Bargeld erhalten',{exact:true}).fill('5,00');
+ await page.getByLabel('Jetzt bezahlen',{exact:true}).fill('2,00');
+ await page.waitForFunction(()=>document.querySelector('input[aria-label="Bargeld erhalten"]')?.value==='2,00');
+ await page.getByLabel('Bargeld erhalten',{exact:true}).fill('5,00');
+ await page.waitForFunction(()=>[...document.querySelectorAll('.tc-dialog p')].some(el=>el.textContent.includes('Rückgeld: 3,00')));
+ assert.equal(await page.getByLabel('Bargeld erhalten',{exact:true}).inputValue(),'5,00','Tender before authorization');
  await page.getByRole('button',{name:'Mitglied anmelden & Zahlung freigeben',exact:true}).click();
  await page.getByRole('dialog',{name:'Identität bestätigen',exact:true}).waitFor();
  check(await balance(ids[0])===initialBalances[0],'Account settlement requests member authorization without posting prematurely');
@@ -132,6 +173,11 @@ try{
  const closed=(await query('SELECT status,expected_cash,counted_cash,difference FROM shifts WHERE profile_id=$1 ORDER BY opened_at DESC LIMIT 1',[profile])).rows[0];
  assert.deepEqual([closed.status,Number(closed.expected_cash),Number(closed.counted_cash),Number(closed.difference)],['closed',100,100,0]);
  check(true,'The isolated shift closes with the correct cash balance and no difference');
+ await page.getByRole('button',{name:'Mitglieder',exact:true}).click();
+ const directorySearch=page.getByPlaceholder('Name oder Mitgliedsnummer suchen',{exact:true});await directorySearch.fill('Alice');await page.setViewportSize({width:1024,height:300});
+ await page.locator('html[data-input-compact]').waitFor();const directoryResult=page.locator('.member-directory-row').filter({hasText:names[0]});await directoryResult.scrollIntoViewIfNeeded();
+ check(await fits(directorySearch)&&await fits(directoryResult),'Member administration search and result fit above a keyboard');
+ await page.setViewportSize({width:1280,height:800});
  check(errors.length===0,'No browser runtime errors');
  console.log('TABLET_LAYOUT_BROWSER_CHECKS_PASSED='+passed);
 }catch(error){if(page&&process.env.CLUBIQ_LAYOUT_QA_OUTPUTS){mkdirSync(process.env.CLUBIQ_LAYOUT_QA_OUTPUTS,{recursive:true});await page.screenshot({path:resolve(process.env.CLUBIQ_LAYOUT_QA_OUTPUTS,'Kasse-1.10-QA-Diagnose.png')}).catch(()=>{})}throw error}
