@@ -14,6 +14,28 @@
   padding-top: 10px;
 }
 
+.tc5-music-controls > .tc5-online-vote {
+  border: 0;
+  padding: 0;
+}
+
+.tc5-vote-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  color: var(--tc5-text);
+  border: 1px solid var(--tc5-gold);
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.tc5-vote-link:focus-visible {
+  outline: 3px solid var(--tc5-gold-light);
+  outline-offset: 2px;
+}
+
 .tc5-music-controls h3 {
   margin: 0;
   font-size: 15px;

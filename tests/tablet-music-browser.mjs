@@ -128,6 +128,19 @@ try {
   assert.match(await page.locator(".tc5-lines").innerText(), /QA Pils/);
   console.log("PASS local media continues after returning to an active order");
 
+  const voteUrl = "https://vereinskasse-1.tail289dda.ts.net:8443/";
+  await context.route(voteUrl, route => route.fulfill({ contentType: "text/html", body: "<h1>QA Online-Abstimmung</h1>" }));
+  await page.getByRole("button", { name: "Musik", exact: true }).tap();
+  const [voteTab] = await Promise.all([page.waitForEvent("popup"), musicDialog.getByRole("link", { name: "Online abstimmen" }).tap()]);
+  await voteTab.getByRole("heading", { name: "QA Online-Abstimmung" }).waitFor();
+  assert.equal(voteTab.url(), voteUrl);
+  assert.equal(await voteTab.evaluate(() => window.opener), null);
+  await voteTab.close();
+  await page.bringToFront();
+  await musicDialog.getByRole("button", { name: "Fenster schließen" }).tap();
+  assert.match(await page.locator(".tc5-lines").innerText(), /QA Pils/);
+  console.log("PASS online voting opens separately and the cashier keeps the order");
+
   await page.getByRole("button", { name: "Musik", exact: true }).tap();
   await musicDialog.getByRole("button", { name: "Playlist anzeigen" }).tap();
   const video = page.getByTitle("Abgestimmte YouTube-Playlist");

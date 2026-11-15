@@ -115,6 +115,10 @@ export function TabletMusicControls({ music, done }: { music: TabletMusic; done:
   const lists = library?.playlists ?? [];
   const selected = lists[playlistIndex] ?? lists[0];
   return <div className="tc5-music-controls">
+    <section className="tc5-online-vote" aria-label="Musik wählen">
+      <a className="tc5-vote-link" href={CLUBIQ_MUSIC_URL} target="_blank" rel="noopener noreferrer">Online abstimmen</a>
+      <small>Die Abstimmung öffnet separat. Melde dich dort mit deinem ClubIQ-Music-Zugang an.</small>
+    </section>
     <p>Die Wiedergabe läuft auf diesem Tablet. Koppel die Box in den Bluetooth-Einstellungen des Samsung.</p>
     {loading && <p role="status">ClubIQ Music wird geladen …</p>}
     {catalogError && <p role="status">{catalogError}</p>}
@@ -144,7 +148,6 @@ export function TabletMusicControls({ music, done }: { music: TabletMusic; done:
       {library?.playlists === null && <p>Die Playlist ist gerade nicht erreichbar.</p>}
       {playlist && <button onClick={music.stopPlaylist}>Videoplayer schließen</button>}
     </section>
-    <a className="tc-menu-link" href={CLUBIQ_MUSIC_URL} target="_blank" rel="noopener noreferrer">ClubIQ Music öffnen</a>
   </div>;
 }
 
