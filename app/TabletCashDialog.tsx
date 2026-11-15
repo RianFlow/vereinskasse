@@ -11,7 +11,11 @@ export function TabletCashDialog({ title, wide = false, busy = false, onClose, c
     const trigger = document.activeElement as HTMLElement | null;
     const node = root.current!;
     const focusable = () => [...node.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],[tabindex="0"]')].filter(element => element.getClientRects().length);
-    (node.querySelector<HTMLElement>('input:not(:disabled)') || focusable()[0] || node).focus();
+    // A touch user can browse people before explicitly opening the keyboard.
+    const input = node.querySelector<HTMLInputElement>('input:not(:disabled)');
+    const touchSearch = window.matchMedia("(pointer: coarse)").matches && input?.getAttribute("aria-label")?.includes("suchen");
+    const initial = touchSearch ? node : input || focusable()[0] || node;
+    initial.focus({ preventScroll: true });
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !blocked.current) { event.preventDefault(); close.current(); }
       if (event.key !== "Tab") return;

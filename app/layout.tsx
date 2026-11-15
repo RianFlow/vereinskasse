@@ -53,6 +53,8 @@ import "./legal.css";
 import "./profile-brand-refresh.css";
 import "./tablet-cash.css";
 import "./tablet-cash-a5.css";
+import "./input-viewport.css";
+import { InputViewport } from "./InputViewport";
 import { APP_NAME, APP_SHORT_NAME, APP_SLOGAN, APP_VERSION } from "./app-info";
 
 export const metadata: Metadata = {
@@ -84,6 +86,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
@@ -94,6 +97,7 @@ export default function RootLayout({
   return (
     <html lang="de">
       <body>
+        <InputViewport />
         {children}
         <a
           className="clubiq-legal-shortcut"

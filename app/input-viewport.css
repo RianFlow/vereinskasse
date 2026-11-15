@@ -1,0 +1,72 @@
+/* Keep overlays inside the actually visible screen, above a soft keyboard. */
+.tc-a5 .tc-backdrop,
+.modal-backdrop {
+  top: var(--input-viewport-top, 0px);
+  bottom: auto;
+  height: var(--input-viewport-height, 100dvh);
+}
+.tc-a5 .tc-dialog {
+  max-height: calc(var(--input-viewport-height, 100dvh) - 44px);
+}
+.tc-a5 .tc-dialog-wide {
+  height: min(660px, calc(var(--input-viewport-height, 100dvh) - 44px));
+}
+.modal-backdrop > .identity-card {
+  max-height: calc(var(--input-viewport-height, 100dvh) - 36px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tc-a5 .tc-dialog:has(.tc5-person-content) {
+  height: min(690px, calc(var(--input-viewport-height, 100dvh) - 44px));
+}
+.tc-a5 .tc5-person-content > .tc5-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  width: 100%;
+  background: var(--tc5-panel);
+}
+.tc-a5 .tc5-person-content > .tc5-person-grid {
+  flex-shrink: 0;
+  max-height: none;
+  overflow: visible;
+}
+.tc-a5 .tc5-clear-person {
+  width: 44px;
+  flex-shrink: 0;
+  padding: 8px;
+  color: var(--tc5-gold-light);
+}
+/* With a keyboard in landscape, give searching priority over the surrounding
+   branding and receipt. Closing the keyboard restores the complete register. */
+html[data-input-compact] .tc-a5 .tc-backdrop { padding: 8px; }
+html[data-input-compact] .tc-a5 .tc-dialog {
+  max-height: calc(var(--input-viewport-height) - 16px);
+}
+html[data-input-compact] .tc-a5 .tc-dialog-wide,
+html[data-input-compact] .tc-a5 .tc-dialog:has(.tc5-person-content) {
+  height: calc(var(--input-viewport-height) - 16px);
+}
+html[data-input-compact] .tc-a5 .tc-dialog-title { padding: 6px 14px; }
+html[data-input-compact] .tc-a5 .tc-dialog-title small { display: none; }
+html[data-input-compact] .tc-a5 .tc-dialog-title h2 { font-size: 19px; margin: 0; }
+html[data-input-compact] .tc-a5 .tc-dialog-content { padding: 8px 14px; gap: 8px; }
+html[data-input-compact] .tc-a5 .tc5-person-grid > button { min-height: 58px; padding: 8px 10px; }
+html[data-input-compact] .tc5-split-body { padding: 8px 14px; gap: 14px; }
+html[data-input-compact] .tc5-split-select,
+html[data-input-compact] .tc5-split-amounts { gap: 6px; }
+html[data-input-compact] .tc5-split-body .tc5-step,
+html[data-input-compact] .tc5-split-help { display: none; }
+html[data-input-compact] .tc5-split-footer { padding: 6px 14px; gap: 8px; }
+html[data-input-compact] .tc5-split-footer > div { gap: 0; }
+html[data-input-compact] .tc5-split-footer > button { min-height: 44px; }
+html[data-input-compact] .tc5-split-people > button { min-height: 54px; padding: 6px 10px; }
+html[data-input-catalog] .tc-a5 .tc5-header,
+html[data-input-catalog] .tc-a5 .tc5-who,
+html[data-input-catalog] .tc-a5 .tc5-footer,
+html[data-input-catalog] .tc-a5 .tc5-receipt,
+html[data-input-catalog] .tc-a5 .tc5-catalog-actions { display: none; }
+html[data-input-catalog] .tc-a5 .tc5-body { grid-template-columns: minmax(0, 1fr); }
+html[data-input-catalog] .tc-a5 { height: var(--input-viewport-height); }
+html[data-input-compact] .modal-backdrop { padding: 8px; }
+html[data-input-compact] .modal-backdrop > .identity-card { max-height: calc(var(--input-viewport-height) - 16px); }
